@@ -161,7 +161,7 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
     logger Finished
     return result
 
--- | Start postgres and log it's all stdout to '{'mainDir'}/output.txt' and '{'mainDir'}/error.txt'
+-- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
 startAndLogToTmp :: IO (Either StartError DB)
 startAndLogToTmp = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
