@@ -32,9 +32,6 @@ run = \case
     Right x -> putStrLn $ connectionString x
   Stop connStr -> stopWithConnectionString connStr >>= \case
     Success -> return ()
-    TimedOut time -> hPutStrLn stderr $
-      "postgres did not respond to SIGTERM in a timely manner. " ++
-      "Killed after " ++ show time ++ " microseconds."
     ErrorCode x -> hPutStrLn stderr $
       "postgres returned an error code when shutting down: " ++ show x
     Failed msg -> do

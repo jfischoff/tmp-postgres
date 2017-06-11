@@ -147,7 +147,7 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
                      ++ show port
                      )
                  )
-                 (stop 10000000)
+                 stop
                  $ \result -> do
     logger WritePid
     writeFile (mainDir ++ "/postgres.pid") =<< pidString (pid result)
@@ -176,30 +176,20 @@ startAndLogToTmp = do
 
 data Result
   = Success
-  | TimedOut Int
   | ErrorCode Int
   | Failed String
   deriving (Show, Eq)
 
-exitCodeToResult :: ExitCode -> IO Result
+exitCodeToResult :: ExitCode -> Result
 exitCodeToResult = \case
-  ExitSuccess   -> return Success
-  ExitFailure x -> return $ ErrorCode x
+  ExitSuccess   -> Success
+  ExitFailure x -> ErrorCode x
 
-kill :: Int -> ProcessHandle -> IO Result
-kill waitTime phandle = withProcessHandle phandle $ \case
-  OpenHandle pid -> TimedOut waitTime <$ signalProcess killProcess pid
-  ClosedHandle exitCode -> exitCodeToResult exitCode
-
-stop :: Int -> DB -> IO Result
-stop waitTime DB {..} = do
-
-  stopResult <- timeout waitTime
-              $ terminateProcess pid >> waitForProcess pid
-
-  result <- case stopResult of
-    Nothing -> kill waitTime pid
-    Just exitCode -> exitCodeToResult exitCode
+stop :: DB -> IO Result
+stop DB {..} = do
+  terminateProcess pid
+    --                         workaround for odd wait for exception
+  result <- exitCodeToResult <$> waitForProcess pid  -- `catch` (\(_ :: IOException) -> return ExitSuccess)
 
   removeDirectoryRecursive mainDir
 
@@ -242,4 +232,4 @@ stopWithConnectionString :: String -> IO Result
 stopWithConnectionString str =
   runEitherT (parseDB str) >>= \case
     Left msg -> return $ Failed msg
-    Right x  -> stop 10000000 x
+    Right x  -> stop x

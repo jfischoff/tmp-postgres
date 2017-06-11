@@ -11,6 +11,7 @@ import Control.Monad
 import System.Process
 import Database.PostgreSQL.Simple
 import qualified Data.ByteString.Char8 as BSC
+import Data.Either
 
 main :: IO ()
 main = hspec spec
@@ -23,41 +24,42 @@ data Except = Except
 
 instance Exception Except
 
+countPostgresProcesses :: IO Int
+countPostgresProcesses = length . lines <$> readProcess "pgrep" ["postgres"] []
+
 spec :: Spec
 spec = describe "Database.Postgres.Temp.Internal" $ do
   before (createTempDirectory "/tmp" "tmp-postgres") $ after rmDirIgnoreErrors $ describe "startWithLogger/stop" $ do
-    it "deletes the temp dir and postgres on exception" $ \mainFilePath -> do
-      -- This is not the best method ... but it works
-      beforePostgresCount <- length . lines <$> readProcess "pgrep" ["postgres"] []
-      stdOut <- mkDevNull
-      stdErr <- mkDevNull
-      forM_ [minBound .. maxBound] $ \event -> do
+    forM_ [minBound .. maxBound] $ \event ->
+      it ("deletes the temp dir and postgres on exception in " ++ show event) $ \mainFilePath -> do
+        -- This is not the best method ... but it works
+        beforePostgresCount <- countPostgresProcesses
+        let stdOut = stdout
+            stdErr = stderr
         shouldThrow
           (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) mainFilePath stdOut stdErr)
           (\Except -> True)
         doesDirectoryExist mainFilePath `shouldReturn` False
-        (length . lines <$> readProcess "pgrep" ["postgres"] []) `shouldReturn` beforePostgresCount
+        countPostgresProcesses `shouldReturn` beforePostgresCount
 
     it "creates a useful connection string and stop still cleans up" $ \mainFilePath -> do
-      beforePostgresCount <- length . lines <$> readProcess "pgrep" ["postgres"] []
+      beforePostgresCount <- countPostgresProcesses
       stdOut <- mkDevNull
       stdErr <- mkDevNull
-      Right db <- startWithLogger (\_ -> return ()) mainFilePath stdOut stdErr
+      result <- startWithLogger (\_ -> return ()) mainFilePath stdOut stdErr
+      db <- case result of
+              Right x  -> return x
+              Left err -> error $ show err
       conn <- connectPostgreSQL $ BSC.pack $ connectionString db
       execute_ conn "create table users (id int)"
 
-      stop 10000000 db `shouldReturn` Success
+      stop db `shouldReturn` Success
       doesDirectoryExist mainFilePath `shouldReturn` False
-      (length . lines <$> readProcess "pgrep" ["postgres"] []) `shouldReturn` beforePostgresCount
+      countPostgresProcesses `shouldReturn` beforePostgresCount
 
-    it "stop will kill if shutdown takes too long" $ \mainFilePath -> do
-      beforePostgresCount <- length . lines <$> readProcess "pgrep" ["postgres"] []
-      stdOut <- mkDevNull
-      stdErr <- mkDevNull
-      Right db <- startWithLogger (\_ -> return ()) mainFilePath stdOut stdErr
-      stop 0 db `shouldReturn` TimedOut 0
+    it "stopWithConnectionString works" $ \_ -> do
+      beforePostgresCount <- countPostgresProcesses
+      Right db <- startAndLogToTmp
+      stopWithConnectionString (connectionString db) `shouldReturn` Success
 
-      doesDirectoryExist mainFilePath `shouldReturn` False
-      (length . lines <$> readProcess "pgrep" ["postgres"] []) `shouldReturn` beforePostgresCount
-
-
+      countPostgresProcesses `shouldReturn` beforePostgresCount

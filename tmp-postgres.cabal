@@ -43,6 +43,7 @@ test-suite tmp-postgres-test
   hs-source-dirs:      test
   main-is:             Spec.hs
   other-modules: Database.Postgres.Temp.InternalSpec
+               , Database.Postgres.Temp.MainSpec
   build-depends:       base
                      , tmp-postgres
                      , hspec
