@@ -5,18 +5,11 @@ import System.Process
 import System.Process.Internals
 import Control.Concurrent
 import System.IO
-import System.Timeout
-import System.Posix.Signals
 import System.Exit
 import System.Directory
 import Network.Socket
 import Control.Exception
 import Data.Typeable
-import Data.List.Split
-import Control.Monad.Trans.Either
-import Text.Read (readMaybe)
-import System.IO.Error
-import Control.Monad.Trans.Class
 
 openFreePort :: IO Int
 openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
@@ -41,6 +34,7 @@ data DB = DB
   , pid              :: ProcessHandle
   }
 
+-- | start postgres and use the current processes stdout and stderr
 start :: IO (Either StartError DB)
 start = startWithHandles stdout stderr
 
@@ -79,7 +73,6 @@ throwIfError f e = case e of
   ExitSuccess -> return ()
   _       -> throwIO $ f e
 
-
 pidString :: ProcessHandle -> IO String
 pidString phandle = withProcessHandle phandle (\case
         OpenHandle p   -> return $ show p
@@ -91,10 +84,16 @@ runProcessWith stdOut stdErr name cmd
   =   createProcess_ name (shellWith stdOut stdErr cmd)
   >>= waitForProcess . fourth
 
-startWithHandles :: Handle -> Handle -> IO (Either StartError DB)
+-- | Start postgres and pass in handles for stdout and stderr
+startWithHandles :: Handle
+                 -- ^ stdout
+                 -> Handle
+                 -- ^ stdin
+                 -> IO (Either StartError DB)
 startWithHandles stdOut stdErr = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
   startWithHandlesAndDir mainDir stdOut stdErr
+
 
 startWithHandlesAndDir :: FilePath
                        -> Handle
@@ -107,7 +106,6 @@ data Event
   | WriteConfig
   | FreePort
   | StartPostgres
-  | WritePid
   | WaitForDB
   | CreateDB
   | Finished
@@ -149,8 +147,6 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
                  )
                  stop
                  $ \result -> do
-    logger WritePid
-    writeFile (mainDir ++ "/postgres.pid") =<< pidString (pid result)
     logger WaitForDB
     waitForDB mainDir port
 
@@ -165,6 +161,7 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
     logger Finished
     return result
 
+-- | Start postgres and log it's all stdout to TEMP_DIR/output.txt and TEMP_DIR/error.txt
 startAndLogToTmp :: IO (Either StartError DB)
 startAndLogToTmp = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
@@ -174,62 +171,10 @@ startAndLogToTmp = do
 
   startWithHandlesAndDir mainDir stdOutFile stdErrFile
 
-data Result
-  = Success
-  | ErrorCode Int
-  | Failed String
-  deriving (Show, Eq)
-
-exitCodeToResult :: ExitCode -> Result
-exitCodeToResult = \case
-  ExitSuccess   -> Success
-  ExitFailure x -> ErrorCode x
-
-stop :: DB -> IO Result
+-- | Stop postgres and clean up the temporary database folder.
+stop :: DB -> IO ExitCode
 stop DB {..} = do
   terminateProcess pid
-    --                         workaround for odd wait for exception
-  result <- exitCodeToResult <$> waitForProcess pid  -- `catch` (\(_ :: IOException) -> return ExitSuccess)
-
+  result <- waitForProcess pid
   removeDirectoryRecursive mainDir
-
   return result
-
-at :: Int -> e -> [a] -> Either e a
-at index err xs = case drop index xs of
-  x : _ -> Right x
-  _     -> Left err
-
--- create a DB record from connectionString
-parseMainDir :: String -> Either String String
-parseMainDir connectionString = do
-  tailPeice <- at 1 "No question mark in connection string" $ splitOn "?" connectionString
-  hostPart  <- at 0 "No host portion of connection string"  $ splitOn "&" tailPeice
-  at 1 "No host value of connection string" $ splitOn "=" hostPart
-
-catchMissingFile :: FilePath -> IO a -> EitherT String IO a
-catchMissingFile filepath action = EitherT $ catch (Right <$> action) $ \e ->
-  if isDoesNotExistError e then
-    return $ Left $ "Missing file:" ++ filepath
-  else
-    throwIO e
-
-readPidFile :: String -> EitherT String IO ProcessHandle
-readPidFile filePath = do
-  let pidPath = filePath ++ "/postgres.pid"
-  contents <- catchMissingFile pidPath $ readFile pidPath
-  case readMaybe contents of
-    Nothing -> left "Was unable to read postgres.pid's pid"
-    Just pid -> lift $ mkProcessHandle pid False
-
-parseDB :: String -> EitherT String IO DB
-parseDB connectionString = do
-  mainDir <- EitherT $ return $ parseMainDir connectionString
-  pid     <- readPidFile mainDir
-  return $ DB {..}
-
-stopWithConnectionString :: String -> IO Result
-stopWithConnectionString str =
-  runEitherT (parseDB str) >>= \case
-    Left msg -> return $ Failed msg
-    Right x  -> stop x

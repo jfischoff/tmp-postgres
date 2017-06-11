@@ -11,7 +11,7 @@ import Control.Monad
 import System.Process
 import Database.PostgreSQL.Simple
 import qualified Data.ByteString.Char8 as BSC
-import Data.Either
+import System.Exit
 
 main :: IO ()
 main = hspec spec
@@ -34,10 +34,8 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       it ("deletes the temp dir and postgres on exception in " ++ show event) $ \mainFilePath -> do
         -- This is not the best method ... but it works
         beforePostgresCount <- countPostgresProcesses
-        let stdOut = stdout
-            stdErr = stderr
         shouldThrow
-          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) mainFilePath stdOut stdErr)
+          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) mainFilePath stdout stderr)
           (\Except -> True)
         doesDirectoryExist mainFilePath `shouldReturn` False
         countPostgresProcesses `shouldReturn` beforePostgresCount
@@ -53,13 +51,6 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       conn <- connectPostgreSQL $ BSC.pack $ connectionString db
       execute_ conn "create table users (id int)"
 
-      stop db `shouldReturn` Success
+      stop db `shouldReturn` ExitSuccess
       doesDirectoryExist mainFilePath `shouldReturn` False
-      countPostgresProcesses `shouldReturn` beforePostgresCount
-
-    it "stopWithConnectionString works" $ \_ -> do
-      beforePostgresCount <- countPostgresProcesses
-      Right db <- startAndLogToTmp
-      stopWithConnectionString (connectionString db) `shouldReturn` Success
-
       countPostgresProcesses `shouldReturn` beforePostgresCount
