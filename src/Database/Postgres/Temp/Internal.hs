@@ -100,18 +100,44 @@ startWithHandlesAndDir :: FilePath
                        -> Handle
                        -> Handle
                        -> IO (Either StartError DB)
-startWithHandlesAndDir mainDir stdOut stdErr = try $ do
+startWithHandlesAndDir = startWithLogger $ \_ -> return ()
+
+data Event
+  = InitDB
+  | WriteConfig
+  | FreePort
+  | StartPostgres
+  | WritePid
+  | WaitForDB
+  | CreateDB
+  | Finished
+  deriving (Show, Eq, Enum, Bounded, Ord)
+
+rmDirIgnoreErrors :: FilePath -> IO ()
+rmDirIgnoreErrors mainDir =
+  removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
+
+startWithLogger :: (Event -> IO ())
+                -> FilePath
+                -> Handle
+                -> Handle
+                -> IO (Either StartError DB)
+startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgnoreErrors mainDir) $ do
   let dataDir = mainDir ++ "/data"
 
-  throwIfError InitDBFailed =<<
-    runProcessWith stdOut stdErr "initDB"
+  logger InitDB
+  initDBExitCode <- runProcessWith stdOut stdErr "initDB"
       ("initDB --nosync -E UNICODE -A trust -D " ++ dataDir)
+  throwIfError InitDBFailed initDBExitCode
 
-  -- write config
+  logger WriteConfig
   writeFile (dataDir ++ "/postgresql.conf") $ config mainDir
+
+  logger FreePort
   port <- openFreePort
   -- slight race here, the port might not be free anymore!
   let connectionString = "postgresql:///test?host=" ++ mainDir ++ "&port=" ++ show port
+  logger StartPostgres
   bracketOnError ( fmap (DB mainDir connectionString . fourth)
                  $ createProcess_ "postgres"
                      ( shellWith stdOut stdErr
@@ -123,9 +149,12 @@ startWithHandlesAndDir mainDir stdOut stdErr = try $ do
                  )
                  (stop 10000000)
                  $ \result -> do
+    logger WritePid
     writeFile (mainDir ++ "/postgres.pid") =<< pidString (pid result)
+    logger WaitForDB
     waitForDB mainDir port
 
+    logger CreateDB
     throwIfError CreateDBFailed =<<
       runProcessWith stdOut stdErr "createDB"
         ( "createDB --host=" ++ mainDir
@@ -133,6 +162,7 @@ startWithHandlesAndDir mainDir stdOut stdErr = try $ do
         ++ " test"
         )
 
+    logger Finished
     return result
 
 startAndLogToTmp :: IO (Either StartError DB)
@@ -140,7 +170,7 @@ startAndLogToTmp = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
 
   stdOutFile <- openFile (mainDir ++ "/" ++ "output.txt") WriteMode
-  stdErrFile <- openFile (mainDir ++ "/" ++ "output.txt") WriteMode
+  stdErrFile <- openFile (mainDir ++ "/" ++ "error.txt") WriteMode
 
   startWithHandlesAndDir mainDir stdOutFile stdErrFile
 
@@ -149,7 +179,7 @@ data Result
   | TimedOut Int
   | ErrorCode Int
   | Failed String
-  deriving (Show)
+  deriving (Show, Eq)
 
 exitCodeToResult :: ExitCode -> IO Result
 exitCodeToResult = \case

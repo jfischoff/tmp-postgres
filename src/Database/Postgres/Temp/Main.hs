@@ -21,7 +21,7 @@ printHelp = do
 
 run :: Command -> IO ()
 run = \case
-  Start -> start >>= \case
+  Start -> startAndLogToTmp >>= \case
     Left err -> case err of
       InitDBFailed   x -> do
         hPutStrLn stderr $ "initDB failed with exit code " ++ show x

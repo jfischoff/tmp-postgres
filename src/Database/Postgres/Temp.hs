@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables #-}
 module Database.Postgres.Temp
-  ( start
+  ( DB (..)
+  , start
   , startAndLogToTmp
   , startWithHandles
   , stop
