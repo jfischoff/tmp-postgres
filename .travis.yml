@@ -24,8 +24,8 @@ addons:
   apt:
     packages:
       - libgmp-dev
-      - postgresql-contrib
-      - postgresql
+      - postgresql-contrib-9.6
+      - postgresql-9.6
 
 before_install:
 # Download and unpack the stack executable
