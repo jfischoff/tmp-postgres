@@ -21,11 +21,11 @@ cache:
 
 # Ensure necessary system libraries are present
 addons:
+  postgresql: "9.6"
   apt:
     packages:
       - libgmp-dev
       - postgresql-contrib-9.6
-      - postgresql-9.6
 
 before_install:
 # Download and unpack the stack executable
