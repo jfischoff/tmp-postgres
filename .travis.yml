@@ -24,6 +24,8 @@ addons:
   apt:
     packages:
       - libgmp-dev
+      - postgresql-contrib
+      - postgresql
 
 before_install:
 # Download and unpack the stack executable
