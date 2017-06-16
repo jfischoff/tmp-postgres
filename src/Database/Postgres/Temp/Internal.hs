@@ -59,6 +59,7 @@ config mainDir = unlines
   , "log_connections = on"
   , "log_disconnections = on"
   , "unix_socket_directories = '" ++ mainDir ++ "'"
+  , "client_min_messages = ERROR"
   ]
 
 data StartError
