@@ -54,3 +54,13 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       stop db `shouldReturn` ExitSuccess
       doesDirectoryExist mainFilePath `shouldReturn` False
       countPostgresProcesses `shouldReturn` beforePostgresCount
+    it "can override settings" $ \_ -> do
+      let expectedDuration = "100ms"
+      bracket (start [("log_min_duration_statement", expectedDuration)])
+              (either (\_ -> return ()) (void . stop)) $ \result -> do
+        db <- case result of
+                Right x  -> return x
+                Left err -> error $ show err
+        conn <- connectPostgreSQL $ BSC.pack $ connectionString db
+        [Only actualDuration] <- query_ conn "SHOW log_min_duration_statement"
+        actualDuration `shouldBe` expectedDuration
