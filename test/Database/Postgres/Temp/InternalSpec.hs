@@ -54,6 +54,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       stop db `shouldReturn` ExitSuccess
       doesDirectoryExist mainFilePath `shouldReturn` False
       countPostgresProcesses `shouldReturn` beforePostgresCount
+
     it "can override settings" $ \_ -> do
       let expectedDuration = "100ms"
       bracket (start [("log_min_duration_statement", expectedDuration)])
