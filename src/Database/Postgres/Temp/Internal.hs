@@ -35,8 +35,8 @@ data DB = DB
   }
 
 -- | start postgres and use the current processes stdout and stderr
-start :: IO (Either StartError DB)
-start = startWithHandles stdout stderr
+start :: [(String, String)] -> IO (Either StartError DB)
+start options = startWithHandles options stdout stderr
 
 fourth :: (a, b, c, d) -> d
 fourth (_, _, _, x) = x
@@ -86,17 +86,19 @@ runProcessWith stdOut stdErr name cmd
   >>= waitForProcess . fourth
 
 -- | Start postgres and pass in handles for stdout and stderr
-startWithHandles :: Handle
+startWithHandles :: [(String, String)]
+                 -- ^ extra options
+                 -> Handle
                  -- ^ stdout
                  -> Handle
                  -- ^ stdin
                  -> IO (Either StartError DB)
-startWithHandles stdOut stdErr = do
+startWithHandles options stdOut stdErr = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
-  startWithHandlesAndDir mainDir stdOut stdErr
+  startWithHandlesAndDir options mainDir stdOut stdErr
 
-
-startWithHandlesAndDir :: FilePath
+startWithHandlesAndDir :: [(String, String)]
+                       -> FilePath
                        -> Handle
                        -> Handle
                        -> IO (Either StartError DB)
@@ -117,11 +119,12 @@ rmDirIgnoreErrors mainDir =
   removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
 
 startWithLogger :: (Event -> IO ())
+                -> [(String, String)]
                 -> FilePath
                 -> Handle
                 -> Handle
                 -> IO (Either StartError DB)
-startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgnoreErrors mainDir) $ do
+startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (rmDirIgnoreErrors mainDir) $ do
   let dataDir = mainDir ++ "/data"
 
   logger InitDB
@@ -137,6 +140,7 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
   -- slight race here, the port might not be free anymore!
   let connectionString = "postgresql:///test?host=" ++ mainDir ++ "&port=" ++ show port
   logger StartPostgres
+  let extraOptions = unwords $ map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
   bracketOnError ( fmap (DB mainDir connectionString . fourth)
                  $ createProcess_ "postgres"
                      ( shellWith stdOut stdErr
@@ -144,6 +148,8 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
                      ++ dataDir
                      ++ " -p "
                      ++ show port
+                     ++ " "
+                     ++ extraOptions
                      )
                  )
                  stop
@@ -163,14 +169,14 @@ startWithLogger logger mainDir stdOut stdErr = try $ flip onException (rmDirIgno
     return result
 
 -- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
-startAndLogToTmp :: IO (Either StartError DB)
-startAndLogToTmp = do
+startAndLogToTmp :: [(String, String)] ->  IO (Either StartError DB)
+startAndLogToTmp options = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
 
   stdOutFile <- openFile (mainDir ++ "/" ++ "output.txt") WriteMode
   stdErrFile <- openFile (mainDir ++ "/" ++ "error.txt") WriteMode
 
-  startWithHandlesAndDir mainDir stdOutFile stdErrFile
+  startWithHandlesAndDir options mainDir stdOutFile stdErrFile
 
 -- | Stop postgres and clean up the temporary database folder.
 stop :: DB -> IO ExitCode
