@@ -30,12 +30,17 @@ waitForDB mainDir port
 
 data DB = DB
   { mainDir          :: FilePath
+  -- ^ Temporary directory where the unix socket, logs and data directory live.
   , connectionString :: String
+  -- ^ PostgreSQL connection string.
   , pid              :: ProcessHandle
+  -- ^ The process handle for the @postgres@ process.
   }
 
 -- | start postgres and use the current processes stdout and stderr
-start :: [(String, String)] -> IO (Either StartError DB)
+start :: [(String, String)]
+      -- ^ Extra options which override the defaults
+      -> IO (Either StartError DB)
 start options = startWithHandles options stdout stderr
 
 fourth :: (a, b, c, d) -> d
@@ -87,11 +92,11 @@ runProcessWith stdOut stdErr name cmd
 
 -- | Start postgres and pass in handles for stdout and stderr
 startWithHandles :: [(String, String)]
-                 -- ^ extra options
+                 -- ^ Extra options which override the defaults
                  -> Handle
-                 -- ^ stdout
+                 -- ^ @stdout@
                  -> Handle
-                 -- ^ stdin
+                 -- ^ @stderr@
                  -> IO (Either StartError DB)
 startWithHandles options stdOut stdErr = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
@@ -169,7 +174,9 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
     return result
 
 -- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
-startAndLogToTmp :: [(String, String)] ->  IO (Either StartError DB)
+startAndLogToTmp :: [(String, String)]
+                 -- ^ Extra options which override the defaults
+                 -> IO (Either StartError DB)
 startAndLogToTmp options = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
 
