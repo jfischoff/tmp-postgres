@@ -3,7 +3,7 @@
 
 `tmp-postgres` is a libary for greating a temporary postgres instance on a random port for testing.
 
-```
+```haskell
 result <- start []
 case result of
   Left err -> print err
