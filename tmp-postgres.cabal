@@ -1,13 +1,29 @@
 name:                tmp-postgres
 version:             0.1.0.0
--- synopsis:
--- description:
-homepage:            https://github.com/githubuser/tmp-postgres#readme
+synopsis: Start and stop a temporary postgres for testing
+description:
+ This module provides functions greating a temporary postgres instance on a random port for testing.
+ .
+ @
+  result <- 'start' []
+  case result of
+    Left err -> print err
+    Right tempDB -> do
+       -- Do stuff
+       'stop' tempDB
+ @
+ .
+ The are few different methods for starting @postgres@ which provide different
+ methods of dealing with @stdout@ and @stderr@.
+ .
+ The start methods use a config based on the one used by [pg_tmp](http://ephemeralpg.org/), but can be overriden
+ by in different values to the first argument of the start functions.
+homepage:            https://github.com/jfischoff/tmp-postgres#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2017 Author name here
+author:              Jonathan Fischoff
+maintainer:          jonathangfischoff@gmail.com
+copyright:           2017 Jonathan Fischoff
 category:            Web
 build-type:          Simple
 extra-source-files:  README.md
@@ -45,4 +61,4 @@ test-suite tmp-postgres-test
 
 source-repository head
   type:     git
-  location: https://github.com/githubuser/tmp-postgres
+  location: https://github.com/jfischoff/tmp-postgres
