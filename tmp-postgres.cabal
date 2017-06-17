@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             0.1.0.1
+version:             0.1.0.3
 synopsis: Start and stop a temporary postgres for testing
 description:
  This module provides functions greating a temporary postgres instance on a random port for testing.
@@ -11,7 +11,6 @@ description:
  >   Right tempDB -> do
  >     -- Do stuff
  >     'stop' tempDB
- @
  .
  The are few different methods for starting @postgres@ which provide different
  methods of dealing with @stdout@ and @stderr@.
