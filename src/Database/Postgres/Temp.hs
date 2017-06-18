@@ -16,6 +16,14 @@ methods of dealing with @stdout@ and @stderr@.
 The start methods use a config based on the one used by [pg_tmp](http://ephemeralpg.org/), but can be overriden
 by in different values to the first argument of the start functions.
 
+WARNING!!
+Ubuntu's PostgreSQL installation does not put @initdb@ on the @PATH@. We need to add it manually.
+The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ directory, and should be added to the @PATH@
+
+ > echo "export PATH=$PATH:/usr/lib/postgresql/VERSION/bin/" >> /home/ubuntu/.bashrc
+
+
+
 -}
 {-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables #-}
 module Database.Postgres.Temp

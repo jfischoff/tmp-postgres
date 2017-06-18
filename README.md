@@ -11,3 +11,20 @@ case result of
      -- Do stuff
      stop tempDB
 ```
+
+#Installation
+
+## macOS
+```
+$ brew install postgres
+$ cabal install tmp-postgres
+```
+
+## Ubuntu
+
+Ubuntu's PostgreSQL installation does not put `initdb` on the PATH. We need to add it manually.
+
+```
+$ sudo apt-get install postgresql-VERSION
+$ echo "export PATH=$PATH:/usr/lib/postgresql/VERSION/bin/" >> /home/ubuntu/.bashrc
+```
