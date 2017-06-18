@@ -16,7 +16,7 @@ openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
   localhost <- inet_addr "127.0.0.1"
   bind s (SockAddrInet aNY_PORT localhost)
   listen s 1
-  fromIntegral <$> socketPort s
+  fmap fromIntegral $ socketPort s
 
 waitForDB :: FilePath -> Int -> IO ()
 waitForDB mainDir port
