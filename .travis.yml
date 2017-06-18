@@ -23,69 +23,73 @@ cache:
 #
 # If you need to have different apt packages for each combination in the
 # matrix, you can use a line such as:
-#     'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'gmp-dev]}}
+#     addons: {apt: {packages: [libfcgi-dev,libgmp-dev]}}
 matrix:
   include:
   # We grab the appropriate GHC and cabal-install versions from hvr's PPA. See:
   # https://github.com/hvr/multi-ghc-travis
-  #- env: BUILD=cabal GHCVER=7.0.4 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #- env: BUILD=cabal GHCVER=7.0.4 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
   #  compiler: ": #GHC 7.0.4"
-  #  addons: {apt: {'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'appy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  #- env: BUILD=cabal GHCVER=7.2.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #  addons: {apt: {packages: [cabal-install-1.16,ghc-7.0.4,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  #- env: BUILD=cabal GHCVER=7.2.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
   #  compiler: ": #GHC 7.2.2"
-  #  addons: {apt: {packages: [caba'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'x-3.1.7], sources: [hvr-ghc]}}
-  #- env: BUILD=cabal GHCVER=7.4.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #  addons: {apt: {packages: [cabal-install-1.16,ghc-7.2.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  #- env: BUILD=cabal GHCVER=7.4.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
   #  compiler: ": #GHC 7.4.2"
-  #  addons: {apt: {packages: [cabal-install-1.16,'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'es: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=7.6.3 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7 PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin
+  #  addons: {apt: {packages: [cabal-install-1.16,ghc-7.4.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=7.6.3 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
     compiler: ": #GHC 7.6.3"
-    addons: {apt: {packages: [cabal-install-1.16,ghc-7.6.3,happy'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
-  - env: BUILD=cabal GHCVER=7.8.4 CABALVER=1.18 HAPPYVER=1.19.5 ALEXVER=3.1.7 PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin
+    addons: {apt: {packages: [cabal-install-1.16,ghc-7.6.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=7.8.4 CABALVER=1.18 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
     compiler: ": #GHC 7.8.4"
-    addons: {apt: {packages: [cabal-install-1.18,ghc-7.8.4,happy-1.19.5,alex-3.'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'=cabal GHCVER=7.10.3 CABALVER=1.22 HAPPYVER=1.19.5 ALEXVER=3.1.7 PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin
+    addons: {apt: {packages: [cabal-install-1.18,ghc-7.8.4,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=7.10.3 CABALVER=1.22 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
     compiler: ": #GHC 7.10.3"
-    ,cabal-install-1.22,ghc-7.10.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=8.0.1 CABALVER=1.24 HAPPYVER=1.19.5 ALEXVER=3.1.7 PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin
+    addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  - env: BUILD=cabal GHCVER=8.0.1 CABALVER=1.24 HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
     compiler: ": #GHC 8.0.1"
-    addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.1,happy-1.19.5,alex-3.1.7], sources: 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'C and cabal-install. This is an accepted failure,
+    addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.1,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+
+  # Build with the newest GHC and cabal-install. This is an accepted failure,
   # see below.
-  - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7 PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
     compiler: ": #GHC HEAD"
     addons: {apt: {packages: [cabal-install-head,ghc-head,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
 
-  #'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'ry Stack arguments via the ARGS
+  # The Stack builds. We can pass in arbitrary Stack arguments via the ARGS
   # variable, such as using --stack-yaml to point to a different file.
-  - env: BUILD=stack ARGS="" PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=stack ARGS=""
     compiler: ": #stack default"
     addons: {apt: {packages: [ghc-7.10.3], sources: [hvr-ghc]}}
 
   # Nightly builds are allowed to fail
-  - env: BUILD=stack'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'cal/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly"
     addons: {apt: {packages: [libgmp,libgmp-dev]}}
 
   # Build on OS X in addition to Linux
-  - env: BUILD=stack ARGS="" PATH=$HOME/.local/b'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'    compiler: ": #stack default osx"
+  - env: BUILD=stack ARGS=""
+    compiler: ": #stack default osx"
     os: osx
 
-  - env: BUILD=stack ARGS="--resolver lts-2" PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=stack ARGS="--resolver lts-2"
     compiler: ": #stack 7.8.4 osx"
     os: osx
 
-  - env: BUILD=stack ARGS="--resolver lts-3" PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=stack ARGS="--resolver lts-3"
     compiler: ": #stack 7.10.2 osx"
     os: osx
 
-  - env: BUILD=stack ARGS="--resolver lts-6" PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=stack ARGS="--resolver lts-6"
     compiler: ": #stack 7.10.3 osx"
     os: osx
 
-  - env: BUILD=stack ARGS="--resolver nightly" PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly osx"
     os: osx
 
   allow_failures:
-  - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7 PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin/bin
+  - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
   - env: BUILD=stack ARGS="--resolver nightly"
 
 before_install:
