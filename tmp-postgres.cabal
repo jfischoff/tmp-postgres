@@ -37,7 +37,7 @@ library
   hs-source-dirs:      src
   exposed-modules: Database.Postgres.Temp
                  , Database.Postgres.Temp.Internal
-  build-depends: base >= 4.7 && < 5
+  build-depends: base >= 4.6 && < 5
                , temporary
                , process
                , unix
