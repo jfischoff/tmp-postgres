@@ -49,7 +49,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
               Right x  -> return x
               Left err -> error $ show err
       conn <- connectPostgreSQL $ BSC.pack $ connectionString db
-      execute_ conn "create table users (id int)"
+      _ <- execute_ conn "create table users (id int)"
 
       stop db `shouldReturn` ExitSuccess
       doesDirectoryExist mainFilePath `shouldReturn` False
