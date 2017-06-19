@@ -17,7 +17,7 @@ case result of
 ## macOS
 ```
 $ brew install postgres
-$ cabal install tmp-postgres
+$ stack install tmp-postgres
 ```
 
 ## Ubuntu
@@ -27,5 +27,5 @@ Ubuntu's PostgreSQL installation does not put `initdb` on the PATH. We need to a
 ```
 $ sudo apt-get install postgresql-VERSION
 $ echo "export PATH=$PATH:/usr/lib/postgresql/VERSION/bin/" >> /home/ubuntu/.bashrc
-$ cabal install tmp-postgres
+$ stack install tmp-postgres
 ```
