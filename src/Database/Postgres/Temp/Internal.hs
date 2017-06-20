@@ -133,8 +133,8 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
   let dataDir = mainDir ++ "/data"
 
   logger InitDB
-  initDBExitCode <- runProcessWith stdOut stdErr "initDB"
-      ("initDB --nosync -E UNICODE -A trust -D " ++ dataDir)
+  initDBExitCode <- runProcessWith stdOut stdErr "initdb"
+      ("initdb --nosync -E UNICODE -A trust -D " ++ dataDir)
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
