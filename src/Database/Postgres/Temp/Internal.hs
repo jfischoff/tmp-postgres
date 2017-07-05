@@ -134,7 +134,7 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
 
   logger InitDB
   initDBExitCode <- runProcessWith stdOut stdErr "initdb"
-      ("initdb --nosync -E UNICODE -A trust -D " ++ dataDir)
+      ("initdb -E UNICODE -A trust -D " ++ dataDir)
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
