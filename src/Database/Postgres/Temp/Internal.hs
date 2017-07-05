@@ -165,7 +165,7 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
     logger CreateDB
     throwIfError CreateDBFailed =<<
       runProcessWith stdOut stdErr "createDB"
-        ( "createDB --host=" ++ mainDir
+        ( "createdb --host=" ++ mainDir
         ++ " --port=" ++ show port
         ++ " test"
         )
