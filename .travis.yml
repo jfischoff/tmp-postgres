@@ -65,7 +65,7 @@ matrix:
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly" 'PATH=$HOME/.local/bin:$PATH:/usr/lib/postgresql/9.1/bin'
     compiler: ": #stack nightly"
-    addons: {apt: {packages: [libgmp,libgmp-dev]}}
+    addons: {apt: {packages: [libgmp-dev]}}
 
   # Build on OS X in addition to Linux
   - env: BUILD=stack ARGS=""
