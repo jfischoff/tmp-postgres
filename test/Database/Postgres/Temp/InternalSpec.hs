@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
 module Database.Postgres.Temp.InternalSpec (main, spec) where
 import Test.Hspec
 import System.IO.Temp
