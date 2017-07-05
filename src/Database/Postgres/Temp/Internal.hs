@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
 module Database.Postgres.Temp.Internal where
 import System.IO.Temp
 import System.Process
