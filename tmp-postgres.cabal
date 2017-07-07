@@ -39,7 +39,7 @@ library
                  , Database.Postgres.Temp.Internal
   build-depends: base >= 4.6 && < 5
                , temporary
-               , process
+               , process >= 1.2.0.0
                , unix
                , directory
                , network

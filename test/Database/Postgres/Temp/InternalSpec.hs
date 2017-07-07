@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
 module Database.Postgres.Temp.InternalSpec (main, spec) where
 import Test.Hspec
 import System.IO.Temp
@@ -12,6 +12,7 @@ import System.Process
 import Database.PostgreSQL.Simple
 import qualified Data.ByteString.Char8 as BSC
 import System.Exit
+import Control.Applicative ((<$>))
 
 main :: IO ()
 main = hspec spec

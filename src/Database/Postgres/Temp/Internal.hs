@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
 module Database.Postgres.Temp.Internal where
 import System.IO.Temp
 import System.Process
@@ -46,9 +46,9 @@ start options = startWithHandles options stdout stderr
 fourth :: (a, b, c, d) -> d
 fourth (_, _, _, x) = x
 
-shellWith :: Handle -> Handle -> String -> CreateProcess
-shellWith stdOut stdErr cmd =
-  (shell cmd)
+procWith :: Handle -> Handle -> String -> [String] -> CreateProcess
+procWith stdOut stdErr cmd args =
+  (proc cmd args)
     { std_err = UseHandle stdErr
     , std_out = UseHandle stdOut
     }
@@ -85,9 +85,9 @@ pidString phandle = withProcessHandle phandle (\case
         ClosedHandle _ -> return ""
         )
 
-runProcessWith :: Handle -> Handle -> String -> String -> IO ExitCode
-runProcessWith stdOut stdErr name cmd
-  =   createProcess_ name (shellWith stdOut stdErr cmd)
+runProcessWith :: Handle -> Handle -> String -> String -> [String] -> IO ExitCode
+runProcessWith stdOut stdErr name cmd args
+  =   createProcess_ name (procWith stdOut stdErr cmd args)
   >>= waitForProcess . fourth
 
 -- | Start postgres and pass in handles for stdout and stderr
@@ -134,7 +134,7 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
 
   logger InitDB
   initDBExitCode <- runProcessWith stdOut stdErr "initdb"
-      ("initdb --nosync -E UNICODE -A trust -D " ++ dataDir)
+      "initdb" ["-E", "UNICODE", "-A", "trust", "-D", dataDir]
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
@@ -145,16 +145,12 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
   -- slight race here, the port might not be free anymore!
   let connectionString = "postgresql:///test?host=" ++ mainDir ++ "&port=" ++ show port
   logger StartPostgres
-  let extraOptions = unwords $ map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
+  let extraOptions = map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
   bracketOnError ( fmap (DB mainDir connectionString . fourth)
                  $ createProcess_ "postgres"
-                     ( shellWith stdOut stdErr
-                     $ "postgres -D "
-                     ++ dataDir
-                     ++ " -p "
-                     ++ show port
-                     ++ " "
-                     ++ extraOptions
+                     ( procWith stdOut stdErr
+                      "postgres"
+                      $ ["-D", dataDir, "-p", show port] ++ extraOptions
                      )
                  )
                  stop
@@ -165,10 +161,7 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
     logger CreateDB
     throwIfError CreateDBFailed =<<
       runProcessWith stdOut stdErr "createDB"
-        ( "createdb --host=" ++ mainDir
-        ++ " --port=" ++ show port
-        ++ " test"
-        )
+        "createdb" ["-h", mainDir, "-p", show port, "test"]
 
     logger Finished
     return result
