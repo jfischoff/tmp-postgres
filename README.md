@@ -12,7 +12,7 @@ case result of
      stop tempDB
 ```
 
-#Installation
+# Installation
 
 ## macOS
 ```
