@@ -10,6 +10,7 @@ import System.Directory
 import Network.Socket
 import Control.Exception
 import Data.Typeable
+import System.Posix.Signals
 
 openFreePort :: IO Int
 openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
@@ -181,7 +182,11 @@ startAndLogToTmp options = do
 -- | Stop postgres and clean up the temporary database folder.
 stop :: DB -> IO ExitCode
 stop DB {..} = do
-  terminateProcess pid
+  withProcessHandle pid (\case
+         OpenHandle p   -> signalProcess sigINT p
+         ClosedHandle _ -> return ()
+         )
+
   result <- waitForProcess pid
   removeDirectoryRecursive mainDir
   return result
