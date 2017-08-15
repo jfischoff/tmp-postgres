@@ -33,10 +33,12 @@ module Database.Postgres.Temp
   -- * Starting @postgres@
   -- $options
   , start
+  , startLocalhost
   , startAndLogToTmp
   , startWithHandles
   -- * Stopping @postgres@
   , stop
+  , SocketClass (..)
   ) where
 import Database.Postgres.Temp.Internal
 

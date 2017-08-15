@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Database.Postgres.Temp.Internal where
 import System.IO.Temp
 import System.Process
@@ -10,6 +11,7 @@ import System.Directory
 import Network.Socket
 import Control.Exception
 import Data.Typeable
+import GHC.Generics
 import System.Posix.Signals
 
 openFreePort :: IO Int
@@ -19,15 +21,17 @@ openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
   listen s 1
   fmap fromIntegral $ socketPort s
 
-waitForDB :: FilePath -> Int -> IO ()
-waitForDB mainDir port
-  = handle (\(_ :: IOException) -> threadDelay 10000 >> waitForDB mainDir port)
-  $ do bracket
-        (socket AF_UNIX Stream 0)
-        close
-        $ \sock -> connect sock
-                 $ SockAddrUnix
-                 $ mainDir ++ "/.s.PGSQL." ++ show port
+waitForDB :: Maybe FilePath -> Int -> IO ()
+waitForDB mMainDir port = do
+  let sockAddress = case mMainDir of
+        Just mainDir -> SockAddrUnix $ mainDir ++ "/.s.PGSQL." ++ show port
+        Nothing -> SockAddrInet (fromIntegral port) $ tupleToHostAddress (127, 0, 0, 1)
+      sockFamily = maybe AF_INET (const AF_UNIX) mMainDir
+  eresult <- try $ bracket (socket sockFamily Stream 0) close $ \sock -> connect sock sockAddress
+  case eresult of
+    Left (e :: IOError) -> threadDelay 10000 >> waitForDB mMainDir port
+    Right _ -> return ()
+
 
 data DB = DB
   { mainDir          :: FilePath
@@ -38,11 +42,21 @@ data DB = DB
   -- ^ The process handle for the @postgres@ process.
   }
 
+data SocketClass = Localhost | Unix
+  deriving (Show, Eq, Read, Ord, Enum, Bounded, Generic, Typeable)
+
 -- | start postgres and use the current processes stdout and stderr
 start :: [(String, String)]
       -- ^ Extra options which override the defaults
       -> IO (Either StartError DB)
-start options = startWithHandles options stdout stderr
+start options = startWithHandles Unix options stdout stderr
+
+-- | start postgres and use the current processes stdout and stderr
+-- but use TCP on localhost instead of a unix socket.
+startLocalhost ::  [(String, String)]
+               -- ^ Extra options which override the defaults
+               -> IO (Either StartError DB)
+startLocalhost options = startWithHandles Localhost options stdout stderr
 
 fourth :: (a, b, c, d) -> d
 fourth (_, _, _, x) = x
@@ -54,19 +68,17 @@ procWith stdOut stdErr cmd args =
     , std_out = UseHandle stdOut
     }
 
-config :: FilePath -> String
-config mainDir = unlines
-  [ "listen_addresses = ''"
-  , "shared_buffers = 12MB"
+config :: Maybe FilePath -> String
+config mMainDir = unlines $
+  [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
   , "full_page_writes = off"
   , "log_min_duration_statement = 0"
   , "log_connections = on"
   , "log_disconnections = on"
-  , "unix_socket_directories = '" ++ mainDir ++ "'"
   , "client_min_messages = ERROR"
-  ]
+  ] ++ maybe ["listen_addresses = '127.0.0.1'"] (\x -> ["unix_socket_directories = '" ++ x ++ "'", "listen_addresses = ''"]) mMainDir
 
 data StartError
   = InitDBFailed   ExitCode
@@ -92,18 +104,20 @@ runProcessWith stdOut stdErr name cmd args
   >>= waitForProcess . fourth
 
 -- | Start postgres and pass in handles for stdout and stderr
-startWithHandles :: [(String, String)]
+startWithHandles :: SocketClass
+                 -> [(String, String)]
                  -- ^ Extra options which override the defaults
                  -> Handle
                  -- ^ @stdout@
                  -> Handle
                  -- ^ @stderr@
                  -> IO (Either StartError DB)
-startWithHandles options stdOut stdErr = do
+startWithHandles socketClass options stdOut stdErr = do
   mainDir <- createTempDirectory "/tmp" "tmp-postgres"
-  startWithHandlesAndDir options mainDir stdOut stdErr
+  startWithHandlesAndDir socketClass options mainDir stdOut stdErr
 
-startWithHandlesAndDir :: [(String, String)]
+startWithHandlesAndDir :: SocketClass
+                       -> [(String, String)]
                        -> FilePath
                        -> Handle
                        -> Handle
@@ -125,12 +139,13 @@ rmDirIgnoreErrors mainDir =
   removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
 
 startWithLogger :: (Event -> IO ())
+                -> SocketClass
                 -> [(String, String)]
                 -> FilePath
                 -> Handle
                 -> Handle
                 -> IO (Either StartError DB)
-startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (rmDirIgnoreErrors mainDir) $ do
+startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onException (rmDirIgnoreErrors mainDir) $ do
   let dataDir = mainDir ++ "/data"
 
   logger InitDB
@@ -139,12 +154,15 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
-  writeFile (dataDir ++ "/postgresql.conf") $ config mainDir
+  writeFile (dataDir ++ "/postgresql.conf") $ config $ if socketType == Unix then Just mainDir else Nothing
 
   logger FreePort
   port <- openFreePort
   -- slight race here, the port might not be free anymore!
-  let connectionString = "postgresql:///test?host=" ++ mainDir ++ "&port=" ++ show port
+  let host = case socketType of
+        Localhost -> "127.0.0.1"
+        Unix -> mainDir
+  let connectionString = "postgresql:///test?host=" ++ host ++ "&port=" ++ show port
   logger StartPostgres
   let extraOptions = map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
   bracketOnError ( fmap (DB mainDir connectionString . fourth)
@@ -157,12 +175,16 @@ startWithLogger logger options mainDir stdOut stdErr = try $ flip onException (r
                  stop
                  $ \result -> do
     logger WaitForDB
-    waitForDB mainDir port
+    waitForDB (if socketType == Unix then Just mainDir else Nothing) port
 
     logger CreateDB
+    let createDBHostArgs = case socketType of
+          Unix -> ["-h", mainDir]
+          Localhost -> ["-h", "127.0.0.1"]
+
     throwIfError CreateDBFailed =<<
       runProcessWith stdOut stdErr "createDB"
-        "createdb" ["-h", mainDir, "-p", show port, "test"]
+        "createdb" (createDBHostArgs ++ ["-p", show port, "test"])
 
     logger Finished
     return result
@@ -177,7 +199,7 @@ startAndLogToTmp options = do
   stdOutFile <- openFile (mainDir ++ "/" ++ "output.txt") WriteMode
   stdErrFile <- openFile (mainDir ++ "/" ++ "error.txt") WriteMode
 
-  startWithHandlesAndDir options mainDir stdOutFile stdErrFile
+  startWithHandlesAndDir Unix options mainDir stdOutFile stdErrFile
 
 -- | Stop postgres and clean up the temporary database folder.
 stop :: DB -> IO ExitCode

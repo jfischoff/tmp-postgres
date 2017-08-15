@@ -3,7 +3,11 @@
 set -eu
 
 apt-get update -q
-apt-get install gcc libgmp-dev alex happy curl libpq-dev libcurl4-gnutls-dev libpcre3-dev libffi-dev make python-software-properties vim ctags git tmux ruby ufw fail2ban xz-utils zsh libpq-dev -y -q
+apt-get update && \
+    apt-get install -y wget && \
+    wget -qO- https://raw.githubusercontent.com/fpco/stackage/$BOOTSTRAP_COMMIT/debian-bootstrap.sh | bash && \
+    ln -s ghc /opt/ghc/$GHC_VERSION/share/doc/ghc-$GHC_VERSION && \
+    rm -rf /var/lib/apt/lists/*
 
 echo "-----> Installing Stack"
 wget -q -O- https://s3.amazonaws.com/download.fpcomplete.com/ubuntu/fpco.key | apt-key add -
