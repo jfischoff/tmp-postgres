@@ -36,7 +36,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
         -- This is not the best method ... but it works
         beforePostgresCount <- countPostgresProcesses
         shouldThrow
-          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) [] mainFilePath stdout stderr)
+          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) Unix [] mainFilePath stdout stderr)
           (\Except -> True)
         doesDirectoryExist mainFilePath `shouldReturn` False
         countPostgresProcesses `shouldReturn` beforePostgresCount
@@ -45,7 +45,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       beforePostgresCount <- countPostgresProcesses
       stdOut <- mkDevNull
       stdErr <- mkDevNull
-      result <- startWithLogger (\_ -> return ()) [] mainFilePath stdOut stdErr
+      result <- startWithLogger (\_ -> return ()) Unix [] mainFilePath stdOut stdErr
       db <- case result of
               Right x  -> return x
               Left err -> error $ show err
