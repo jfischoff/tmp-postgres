@@ -13,6 +13,8 @@ import Control.Exception
 import Data.Typeable
 import GHC.Generics
 import System.Posix.Signals
+import qualified Database.PostgreSQL.Simple as SQL
+import qualified Data.ByteString.Char8 as BSC
 
 openFreePort :: IO Int
 openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
@@ -21,15 +23,11 @@ openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
   listen s 1
   fmap fromIntegral $ socketPort s
 
-waitForDB :: Maybe FilePath -> Int -> IO ()
-waitForDB mMainDir port = do
-  let sockAddress = case mMainDir of
-        Just mainDir -> SockAddrUnix $ mainDir ++ "/.s.PGSQL." ++ show port
-        Nothing -> SockAddrInet (fromIntegral port) $ tupleToHostAddress (127, 0, 0, 1)
-      sockFamily = maybe AF_INET (const AF_UNIX) mMainDir
-  eresult <- try $ bracket (socket sockFamily Stream 0) close $ \sock -> connect sock sockAddress
+waitForDB :: String -> IO ()
+waitForDB connStr = do
+  eresult <- try $ bracket (SQL.connectPostgreSQL (BSC.pack connStr)) SQL.close $ \_ -> return ()
   case eresult of
-    Left (e :: IOError) -> threadDelay 10000 >> waitForDB mMainDir port
+    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB connStr
     Right _ -> return ()
 
 
@@ -162,7 +160,9 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
   let host = case socketType of
         Localhost -> "127.0.0.1"
         Unix -> mainDir
-  let connectionString = "postgresql:///test?host=" ++ host ++ "&port=" ++ show port
+  let makeConnectionString dbName = "postgresql:///"
+        ++ dbName ++ "?host=" ++ host ++ "&port=" ++ show port
+      connectionString = makeConnectionString "test"
   logger StartPostgres
   let extraOptions = map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
   bracketOnError ( fmap (DB mainDir connectionString . fourth)
@@ -175,7 +175,7 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
                  stop
                  $ \result -> do
     logger WaitForDB
-    waitForDB (if socketType == Unix then Just mainDir else Nothing) port
+    waitForDB $ makeConnectionString "template1"
 
     logger CreateDB
     let createDBHostArgs = case socketType of
