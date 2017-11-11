@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             0.1.1.0
+version:             0.1.1.1
 synopsis: Start and stop a temporary postgres for testing
 description:
  This module provides functions creating a temporary postgres instance on a random port for testing.
@@ -43,6 +43,8 @@ library
                , unix
                , directory
                , network
+               , postgresql-simple
+               , bytestring
   ghc-options: -Wall
   default-language:    Haskell2010
 
