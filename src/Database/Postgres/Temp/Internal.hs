@@ -34,7 +34,7 @@ waitForDB connStr = do
 data DB = DB
   { mainDir          :: FilePath
   -- ^ Temporary directory where the unix socket, logs and data directory live.
-  , connectionString :: String
+  , connectionInfo :: SQL.ConnectInfo
   -- ^ PostgreSQL connection string.
   , pid              :: ProcessHandle
   -- ^ The process handle for the @postgres@ process.
@@ -160,22 +160,17 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
   let host = case socketType of
         Localhost -> "127.0.0.1"
         Unix -> mainDir
-  let makeConnectionString dbName = "postgresql:///"
-        ++ dbName ++ "?host=" ++ host ++ "&port=" ++ show port
-      connectionString = makeConnectionString "test"
+  let mkConnectionInfo = SQL.ConnectInfo host (fromIntegral port) "" ""
+      connectionInfo = mkConnectionInfo "test"
   logger StartPostgres
   let extraOptions = map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
-  bracketOnError ( fmap (DB mainDir connectionString . fourth)
-                 $ createProcess_ "postgres"
-                     ( procWith stdOut stdErr
-                      "postgres"
-                      $ ["-D", dataDir, "-p", show port] ++ extraOptions
-                     )
-                 )
-                 stop
-                 $ \result -> do
+      pgProc = procWith stdOut stdErr "postgres" $ ["-D", dataDir, "-p", show port] ++ extraOptions
+  bracketOnError
+    (DB mainDir connectionInfo . fourth <$> createProcess_ "postgres" pgProc)
+    stop
+    $ \result -> do
     logger WaitForDB
-    waitForDB $ makeConnectionString "template1"
+    waitForDB . mkConnectionString . mkConnectionInfo $ "template1"
 
     logger CreateDB
     let createDBHostArgs = case socketType of
@@ -188,6 +183,11 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
 
     logger Finished
     return result
+
+-- | Converts a 'ConnectInfo' to a [libpq connection uri](https://www.postgresql.org/docs/9.5/static/libpq-connect.html#LIBPQ-CONNSTRING)
+mkConnectionString :: SQL.ConnectInfo -> String
+mkConnectionString SQL.ConnectInfo{..} =
+  "postgresql:///" ++ connectDatabase ++ "?host=" ++ connectHost ++ "&port=" ++ show connectPort
 
 -- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
 startAndLogToTmp :: [(String, String)]

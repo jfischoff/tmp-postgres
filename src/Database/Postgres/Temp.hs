@@ -39,6 +39,8 @@ module Database.Postgres.Temp
   -- * Stopping @postgres@
   , stop
   , SocketClass (..)
+  -- * Helpers
+  , mkConnectionString
   ) where
 import Database.Postgres.Temp.Internal
 
