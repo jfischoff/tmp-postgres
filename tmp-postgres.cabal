@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             0.1.1.1
+version:             0.2.0.0
 synopsis: Start and stop a temporary postgres for testing
 description:
  This module provides functions creating a temporary postgres instance on a random port for testing.
