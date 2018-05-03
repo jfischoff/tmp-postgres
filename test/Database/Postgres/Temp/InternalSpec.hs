@@ -10,7 +10,6 @@ import System.Directory
 import Control.Monad
 import System.Process
 import Database.PostgreSQL.Simple
-import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import Control.Applicative ((<$>))
 
@@ -49,7 +48,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       db <- case result of
               Right x  -> return x
               Left err -> error $ show err
-      conn <- connectPostgreSQL $ BSC.pack $ connectionString db
+      conn <- connect $ connectionInfo db
       _ <- execute_ conn "create table users (id int)"
 
       stop db `shouldReturn` ExitSuccess
@@ -63,6 +62,6 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
         db <- case result of
                 Right x  -> return x
                 Left err -> error $ show err
-        conn <- connectPostgreSQL $ BSC.pack $ connectionString db
+        conn <- connect $ connectionInfo db
         [Only actualDuration] <- query_ conn "SHOW log_min_duration_statement"
         actualDuration `shouldBe` expectedDuration
