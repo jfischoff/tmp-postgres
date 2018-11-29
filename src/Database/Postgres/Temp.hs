@@ -36,6 +36,7 @@ module Database.Postgres.Temp
   , startLocalhost
   , startAndLogToTmp
   , startWithHandles
+  , startWithHandlesAndDir
   -- * Stopping @postgres@
   , stop
   , SocketClass (..)
