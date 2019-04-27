@@ -13,6 +13,7 @@ import Database.PostgreSQL.Simple
 import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import Control.Applicative ((<$>))
+import System.Timeout(timeout)
 
 main :: IO ()
 main = hspec spec
@@ -66,3 +67,20 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
         conn <- connectPostgreSQL $ BSC.pack $ connectionString db
         [Only actualDuration] <- query_ conn "SHOW log_min_duration_statement"
         actualDuration `shouldBe` expectedDuration
+
+    it "dies promptly when a bad setting is passed" $ \_ -> do
+      r <- timeout 5000000 $ start [("log_directory", "/this/does/not/exist")
+                                   ,("logging_collector", "true")
+                                   ]
+      case r of
+        Nothing ->
+          -- bad test, shouldSatisfy is difficult because it wants Show on DB.
+          -- anyway, point of this is to fail if we timed out.
+          1 `shouldBe` 2
+        Just (Right x) ->
+          -- this would be very surprising but if it somehow manages to do something useful despite
+          -- bad config ... ok i guess? regardless, should clean up.
+          void $ stop x
+        Just (Left _) -> do
+          -- if it fails here that's fine & expected.
+          pure ()
