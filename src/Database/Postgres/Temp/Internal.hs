@@ -150,7 +150,7 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
 
   logger InitDB
   initDBExitCode <- runProcessWith stdOut stdErr "initdb"
-      "initdb" ["-E", "UNICODE", "-A", "trust", "-D", dataDir]
+      "initdb" ["-E", "UNICODE", "-A", "trust", "--nosync", "-D", dataDir]
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
