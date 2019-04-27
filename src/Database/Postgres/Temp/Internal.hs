@@ -15,7 +15,7 @@ import GHC.Generics
 import System.Posix.Signals
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.ByteString.Char8 as BSC
-import Control.Monad (void)
+import Control.Monad (void, forever)
 import Network.Socket.Free (openFreePort)
 import Data.Foldable
 import Control.Concurrent.Async(race_)
@@ -183,7 +183,8 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
             traverse_ (throwIO . StartPostgresFailed postgresOptions)
 
     logger WaitForDB
-    waitForDB (makeConnectionString "template1") `race_` checkForCrash
+    waitForDB (makeConnectionString "template1") `race_`
+      forever (checkForCrash >> threadDelay 100000)
 
     logger CreateDB
     let createDBHostArgs = case socketType of

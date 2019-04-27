@@ -59,9 +59,14 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       doesDirectoryExist mainFilePath `shouldReturn` False
       countPostgresProcesses `shouldReturn` beforePostgresCount
 
-    it "can override settings" $ \_ -> do
+    it "can override settings" $ \mainFilePath -> do
       let expectedDuration = "100ms"
-      bracket (start [("log_min_duration_statement", expectedDuration)])
+      stdOut <- mkDevNull
+      stdErr <- mkDevNull
+      bracket (startWithLogger (const $ pure ()) Unix
+                [("log_min_duration_statement", expectedDuration)]
+                mainFilePath stdOut stdErr
+                )
               (either (\_ -> return ()) (void . stop)) $ \result -> do
         db <- case result of
                 Right x  -> return x
@@ -73,7 +78,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
     it "dies promptly when a bad setting is passed" $ \mainFilePath -> do
       stdOut <- mkDevNull
       stdErr <- mkDevNull
-      r <- timeout 5000000 $ startWithLogger print Unix 
+      r <- timeout 5000000 $ startWithLogger (const $ pure ()) Unix
             [ ("log_directory", "/this/does/not/exist")
             , ("logging_collector", "true")
             ] mainFilePath stdOut stdErr
@@ -94,11 +99,11 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       stdOut <- mkDevNull
       stdErr <- mkDevNull
       bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix [] mainFilePath stdOut stdErr) stop $ \db -> do
-        bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \_ -> 
+        bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \_ ->
           bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn2 -> do
             query_ conn2 "SELECT COUNT(*) FROM pg_stat_activity" `shouldReturn` [Only (2 :: Int)]
 
             terminateConnections db
 
-            bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn3 -> 
+            bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn3 ->
               query_ conn3 "SELECT COUNT(*) FROM  pg_stat_activity" `shouldReturn` [Only (1 :: Int)]
