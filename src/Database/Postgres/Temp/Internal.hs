@@ -16,7 +16,7 @@ import System.Posix.Signals
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.ByteString.Char8 as BSC
 import Control.Monad (void)
-import Network.Socket.Free 
+import Network.Socket.Free (openFreePort)
 
 getFreePort :: IO Int
 getFreePort = do
