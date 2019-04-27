@@ -1,5 +1,5 @@
 {-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveGeneric, OverloadedStrings #-}
 module Database.Postgres.Temp.Internal where
 import System.IO.Temp
 import System.Process
@@ -8,24 +8,25 @@ import Control.Concurrent
 import System.IO
 import System.Exit
 import System.Directory
-import Network.Socket
+import qualified Network.Socket as N
 import Control.Exception
 import Data.Typeable
 import GHC.Generics
 import System.Posix.Signals
-import qualified Database.PostgreSQL.Simple as SQL
+import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.ByteString.Char8 as BSC
+import Control.Monad (void)
+import Network.Socket.Free (openFreePort)
 
-openFreePort :: IO Int
-openFreePort = bracket (socket AF_INET Stream defaultProtocol) close $ \s -> do
-  localhost <- inet_addr "127.0.0.1"
-  bind s (SockAddrInet aNY_PORT localhost)
-  listen s 1
-  fmap fromIntegral $ socketPort s
+getFreePort :: IO Int
+getFreePort = do
+  (port, socket) <- openFreePort
+  N.close socket
+  pure port
 
 waitForDB :: String -> IO ()
 waitForDB connStr = do
-  eresult <- try $ bracket (SQL.connectPostgreSQL (BSC.pack connStr)) SQL.close $ \_ -> return ()
+  eresult <- try $ bracket (PG.connectPostgreSQL (BSC.pack connStr)) PG.close $ \_ -> return ()
   case eresult of
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB connStr
     Right _ -> return ()
@@ -80,7 +81,7 @@ config mMainDir = unlines $
 
 data StartError
   = InitDBFailed   ExitCode
-  | CreateDBFailed ExitCode
+  | CreateDBFailed [String] ExitCode
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -93,6 +94,7 @@ throwIfError f e = case e of
 pidString :: ProcessHandle -> IO String
 pidString phandle = withProcessHandle phandle (\case
         OpenHandle p   -> return $ show p
+        OpenExtHandle _ _ _ -> return "" -- TODO log windows is not supported
         ClosedHandle _ -> return ""
         )
 
@@ -148,14 +150,14 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
 
   logger InitDB
   initDBExitCode <- runProcessWith stdOut stdErr "initdb"
-      "initdb" ["-E", "UNICODE", "-A", "trust", "-D", dataDir]
+      "initdb" ["-E", "UNICODE", "-A", "trust", "--nosync", "-D", dataDir]
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
   writeFile (dataDir ++ "/postgresql.conf") $ config $ if socketType == Unix then Just mainDir else Nothing
 
   logger FreePort
-  port <- openFreePort
+  port <- getFreePort
   -- slight race here, the port might not be free anymore!
   let host = case socketType of
         Localhost -> "127.0.0.1"
@@ -182,9 +184,9 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
           Unix -> ["-h", mainDir]
           Localhost -> ["-h", "127.0.0.1"]
 
-    throwIfError CreateDBFailed =<<
-      runProcessWith stdOut stdErr "createDB"
-        "createdb" (createDBHostArgs ++ ["-p", show port, "test"])
+    let createDBArgs = createDBHostArgs ++ ["-p", show port, "test"]
+    throwIfError (CreateDBFailed createDBArgs) =<<
+      runProcessWith stdOut stdErr "createDB" "createdb" createDBArgs
 
     logger Finished
     return result
@@ -201,11 +203,30 @@ startAndLogToTmp options = do
 
   startWithHandlesAndDir Unix options mainDir stdOutFile stdErrFile
 
+-- | Force all connections to the database to close. Can be useful in some testing situations.
+--   Called during shutdown as well.
+terminateConnections :: DB -> IO ()
+terminateConnections DB {..} = do
+  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack connectionString)
+          PG.close
+          $ \conn -> do
+            void $ PG.execute_ conn "select pg_terminate_backend(pid) from pg_stat_activity where datname='test';" 
+  case e of
+    Left (_ :: IOError) -> pure () -- expected
+    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not. 
+
 -- | Stop postgres and clean up the temporary database folder.
 stop :: DB -> IO ExitCode
-stop DB {..} = do
+stop db@DB {..} = do
+
   withProcessHandle pid (\case
-         OpenHandle p   -> signalProcess sigINT p
+         OpenHandle p   -> do 
+          -- try to terminate the connects first. If we can't terminate still 
+          -- keep shutting down
+          terminateConnections db
+
+          signalProcess sigINT p
+         OpenExtHandle _ _ _ -> pure () -- TODO log windows is not supported
          ClosedHandle _ -> return ()
          )
 
