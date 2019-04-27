@@ -17,6 +17,10 @@ description:
  The start methods use a config based on the one used by pg_tmp (http://ephemeralpg.org/), but can be overriden
  by different values to the first argument of the start functions.
  .
+ MacOS and Linux are support. Windows is not. 
+ .
+ Requires PostgreSQL 9.3+
+ .
  WARNING!!
  Ubuntu's PostgreSQL installation does not put @initdb@ on the @PATH@. We need to add it manually. The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ directory, and should be added to the @PATH@
  .
