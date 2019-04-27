@@ -82,5 +82,3 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
 
             bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn3 -> 
               query_ conn3 "SELECT COUNT(*) FROM  pg_stat_activity" `shouldReturn` [Only (1 :: Int)]
-            
-
