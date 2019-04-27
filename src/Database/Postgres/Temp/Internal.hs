@@ -17,6 +17,8 @@ import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.ByteString.Char8 as BSC
 import Control.Monad (void)
 import Network.Socket.Free (openFreePort)
+import Data.Foldable
+import Control.Concurrent.Async(race_)
 
 getFreePort :: IO Int
 getFreePort = do
@@ -82,6 +84,7 @@ config mMainDir = unlines $
 data StartError
   = InitDBFailed   ExitCode
   | CreateDBFailed [String] ExitCode
+  | StartPostgresFailed [String] ExitCode
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -167,17 +170,20 @@ startWithLogger logger socketType options mainDir stdOut stdErr = try $ flip onE
       connectionString = makeConnectionString "test"
   logger StartPostgres
   let extraOptions = map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
+      postgresOptions = ["-D", dataDir, "-p", show port] ++ extraOptions
   bracketOnError ( fmap (DB mainDir connectionString . fourth)
                  $ createProcess_ "postgres"
-                     ( procWith stdOut stdErr
-                      "postgres"
-                      $ ["-D", dataDir, "-p", show port] ++ extraOptions
-                     )
+                     (procWith stdOut stdErr "postgres" postgresOptions)
                  )
                  stop
                  $ \result -> do
+
+    let checkForCrash =
+          getProcessExitCode (pid result) >>=
+            traverse_ (throwIO . StartPostgresFailed postgresOptions)
+
     logger WaitForDB
-    waitForDB $ makeConnectionString "template1"
+    waitForDB (makeConnectionString "template1") `race_` checkForCrash
 
     logger CreateDB
     let createDBHostArgs = case socketType of
@@ -210,18 +216,18 @@ terminateConnections DB {..} = do
   e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack connectionString)
           PG.close
           $ \conn -> do
-            void $ PG.execute_ conn "select pg_terminate_backend(pid) from pg_stat_activity where datname='test';" 
+            void $ PG.execute_ conn "select pg_terminate_backend(pid) from pg_stat_activity where datname='test';"
   case e of
     Left (_ :: IOError) -> pure () -- expected
-    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not. 
+    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
 
 -- | Stop postgres and clean up the temporary database folder.
 stop :: DB -> IO ExitCode
 stop db@DB {..} = do
 
   withProcessHandle pid (\case
-         OpenHandle p   -> do 
-          -- try to terminate the connects first. If we can't terminate still 
+         OpenHandle p   -> do
+          -- try to terminate the connects first. If we can't terminate still
           -- keep shutting down
           terminateConnections db
 

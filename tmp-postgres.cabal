@@ -17,7 +17,7 @@ description:
  The start methods use a config based on the one used by pg_tmp (http://ephemeralpg.org/), but can be overriden
  by different values to the first argument of the start functions.
  .
- MacOS and Linux are support. Windows is not. 
+ MacOS and Linux are support. Windows is not.
  .
  Requires PostgreSQL 9.3+
  .
@@ -50,6 +50,7 @@ library
                , bytestring
                , postgresql-simple
                , port-utils
+               , async
   ghc-options: -Wall
   default-language:    Haskell2010
 
