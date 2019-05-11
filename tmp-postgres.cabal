@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             0.1.2.2
+version:             0.2.0.0
 synopsis: Start and stop a temporary postgres for testing
 description:
  This module provides functions creating a temporary postgres instance on a random port for testing.
@@ -31,7 +31,7 @@ license:             BSD3
 license-file:        LICENSE
 author:              Jonathan Fischoff
 maintainer:          jonathangfischoff@gmail.com
-copyright:           2017 Jonathan Fischoff
+copyright:           2017-2019 Jonathan Fischoff
 category:            Web
 build-type:          Simple
 extra-source-files:  README.md

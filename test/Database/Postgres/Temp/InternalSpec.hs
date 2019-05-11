@@ -1,5 +1,5 @@
-{-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
-module Database.Postgres.Temp.InternalSpec (main, spec) where
+{-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables #-}
+module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 import System.IO.Temp
 import Database.Postgres.Temp.Internal
@@ -14,9 +14,6 @@ import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import System.Timeout(timeout)
 import Data.Either
-
-main :: IO ()
-main = hspec spec
 
 mkDevNull :: IO Handle
 mkDevNull = openFile "/dev/null" WriteMode
@@ -36,36 +33,36 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       it ("deletes the temp dir and postgres on exception in " ++ show event) $ \mainFilePath -> do
         -- This is not the best method ... but it works
         beforePostgresCount <- countPostgresProcesses
-        stdOut <- mkDevNull
-        stdErr <- mkDevNull
+        theStdOut <- mkDevNull
+        theStdErr <- mkDevNull
         shouldThrow
-          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) Unix [] mainFilePath stdOut stdErr)
+          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) Unix [] mainFilePath theStdOut theStdErr)
           (\Except -> True)
         doesDirectoryExist mainFilePath `shouldReturn` False
         countPostgresProcesses `shouldReturn` beforePostgresCount
 
     it "creates a useful connection string and stop still cleans up" $ \mainFilePath -> do
       beforePostgresCount <- countPostgresProcesses
-      stdOut <- mkDevNull
-      stdErr <- mkDevNull
-      result <- startWithLogger (\_ -> return ()) Unix [] mainFilePath stdOut stdErr
+      theStdOut <- mkDevNull
+      theStdErr <- mkDevNull
+      result <- startWithLogger (\_ -> return ()) Unix [] mainFilePath theStdOut theStdErr
       db <- case result of
               Right x  -> return x
               Left err -> error $ show err
       conn <- connectPostgreSQL $ BSC.pack $ connectionString db
       _ <- execute_ conn "create table users (id int)"
 
-      stop db `shouldReturn` ExitSuccess
+      stop db `shouldReturn` Just ExitSuccess
       doesDirectoryExist mainFilePath `shouldReturn` False
       countPostgresProcesses `shouldReturn` beforePostgresCount
 
     it "can override settings" $ \mainFilePath -> do
       let expectedDuration = "100ms"
-      stdOut <- mkDevNull
-      stdErr <- mkDevNull
+      theStdOut <- mkDevNull
+      theStdErr <- mkDevNull
       bracket (startWithLogger (const $ pure ()) Unix
                 [("log_min_duration_statement", expectedDuration)]
-                mainFilePath stdOut stdErr
+                mainFilePath theStdOut theStdErr
                 )
               (either (\_ -> return ()) (void . stop)) $ \result -> do
         db <- case result of
@@ -76,12 +73,12 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
         actualDuration `shouldBe` expectedDuration
 
     it "dies promptly when a bad setting is passed" $ \mainFilePath -> do
-      stdOut <- mkDevNull
-      stdErr <- mkDevNull
+      theStdOut <- mkDevNull
+      theStdErr <- mkDevNull
       r <- timeout 5000000 $ startWithLogger (const $ pure ()) Unix
             [ ("log_directory", "/this/does/not/exist")
             , ("logging_collector", "true")
-            ] mainFilePath stdOut stdErr
+            ] mainFilePath theStdOut theStdErr
       case r of
         Nothing ->
           -- bad test, shouldSatisfy is difficult because it wants Show on DB.
@@ -96,9 +93,9 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
           pure ()
 
     it "terminateConnections" $ \mainFilePath -> do
-      stdOut <- mkDevNull
-      stdErr <- mkDevNull
-      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix [] mainFilePath stdOut stdErr) stop $ \db -> do
+      theStdOut <- mkDevNull
+      theStdErr <- mkDevNull
+      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix [] mainFilePath theStdOut theStdErr) stop $ \db -> do
         bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \_ ->
           bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn2 -> do
             query_ conn2 "SELECT COUNT(*) FROM pg_stat_activity" `shouldReturn` [Only (2 :: Int)]
@@ -107,3 +104,60 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
 
             bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn3 ->
               query_ conn3 "SELECT COUNT(*) FROM  pg_stat_activity" `shouldReturn` [Only (1 :: Int)]
+
+    -- The point of stopPostgres and startPostgres is to test recovery so
+    -- let's make sure that works
+    it "stopPostgres/startPostgres works" $ \mainFilePath -> do
+      let extraOpts =
+            [ ("wal_level", "replica")
+            , ("archive_mode", "on")
+            , ("max_wal_senders", "2")
+            ]
+
+      theStdOut <- mkDevNull
+      theStdErr <- mkDevNull
+
+      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix extraOpts mainFilePath theStdOut theStdErr) stop $ \db -> do
+        bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn -> do
+          let dataDir = mainFilePath ++ "/data"
+              walArchiveDir = mainFilePath ++ "/archive"
+              baseBackupFile = mainFilePath ++ "/backup"
+
+          appendFile (dataDir ++ "/pg_hba.conf") $ "local replication all trust"
+          let archiveLine = "archive_command = " ++
+                "'test ! -f " ++ walArchiveDir ++ "/%f && cp %p " ++ walArchiveDir ++ "/%f'\n"
+
+          appendFile (dataDir ++ "/postgresql.conf") $ archiveLine
+
+          createDirectory walArchiveDir
+
+          reloadConfig db
+
+          res <- system ("pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p" ++ show (port db) ++ " -h" ++ mainFilePath)
+          res `shouldBe` ExitSuccess
+
+          _ <- execute_ conn "CREATE TABLE foo(id int PRIMARY KEY);"
+          _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (1); COMMIT"
+          _ :: [Only String] <- query_ conn "SELECT pg_xlogfile_name(pg_switch_xlog())"
+          _ :: [Only String] <- query_ conn "SELECT pg_xlogfile_name(pg_create_restore_point('pitr'))"
+          _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (2); COMMIT"
+
+          query_ conn "SELECT id FROM foo ORDER BY id ASC"
+            `shouldReturn` [Only (1 :: Int), Only 2]
+
+          close conn
+
+          stopPostgres db `shouldReturn` Just ExitSuccess
+
+          removeDirectoryRecursive dataDir
+          createDirectory dataDir
+          let untarCommand = "tar -C" ++ dataDir ++ " -xf " ++ baseBackupFile ++ "/base.tar"
+          _ <- system untarCommand
+          _ <- system ("chmod -R 700 " ++ dataDir)
+          writeFile (dataDir ++ "/recovery.conf") $ "recovery_target_name='pitr'\nrecovery_target_inclusive=true\nrestore_command='"
+             ++ "cp " ++ walArchiveDir ++ "/%f %p'"
+
+          startPostgres db
+          bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn1 -> do
+            query_ conn1 "SELECT id FROM foo ORDER BY id ASC"
+              `shouldReturn` [Only (1 :: Int)]
