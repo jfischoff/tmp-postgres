@@ -38,6 +38,11 @@ module Database.Postgres.Temp
   , startWithHandles
   -- * Stopping @postgres@
   , stop
+  -- * Starting and Stopping postgres without removing the temporary directory
+  , startPostgres
+  , stopPostgres
+  -- * Reloading the config
+  , reloadConfig
   , SocketClass (..)
   ) where
 import Database.Postgres.Temp.Internal
