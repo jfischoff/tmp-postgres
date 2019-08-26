@@ -36,6 +36,11 @@ module Database.Postgres.Temp
   , startLocalhost
   , startAndLogToTmp
   , startWithHandles
+  , defaultOptions
+  , TmpOptions(..)
+  , InitDbOptions(..)
+  , defaultInitDbOptions
+  , DatabaseName(..)
   -- * Stopping @postgres@
   , stop
   -- * Starting and Stopping postgres without removing the temporary directory

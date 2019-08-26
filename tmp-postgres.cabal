@@ -49,6 +49,7 @@ library
                , network
                , bytestring
                , postgresql-simple
+               , postgres-options
                , port-utils
                , async
   ghc-options: -Wall
