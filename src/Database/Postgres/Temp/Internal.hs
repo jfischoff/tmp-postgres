@@ -361,8 +361,9 @@ terminateConnections :: DB -> IO ()
 terminateConnections db@DB {..} = do
   e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack $ connectionString db)
           PG.close
-          $ \conn ->
-            void $ PG.execute_ conn "select pg_terminate_backend(pid) from pg_stat_activity where datname='test';"
+          $ \conn -> do
+            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
+            void $ PG.execute conn q [Options.oDbname options]
   case e of
     Left (_ :: IOError) -> pure () -- expected
     Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
