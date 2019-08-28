@@ -25,7 +25,6 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 
 
 -}
-{-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables #-}
 module Database.Postgres.Temp
   ( -- * Types
     DB (..)
@@ -36,11 +35,10 @@ module Database.Postgres.Temp
   , startLocalhost
   , startAndLogToTmp
   , startWithHandles
+  , Options(..)
   , defaultOptions
-  , TmpOptions(..)
   , InitDbOptions(..)
   , defaultInitDbOptions
-  , DatabaseName(..)
   -- * Stopping @postgres@
   , stop
   -- * Starting and Stopping postgres without removing the temporary directory

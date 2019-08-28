@@ -36,7 +36,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
         theStdOut <- mkDevNull
         theStdErr <- mkDevNull
         shouldThrow
-          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) Unix [] mainFilePath theStdOut theStdErr)
+          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) Unix defaultOptions mainFilePath theStdOut theStdErr)
           (\Except -> True)
         doesDirectoryExist mainFilePath `shouldReturn` False
         countPostgresProcesses `shouldReturn` beforePostgresCount
@@ -45,7 +45,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       beforePostgresCount <- countPostgresProcesses
       theStdOut <- mkDevNull
       theStdErr <- mkDevNull
-      result <- startWithLogger (\_ -> return ()) Unix [] mainFilePath theStdOut theStdErr
+      result <- startWithLogger (\_ -> return ()) Unix defaultOptions mainFilePath theStdOut theStdErr
       db <- case result of
               Right x  -> return x
               Left err -> error $ show err
@@ -61,7 +61,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       theStdOut <- mkDevNull
       theStdErr <- mkDevNull
       bracket (startWithLogger (const $ pure ()) Unix
-                [("log_min_duration_statement", expectedDuration)]
+                defaultOptions { tmpCmdLineOptions = [("log_min_duration_statement", expectedDuration)] }
                 mainFilePath theStdOut theStdErr
                 )
               (either (\_ -> return ()) (void . stop)) $ \result -> do
@@ -76,9 +76,9 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       theStdOut <- mkDevNull
       theStdErr <- mkDevNull
       r <- timeout 5000000 $ startWithLogger (const $ pure ()) Unix
-            [ ("log_directory", "/this/does/not/exist")
+            defaultOptions { tmpCmdLineOptions =  [ ("log_directory", "/this/does/not/exist")
             , ("logging_collector", "true")
-            ] mainFilePath theStdOut theStdErr
+            ] } mainFilePath theStdOut theStdErr
       case r of
         Nothing ->
           -- bad test, shouldSatisfy is difficult because it wants Show on DB.
@@ -95,7 +95,7 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
     it "terminateConnections" $ \mainFilePath -> do
       theStdOut <- mkDevNull
       theStdErr <- mkDevNull
-      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix [] mainFilePath theStdOut theStdErr) stop $ \db -> do
+      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix defaultOptions mainFilePath theStdOut theStdErr) stop $ \db -> do
         bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \_ ->
           bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn2 -> do
             query_ conn2 "SELECT COUNT(*) FROM pg_stat_activity" `shouldReturn` [Only (2 :: Int)]
@@ -108,11 +108,12 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
     -- The point of stopPostgres and startPostgres is to test recovery so
     -- let's make sure that works
     it "stopPostgres/startPostgres works" $ \mainFilePath -> do
-      let extraOpts =
+      let extraOpts = defaultOptions { tmpCmdLineOptions =
             [ ("wal_level", "replica")
             , ("archive_mode", "on")
             , ("max_wal_senders", "2")
             ]
+            }
 
       theStdOut <- mkDevNull
       theStdErr <- mkDevNull

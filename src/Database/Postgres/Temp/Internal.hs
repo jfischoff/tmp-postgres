@@ -14,7 +14,7 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Maybe (catMaybes)
 import Data.Typeable (Typeable)
 import qualified Database.PostgreSQL.Simple as PG
-import Database.PostgreSQL.Simple.Options (Options(..), toConnectionString)
+import qualified Database.PostgreSQL.Simple.Options as Options
 import GHC.Generics (Generic)
 import qualified Network.Socket as N
 import Network.Socket.Free (openFreePort)
@@ -41,9 +41,9 @@ getFreePort = do
   N.close socket
   pure port
 
-waitForDB :: Options -> IO ()
+waitForDB :: Options.Options -> IO ()
 waitForDB options = do
-  eresult <- try $ bracket (PG.connectPostgreSQL (toConnectionString options)) PG.close $ \_ -> return ()
+  eresult <- try $ bracket (PG.connectPostgreSQL (Options.toConnectionString options)) PG.close $ \_ -> return ()
   case eresult of
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right _ -> return ()
@@ -55,7 +55,7 @@ withLock m f = withMVar m (const f)
 data DB = DB
   { mainDir :: FilePath
   -- ^ Temporary directory where the unix socket, logs and data directory live.
-  , options :: Options
+  , options :: Options.Options
   -- ^ PostgreSQL connection string.
   , extraOptions :: [(String, String)]
   -- ^ Additionally options passed to the postgres command line
@@ -74,30 +74,37 @@ data DB = DB
   }
 
 connectionString :: DB -> String
-connectionString = BSC.unpack . toConnectionString . options
+connectionString = BSC.unpack . Options.toConnectionString . options
 
 data SocketClass = Localhost | Unix
   deriving (Show, Eq, Read, Ord, Enum, Bounded, Generic, Typeable)
 
 -- ^
-data TmpOptions = TmpOptions {
-   tmpDbName :: Maybe DatabaseName
+data Options = Options {
+   tmpDbName :: String
  -- ^ The database name to use. Defaults to 'test'
  , tmpInitDbOptions :: InitDbOptions
  -- ^ Options to pass to initdb
- , tmpExtraOptions :: [(String, String)]
+ , tmpCmdLineOptions :: [(String, String)]
  -- ^ Extra options which override the defaults
 }
 
+defaultOptions :: Options
+defaultOptions = Options {
+    tmpDbName = "test"
+  , tmpInitDbOptions = defaultInitDbOptions
+  , tmpCmdLineOptions = []
+}
+
 -- | start postgres and use the current processes stdout and stderr
-start :: TmpOptions
+start :: Options
       -- ^ Extra options which override the defaults
       -> IO (Either StartError DB)
 start options = startWithHandles Unix options stdout stderr
 
 -- | start postgres and use the current processes stdout and stderr
 -- but use TCP on localhost instead of a unix socket.
-startLocalhost :: TmpOptions
+startLocalhost :: Options
                -> IO (Either StartError DB)
 startLocalhost options = startWithHandles Localhost options stdout stderr
 
@@ -151,7 +158,7 @@ runProcessWith stdOut stdErr name cmd args
 
 -- | Start postgres and pass in handles for stdout and stderr
 startWithHandles :: SocketClass
-                 -> TmpOptions
+                 -> Options
                  -- ^ Extra options which override the defaults
                  -> Handle
                  -- ^ @stdout@
@@ -163,7 +170,7 @@ startWithHandles socketClass options stdOut stdErr = do
   startWithHandlesAndDir socketClass options mainDir stdOut stdErr
 
 startWithHandlesAndDir :: SocketClass
-                       -> TmpOptions
+                       -> Options
                        -> FilePath
                        -> Handle
                        -> Handle
@@ -272,12 +279,12 @@ rmDirIgnoreErrors mainDir =
 
 startWithLogger :: (Event -> IO ())
                 -> SocketClass
-                -> TmpOptions
+                -> Options
                 -> FilePath
                 -> Handle
                 -> Handle
                 -> IO (Either StartError DB)
-startWithLogger logger socketClass (TmpOptions {..}) mainDir stdOut stdErr =
+startWithLogger logger socketClass (Options {..}) mainDir stdOut stdErr =
   try $ flip onException (rmDirIgnoreErrors mainDir) $ do
 
   let dataDir = mainDir ++ "/data"
@@ -297,21 +304,20 @@ startWithLogger logger socketClass (TmpOptions {..}) mainDir stdOut stdErr =
       host = case socketClass of
         Localhost -> "127.0.0.1"
         Unix -> mainDir
-  let mkOptions dbName = (defaultOptions dbName) {
-      oHost = Just host
-    , oPort = Just port
-    , oUser = user
+  let mkOptions dbName = (Options.defaultOptions dbName) {
+      Options.oHost = Just host
+    , Options.oPort = Just port
+    , Options.oUser = user
     }
 
   logger StartPostgres
   pidLock <- newMVar ()
 
-  let dbName = maybe "test" databaseName tmpDbName
-      postgresOptions = makePostgresOptions tmpExtraOptions dataDir port
+  let postgresOptions = makePostgresOptions tmpCmdLineOptions dataDir port
       createDBResult = do
         thePid <- runPostgres stdOut stdErr postgresOptions
         pid <- newIORef $ Just thePid
-        pure $ DB mainDir (mkOptions dbName) tmpExtraOptions stdErr stdOut pidLock port socketClass pid
+        pure $ DB mainDir (mkOptions tmpDbName) tmpCmdLineOptions stdErr stdOut pidLock port socketClass pid
 
   bracketOnError createDBResult stop $ \result -> do
     let checkForCrash = readIORef (pid result) >>= \case
@@ -330,7 +336,7 @@ startWithLogger logger socketClass (TmpOptions {..}) mainDir stdOut stdErr =
           Localhost -> ["-h", "127.0.0.1"]
 
         createDBUserArg = maybe [] (\u->["--username="++u]) user
-        createDBArgs = createDBHostArgs ++ ["-p", show port, dbName] ++ createDBUserArg
+        createDBArgs = createDBHostArgs ++ ["-p", show port, tmpDbName] ++ createDBUserArg
     throwIfError (CreateDBFailed createDBArgs) =<<
       runProcessWith stdOut stdErr "createDB" "createdb" createDBArgs
 
@@ -338,7 +344,7 @@ startWithLogger logger socketClass (TmpOptions {..}) mainDir stdOut stdErr =
     return result
 
 -- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
-startAndLogToTmp :: TmpOptions
+startAndLogToTmp :: Options
                  -- ^ Extra options which override the defaults
                  -> IO (Either StartError DB)
 startAndLogToTmp options = do
@@ -368,35 +374,6 @@ stop db@DB {..} = do
   removeDirectoryRecursive mainDir
   return result
 
-defaultOptions :: String -> Options
-defaultOptions dbName = Options {
-    oHost                    = Nothing
-  , oHostaddr                = Nothing
-  , oPort                    = Nothing
-  , oUser                    = Nothing
-  , oPassword                = Nothing
-  , oDbname                  = dbName
-  , oConnectTimeout          = Nothing
-  , oClientEncoding          = Nothing
-  , oOptions                 = Nothing
-  , oFallbackApplicationName = Nothing
-  , oKeepalives              = Nothing
-  , oKeepalivesIdle          = Nothing
-  , oKeepalivesCount         = Nothing
-  , oSslmode                 = Nothing
-  , oRequiressl              = Nothing
-  , oSslcompression          = Nothing
-  , oSslcert                 = Nothing
-  , oSslkey                  = Nothing
-  , oSslrootcert             = Nothing
-  , oRequirepeer             = Nothing
-  , oKrbsrvname              = Nothing
-  , oGsslib                  = Nothing
-  , oService                 = Nothing
-}
-
-newtype DatabaseName = DatabaseName { databaseName :: String }
-
 data InitDbOptions = InitDbOptions
   { initDbUser               :: Maybe String
   , initDbEncoding           :: Maybe String
@@ -404,7 +381,7 @@ data InitDbOptions = InitDbOptions
   , initDbPgData             :: Maybe String
   , initDbNoSync             :: Bool
   , initDbDebug              :: Bool
-  , initDbEscapeHatch        :: [String]
+  , initDbExtraOptions       :: [String]
   } deriving (Show, Eq, Read, Ord, Generic, Typeable)
 
 defaultInitDbOptions :: InitDbOptions
@@ -415,11 +392,11 @@ defaultInitDbOptions = InitDbOptions {
  , initDbPgData = Nothing
  , initDbNoSync = True
  , initDbDebug = False
- , initDbEscapeHatch = []
+ , initDbExtraOptions = []
 }
 
 initDbToCommandLingArgs :: InitDbOptions -> [String]
-initDbToCommandLingArgs InitDbOptions {..} = strArgs <> boolArgs <> initDbEscapeHatch
+initDbToCommandLingArgs InitDbOptions {..} = strArgs <> boolArgs <> initDbExtraOptions
   where
   strArgs = fmap (\(a,b) -> "--" <> a <> "=" <> b) . catMaybes $ strength <$>
     [ ("username", initDbUser)
