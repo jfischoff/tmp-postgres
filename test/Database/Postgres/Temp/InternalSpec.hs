@@ -139,8 +139,8 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
 
           _ <- execute_ conn "CREATE TABLE foo(id int PRIMARY KEY);"
           _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (1); COMMIT"
-          _ :: [Only String] <- query_ conn "SELECT pg_xlogfile_name(pg_switch_xlog())"
-          _ :: [Only String] <- query_ conn "SELECT pg_xlogfile_name(pg_create_restore_point('pitr'))"
+          _ :: [Only String] <- query_ conn "SELECT pg_walfile_name(pg_switch_wal())"
+          _ :: [Only String] <- query_ conn "SELECT pg_walfile_name(pg_create_restore_point('pitr'))"
           _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (2); COMMIT"
 
           query_ conn "SELECT id FROM foo ORDER BY id ASC"
