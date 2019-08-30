@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables, LambdaCase #-}
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 import System.IO.Temp
@@ -14,12 +14,8 @@ import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import System.Timeout(timeout)
 import Data.Either
-{-
-import qualified Database.PostgreSQL.LibPQ as LibPQ
-import qualified Database.PostgreSQL.Simple.Internal as PS
-import Control.Monad.Reader
-import Data.Traversable
--}
+import Data.Function (fix)
+import Control.Concurrent
 
 mkDevNull :: IO Handle
 mkDevNull = openFile "/dev/null" WriteMode
@@ -123,6 +119,8 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
             [ ("wal_level", "replica")
             , ("archive_mode", "on")
             , ("max_wal_senders", "2")
+            , ("fsync", "on")
+            , ("synchronous_commit", "on")
             ]
             }
 
@@ -164,12 +162,17 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
           removeDirectoryRecursive dataDir
           createDirectory dataDir
           let untarCommand = "tar -C" ++ dataDir ++ " -xf " ++ baseBackupFile ++ "/base.tar"
-          _ <- system untarCommand
-          _ <- system ("chmod -R 700 " ++ dataDir)
-          writeFile (dataDir ++ "/recovery.conf") $ "recovery_target_name='pitr'\nrecovery_target_inclusive=true\nrestore_command='"
+          system untarCommand `shouldReturn` ExitSuccess
+          system ("chmod -R 700 " ++ dataDir) `shouldReturn` ExitSuccess
+          writeFile (dataDir ++ "/recovery.conf") $ "recovery_target_name='pitr'\nrecovery_target_action='promote'\nrecovery_target_inclusive=true\nrestore_command='"
              ++ "cp " ++ walArchiveDir ++ "/%f %p'"
 
           startPostgres db
           bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn1 -> do
+            fix $ \next -> do
+              fmap (fromOnly . head) (query_ conn1 "SELECT pg_is_in_recovery()") >>= \case
+                True -> threadDelay 100000 >> next
+                False -> pure ()
+
             query_ conn1 "SELECT id FROM foo ORDER BY id ASC"
               `shouldReturn` [Only (1 :: Int)]
