@@ -1,25 +1,39 @@
 {-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric, OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
+
 module Database.Postgres.Temp.Internal where
-import System.IO.Temp
-import System.Process
-import System.Process.Internals
-import Control.Concurrent
-import System.IO
-import System.Exit
-import System.Directory
-import qualified Network.Socket as N
-import Control.Exception
-import Data.Typeable
-import GHC.Generics
-import System.Posix.Signals
-import qualified Database.PostgreSQL.Simple as PG
+
+import Control.Concurrent (MVar, newMVar, threadDelay, withMVar)
+import Control.Concurrent.Async (race_)
+import Control.Exception (Exception, IOException, bracket, bracketOnError, catch, onException, throwIO, try)
+import Control.Monad (forever, void)
 import qualified Data.ByteString.Char8 as BSC
-import Control.Monad (void, forever)
+import Data.Foldable (for_)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.Maybe (catMaybes)
+import Data.Typeable (Typeable)
+import qualified Database.PostgreSQL.Simple as PG
+import qualified Database.PostgreSQL.Simple.Options as Options
+import GHC.Generics (Generic)
+import qualified Network.Socket as N
 import Network.Socket.Free (openFreePort)
-import Data.Foldable
-import Control.Concurrent.Async(race_)
-import Data.IORef
+import System.Directory (removeDirectoryRecursive)
+import System.Exit (ExitCode(..))
+import System.IO (Handle, IOMode(WriteMode), openFile, stderr, stdout)
+import System.IO.Temp (createTempDirectory)
+import System.Posix.Signals (sigHUP, sigINT, signalProcess)
+import System.Process (getPid, getProcessExitCode, proc, waitForProcess)
+import System.Process.Internals
+  ( CreateProcess
+  , ProcessHandle
+  , ProcessHandle__(..)
+  , StdStream(UseHandle)
+  , createProcess_
+  , std_err
+  , std_out
+  , withProcessHandle
+  )
 
 getFreePort :: IO Int
 getFreePort = do
@@ -27,11 +41,11 @@ getFreePort = do
   N.close socket
   pure port
 
-waitForDB :: String -> IO ()
-waitForDB connStr = do
-  eresult <- try $ bracket (PG.connectPostgreSQL (BSC.pack connStr)) PG.close $ \_ -> return ()
+waitForDB :: Options.Options -> IO ()
+waitForDB options = do
+  eresult <- try $ bracket (PG.connectPostgreSQL (Options.toConnectionString options)) PG.close $ \_ -> return ()
   case eresult of
-    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB connStr
+    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right _ -> return ()
 
 -- A helper for dealing with locks
@@ -41,7 +55,7 @@ withLock m f = withMVar m (const f)
 data DB = DB
   { mainDir :: FilePath
   -- ^ Temporary directory where the unix socket, logs and data directory live.
-  , connectionString :: String
+  , options :: Options.Options
   -- ^ PostgreSQL connection string.
   , extraOptions :: [(String, String)]
   -- ^ Additionally options passed to the postgres command line
@@ -59,19 +73,38 @@ data DB = DB
   -- ^ The process handle for the @postgres@ process.
   }
 
+connectionString :: DB -> String
+connectionString = BSC.unpack . Options.toConnectionString . options
+
 data SocketClass = Localhost | Unix
   deriving (Show, Eq, Read, Ord, Enum, Bounded, Generic, Typeable)
 
+-- ^
+data Options = Options {
+   tmpDbName :: String
+ -- ^ The database name to use. Defaults to 'test'
+ , tmpInitDbOptions :: InitDbOptions
+ -- ^ Options to pass to initdb
+ , tmpCmdLineOptions :: [(String, String)]
+ -- ^ Extra options which override the defaults
+}
+
+defaultOptions :: Options
+defaultOptions = Options {
+    tmpDbName = "test"
+  , tmpInitDbOptions = defaultInitDbOptions
+  , tmpCmdLineOptions = []
+}
+
 -- | start postgres and use the current processes stdout and stderr
-start :: [(String, String)]
+start :: Options
       -- ^ Extra options which override the defaults
       -> IO (Either StartError DB)
 start options = startWithHandles Unix options stdout stderr
 
 -- | start postgres and use the current processes stdout and stderr
 -- but use TCP on localhost instead of a unix socket.
-startLocalhost ::  [(String, String)]
-               -- ^ Extra options which override the defaults
+startLocalhost :: Options
                -> IO (Either StartError DB)
 startLocalhost options = startWithHandles Localhost options stdout stderr
 
@@ -114,7 +147,7 @@ throwIfError f e = case e of
 pidString :: ProcessHandle -> IO String
 pidString phandle = withProcessHandle phandle (\case
         OpenHandle p   -> return $ show p
-        OpenExtHandle _ _ _ -> return "" -- TODO log windows is not supported
+        OpenExtHandle {} -> return "" -- TODO log windows is not supported
         ClosedHandle _ -> return ""
         )
 
@@ -125,7 +158,7 @@ runProcessWith stdOut stdErr name cmd args
 
 -- | Start postgres and pass in handles for stdout and stderr
 startWithHandles :: SocketClass
-                 -> [(String, String)]
+                 -> Options
                  -- ^ Extra options which override the defaults
                  -> Handle
                  -- ^ @stdout@
@@ -137,7 +170,7 @@ startWithHandles socketClass options stdOut stdErr = do
   startWithHandlesAndDir socketClass options mainDir stdOut stdErr
 
 startWithHandlesAndDir :: SocketClass
-                       -> [(String, String)]
+                       -> Options
                        -> FilePath
                        -> Handle
                        -> Handle
@@ -153,7 +186,7 @@ instance Exception AnotherPostgresProcessActive
 
 -- A helper that attempts to blocks until a connection can be made, throws
 -- 'StartPostgresFailed' if the postgres process fails or throws
--- 'StartPostgresDisappeared' if the 'pid' somehow becomes 'Nothinng'.
+-- 'StartPostgresDisappeared' if the 'pid' somehow becomes 'Nothing'.
 waitOnPostgres :: DB -> IO ()
 waitOnPostgres DB {..} = do
   let postgresOptions = makePostgresOptions extraOptions (mainDir ++ "/data") port
@@ -162,13 +195,7 @@ waitOnPostgres DB {..} = do
         Just thePid -> do
           mExitCode <- getProcessExitCode thePid
           for_ mExitCode (throwIO . StartPostgresFailed postgresOptions)
-      host = case socketClass of
-            Localhost -> "127.0.0.1"
-            Unix -> mainDir
-      makeConnectionString dbName = "postgresql:///"
-          ++ dbName ++ "?host=" ++ host ++ "&port=" ++ show port
-
-  waitForDB (makeConnectionString "template1") `race_`
+  waitForDB options `race_`
     forever (checkForCrash >> threadDelay 100000)
 
 -- | Send the SIGHUP signal to the postgres process to start a config reload
@@ -186,7 +213,7 @@ reloadConfig DB {..} = do
 --  If the postgres process becomes 'Nothing' while starting
 --  this function throws 'StartPostgresDisappeared'.
 startPostgres :: DB -> IO ()
-startPostgres db@DB {..} = withLock pidLock $ do
+startPostgres db@DB {..} = withLock pidLock $
   readIORef pid >>= \case
     Just _ -> throwIO AnotherPostgresProcessActive
     Nothing -> do
@@ -212,7 +239,7 @@ stopPostgres db@DB {..} = withLock pidLock $ readIORef pid >>= \case
             terminateConnections db
 
             signalProcess sigINT p
-          OpenExtHandle _ _ _ -> pure () -- TODO log windows is not supported
+          OpenExtHandle {} -> pure () -- TODO log windows is not supported
           ClosedHandle _ -> return ()
           )
 
@@ -232,7 +259,7 @@ runPostgres :: Handle
             -> Handle
             -> [String]
             -> IO ProcessHandle
-runPostgres theStdOut theStdErr postgresOptions = do
+runPostgres theStdOut theStdErr postgresOptions =
   fmap fourth $ createProcess_ "postgres" $
     procWith theStdOut theStdErr "postgres" postgresOptions
 
@@ -252,17 +279,19 @@ rmDirIgnoreErrors mainDir =
 
 startWithLogger :: (Event -> IO ())
                 -> SocketClass
-                -> [(String, String)]
+                -> Options
                 -> FilePath
                 -> Handle
                 -> Handle
                 -> IO (Either StartError DB)
-startWithLogger logger socketClass options mainDir stdOut stdErr = try $ flip onException (rmDirIgnoreErrors mainDir) $ do
+startWithLogger logger socketClass (Options {..}) mainDir stdOut stdErr =
+  try $ flip onException (rmDirIgnoreErrors mainDir) $ do
+
   let dataDir = mainDir ++ "/data"
 
   logger InitDB
   initDBExitCode <- runProcessWith stdOut stdErr "initdb"
-      "initdb" ["-E", "UNICODE", "-A", "trust", "--nosync", "-D", dataDir]
+      "initdb" $ initDbToCommandLingArgs tmpInitDbOptions { initDbPgData = Just dataDir }
   throwIfError InitDBFailed initDBExitCode
 
   logger WriteConfig
@@ -271,20 +300,24 @@ startWithLogger logger socketClass options mainDir stdOut stdErr = try $ flip on
   logger FreePort
   port <- getFreePort
   -- slight race here, the port might not be free anymore!
-  let host = case socketClass of
+  let user = initDbUser tmpInitDbOptions
+      host = case socketClass of
         Localhost -> "127.0.0.1"
         Unix -> mainDir
-  let makeConnectionString dbName = "postgresql:///"
-        ++ dbName ++ "?host=" ++ host ++ "&port=" ++ show port
-      connectionString = makeConnectionString "test"
+  let mkOptions dbName = (Options.defaultOptions dbName) {
+      Options.oHost = Just host
+    , Options.oPort = Just port
+    , Options.oUser = user
+    }
+
   logger StartPostgres
   pidLock <- newMVar ()
 
-  let postgresOptions = makePostgresOptions options dataDir port
+  let postgresOptions = makePostgresOptions tmpCmdLineOptions dataDir port
       createDBResult = do
         thePid <- runPostgres stdOut stdErr postgresOptions
         pid <- newIORef $ Just thePid
-        pure $ DB mainDir connectionString options stdErr stdOut pidLock port socketClass pid
+        pure $ DB mainDir (mkOptions tmpDbName) tmpCmdLineOptions stdErr stdOut pidLock port socketClass pid
 
   bracketOnError createDBResult stop $ \result -> do
     let checkForCrash = readIORef (pid result) >>= \case
@@ -294,7 +327,7 @@ startWithLogger logger socketClass options mainDir stdOut stdErr = try $ flip on
             for_ mExitCode (throwIO . StartPostgresFailed postgresOptions)
 
     logger WaitForDB
-    waitForDB (makeConnectionString "template1") `race_`
+    waitForDB (mkOptions "template1") `race_`
       forever (checkForCrash >> threadDelay 100000)
 
     logger CreateDB
@@ -302,7 +335,8 @@ startWithLogger logger socketClass options mainDir stdOut stdErr = try $ flip on
           Unix -> ["-h", mainDir]
           Localhost -> ["-h", "127.0.0.1"]
 
-    let createDBArgs = createDBHostArgs ++ ["-p", show port, "test"]
+        createDBUserArg = maybe [] (\u->["--username="++u]) user
+        createDBArgs = createDBHostArgs ++ ["-p", show port, tmpDbName] ++ createDBUserArg
     throwIfError (CreateDBFailed createDBArgs) =<<
       runProcessWith stdOut stdErr "createDB" "createdb" createDBArgs
 
@@ -310,7 +344,7 @@ startWithLogger logger socketClass options mainDir stdOut stdErr = try $ flip on
     return result
 
 -- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
-startAndLogToTmp :: [(String, String)]
+startAndLogToTmp :: Options
                  -- ^ Extra options which override the defaults
                  -> IO (Either StartError DB)
 startAndLogToTmp options = do
@@ -324,11 +358,12 @@ startAndLogToTmp options = do
 -- | Force all connections to the database to close. Can be useful in some testing situations.
 --   Called during shutdown as well.
 terminateConnections :: DB -> IO ()
-terminateConnections DB {..} = do
-  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack connectionString)
+terminateConnections db@DB {..} = do
+  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack $ connectionString db)
           PG.close
           $ \conn -> do
-            void $ PG.execute_ conn "select pg_terminate_backend(pid) from pg_stat_activity where datname='test';"
+            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
+            void $ PG.execute conn q [Options.oDbname options]
   case e of
     Left (_ :: IOError) -> pure () -- expected
     Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
@@ -339,3 +374,40 @@ stop db@DB {..} = do
   result <- stopPostgres db
   removeDirectoryRecursive mainDir
   return result
+
+data InitDbOptions = InitDbOptions
+  { initDbUser               :: Maybe String
+  , initDbEncoding           :: Maybe String
+  , initDbAuth               :: Maybe String
+  , initDbPgData             :: Maybe String
+  , initDbNoSync             :: Bool
+  , initDbDebug              :: Bool
+  , initDbExtraOptions       :: [String]
+  } deriving (Show, Eq, Read, Ord, Generic, Typeable)
+
+defaultInitDbOptions :: InitDbOptions
+defaultInitDbOptions = InitDbOptions {
+   initDbUser = Nothing
+ , initDbEncoding = Just "UNICODE"
+ , initDbAuth = Just "trust"
+ , initDbPgData = Nothing
+ , initDbNoSync = True
+ , initDbDebug = False
+ , initDbExtraOptions = []
+}
+
+initDbToCommandLingArgs :: InitDbOptions -> [String]
+initDbToCommandLingArgs InitDbOptions {..} = strArgs <> boolArgs <> initDbExtraOptions
+  where
+  strArgs = fmap (\(a,b) -> "--" <> a <> "=" <> b) . catMaybes $ strength <$>
+    [ ("username", initDbUser)
+    , ("encoding", initDbEncoding)
+    , ("auth", initDbAuth)
+    , ("pgdata", initDbPgData)
+    ]
+  boolArgs = fmap fst . filter snd $
+    [ ("--nosync", initDbNoSync)
+    , ("--debug", initDbDebug) ]
+
+  strength :: Functor f => (a, f b) -> f (a, b)
+  strength (a, fb) = (a,) <$> fb
