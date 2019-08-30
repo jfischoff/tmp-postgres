@@ -14,6 +14,12 @@ import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import System.Timeout(timeout)
 import Data.Either
+{-
+import qualified Database.PostgreSQL.LibPQ as LibPQ
+import qualified Database.PostgreSQL.Simple.Internal as PS
+import Control.Monad.Reader
+import Data.Traversable
+-}
 
 mkDevNull :: IO Handle
 mkDevNull = openFile "/dev/null" WriteMode
@@ -24,7 +30,12 @@ data Except = Except
 instance Exception Except
 
 countPostgresProcesses :: IO Int
-countPostgresProcesses = length . lines <$> readProcess "pgrep" ["postgres"] []
+countPostgresProcesses = do
+  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" ["postgres"] []
+
+  unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
+
+  pure $ length $ lines xs
 
 spec :: Spec
 spec = describe "Database.Postgres.Temp.Internal" $ do
@@ -98,12 +109,12 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
       bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix [] mainFilePath theStdOut theStdErr) stop $ \db -> do
         bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \_ ->
           bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn2 -> do
-            query_ conn2 "SELECT COUNT(*) FROM pg_stat_activity" `shouldReturn` [Only (2 :: Int)]
+            query_ conn2 "SELECT COUNT(*) FROM pg_stat_activity where backend_type='client backend'" `shouldReturn` [Only (2 :: Int)]
 
             terminateConnections db
 
             bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn3 ->
-              query_ conn3 "SELECT COUNT(*) FROM  pg_stat_activity" `shouldReturn` [Only (1 :: Int)]
+              query_ conn3 "SELECT COUNT(*) FROM  pg_stat_activity where backend_type='client backend'" `shouldReturn` [Only (1 :: Int)]
 
     -- The point of stopPostgres and startPostgres is to test recovery so
     -- let's make sure that works
@@ -138,8 +149,8 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
 
           _ <- execute_ conn "CREATE TABLE foo(id int PRIMARY KEY);"
           _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (1); COMMIT"
-          _ :: [Only String] <- query_ conn "SELECT pg_xlogfile_name(pg_switch_xlog())"
-          _ :: [Only String] <- query_ conn "SELECT pg_xlogfile_name(pg_create_restore_point('pitr'))"
+          _ :: [Only String] <- query_ conn "SELECT pg_walfile_name(pg_switch_wal())"
+          _ :: [Only String] <- query_ conn "SELECT pg_walfile_name(pg_create_restore_point('pitr'))"
           _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (2); COMMIT"
 
           query_ conn "SELECT id FROM foo ORDER BY id ASC"
