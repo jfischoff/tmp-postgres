@@ -1,49 +1,38 @@
 {-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric, OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, DerivingStrategies, DerivingVia #-}
 
 module Database.Postgres.Temp.Internal where
 
 import Control.Concurrent (MVar, newMVar, threadDelay, withMVar)
 import Control.Concurrent.Async (race_)
-import Control.Exception (Exception, IOException, bracket, bracketOnError, catch, onException, throwIO, try)
-import Control.Monad (forever, void)
+import Control.Exception
+import Control.Monad (forever, void, (<=<))
+import Data.Maybe
 import qualified Data.ByteString.Char8 as BSC
 import Data.Foldable (for_)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Maybe (catMaybes)
 import Data.Typeable (Typeable)
 import qualified Database.PostgreSQL.Simple as PG
-import qualified Database.PostgreSQL.Simple.Options as Options
+import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import GHC.Generics (Generic)
-import qualified Network.Socket as N
-import Network.Socket.Free (openFreePort)
+import Network.Socket.Free (getFreePort)
 import System.Directory (removeDirectoryRecursive)
 import System.Exit (ExitCode(..))
-import System.IO (Handle, IOMode(WriteMode), openFile, stderr, stdout)
+import System.IO
 import System.IO.Temp (createTempDirectory)
 import System.Posix.Signals (sigHUP, sigINT, signalProcess)
 import System.Process (getPid, getProcessExitCode, proc, waitForProcess)
 import System.Process.Internals
-  ( CreateProcess
-  , ProcessHandle
-  , ProcessHandle__(..)
-  , StdStream(UseHandle)
-  , createProcess_
-  , std_err
-  , std_out
-  , withProcessHandle
-  )
+import Data.Traversable (for)
+import Data.Monoid
+import Data.Monoid.Generic
+import Control.Applicative
 
-getFreePort :: IO Int
-getFreePort = do
-  (port, socket) <- openFreePort
-  N.close socket
-  pure port
-
-waitForDB :: Options.Options -> IO ()
+waitForDB :: PostgresClient.Options -> IO ()
 waitForDB options = do
-  eresult <- try $ bracket (PG.connectPostgreSQL (Options.toConnectionString options)) PG.close $ \_ -> return ()
+  let theConnectionString = PostgresClient.toConnectionString options
+  eresult <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $ \_ -> return ()
   case eresult of
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right _ -> return ()
@@ -52,74 +41,87 @@ waitForDB options = do
 withLock :: MVar a -> IO b -> IO b
 withLock m f = withMVar m (const f)
 
-data DB = DB
-  { mainDir :: FilePath
-  -- ^ Temporary directory where the unix socket, logs and data directory live.
-  , options :: Options.Options
-  -- ^ PostgreSQL connection string.
-  , extraOptions :: [(String, String)]
-  -- ^ Additionally options passed to the postgres command line
-  , stdErr :: Handle
-  -- ^ The 'Handle' used to standard error
-  , stdOut :: Handle
-  -- ^ The 'Handle' used to standard output
-  , pidLock :: MVar ()
-  -- ^ A lock used internally to makes sure access to 'pid' is serialized
-  , port :: Int
-  -- ^ The port postgres is listening on
-  , socketClass :: SocketClass
-  -- ^ The 'SocketClass' used for starting postgres
-  , pid :: IORef (Maybe ProcessHandle)
-  -- ^ The process handle for the @postgres@ process.
+-------------------------------------------------------------------------------
+-- A useful type of options
+-------------------------------------------------------------------------------
+data Lastoid a = Replace a | Mappend a
+
+instance Semigroup a => Semigroup (Lastoid a) where
+  x <> y = case (x, y) of
+    (r@Replace {}, _        ) -> r
+    (Mappend a   , Replace b) -> Replace $ a <> b
+    (Mappend a   , Mappend b) -> Mappend $ a <> b
+
+instance Monoid a => Monoid (Lastoid a) where
+  mempty = Mappend mempty
+  mappend = (<>)
+
+-------------------------------------------------------------------------------
+-- ProcessOptions
+-------------------------------------------------------------------------------
+data PartialProcessOptions = PartialProcessOptions
+  { partialProcessOptionsEnvVars :: Lastoid [(String, String)]
+  , partialProcessOptionsCmdLine :: Lastoid [String]
+  , partialProcessOptionsStdIn   :: Last Handle
+  , partialProcessOptionsStdOut  :: Last Handle
+  , partialProcessOptionsStdErr  :: Last Handle
+  , partialProcessOptionsName    :: Last String
+  }
+  deriving stock (Generic)
+  deriving Semigroup via GenericSemigroup PartialProcessOptions
+  deriving Monoid    via GenericMonoid PartialProcessOptions
+
+data ProcessOptions = ProcessOptions
+  { processOptionsEnvVars :: Maybe [(String, String)]
+  , processOptionsCmdLine :: [String]
+  , processOptionsStdIn   :: Maybe Handle
+  , processOptionsStdOut  :: Maybe Handle
+  , processOptionsStdErr  :: Maybe Handle
+  , processOptionsName    :: String
   }
 
-connectionString :: DB -> String
-connectionString = BSC.unpack . Options.toConnectionString . options
+data ProcessInput = ProcessInput
+  { processInputEnvVars :: Maybe [(String, String)]
+  , processInputCmdLine :: [String]
+  , processInputName    :: String
+  } deriving (Show, Eq, Ord)
 
-data SocketClass = Localhost | Unix
-  deriving (Show, Eq, Read, Ord, Enum, Bounded, Generic, Typeable)
+completeProcessOptions :: PartialProcessOptions -> Maybe ProcessOptions
+completeProcessOptions = error "completeProcessOptions"
 
--- ^
-data Options = Options {
-   tmpDbName :: String
- -- ^ The database name to use. Defaults to 'test'
- , tmpInitDbOptions :: InitDbOptions
- -- ^ Options to pass to initdb
- , tmpCmdLineOptions :: [(String, String)]
- -- ^ Extra options which override the defaults
-}
-
-defaultOptions :: Options
-defaultOptions = Options {
-    tmpDbName = "test"
-  , tmpInitDbOptions = defaultInitDbOptions
-  , tmpCmdLineOptions = []
-}
-
--- | start postgres and use the current processes stdout and stderr
-start :: Options
-      -- ^ Extra options which override the defaults
-      -> IO (Either StartError DB)
-start options = startWithHandles Unix options stdout stderr
-
--- | start postgres and use the current processes stdout and stderr
--- but use TCP on localhost instead of a unix socket.
-startLocalhost :: Options
-               -> IO (Either StartError DB)
-startLocalhost options = startWithHandles Localhost options stdout stderr
+-- envs might not be true
+toProcessInput :: ProcessOptions -> ProcessInput
+toProcessInput ProcessOptions {..} = ProcessInput
+  { processInputEnvVars = processOptionsEnvVars
+  , processInputCmdLine = processOptionsCmdLine
+  , processInputName    = processOptionsName
+  }
 
 fourth :: (a, b, c, d) -> d
 fourth (_, _, _, x) = x
 
-procWith :: Handle -> Handle -> String -> [String] -> CreateProcess
-procWith stdOut stdErr cmd args =
-  (proc cmd args)
-    { std_err = UseHandle stdErr
-    , std_out = UseHandle stdOut
-    }
+evaluateProcess :: ProcessOptions -> IO ProcessHandle
+evaluateProcess ProcessOptions {..} = fmap fourth $
+  createProcess_ processOptionsName $
+    (proc processOptionsName processOptionsCmdLine)
+      { std_err = UseHandle $ fromMaybe stderr processOptionsStdErr
+      , std_out = UseHandle $ fromMaybe stdout processOptionsStdOut
+      , std_in  = UseHandle $ fromMaybe stdin processOptionsStdIn
+      , env     = processOptionsEnvVars
+      }
 
-config :: Maybe FilePath -> String
-config mMainDir = unlines $
+executeProcess :: ProcessOptions -> IO ExitCode
+executeProcess = waitForProcess <=< evaluateProcess
+
+data PartialPostgresPlan = PartialPostgresPlan
+  { partialPostgresPlanConfig  :: Lastoid String
+  , partialPostgresPlanOptions :: PartialProcessOptions
+  } deriving stock (Generic)
+    deriving Semigroup via GenericSemigroup PartialPostgresPlan
+    deriving Monoid    via GenericMonoid PartialPostgresPlan
+
+defaultConfig :: [String]
+defaultConfig =
   [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
@@ -128,108 +130,70 @@ config mMainDir = unlines $
   , "log_connections = on"
   , "log_disconnections = on"
   , "client_min_messages = ERROR"
-  ] ++ maybe ["listen_addresses = '127.0.0.1'"] (\x -> ["unix_socket_directories = '" ++ x ++ "'", "listen_addresses = ''"]) mMainDir
+  ]
 
-data StartError
-  = InitDBFailed   ExitCode
-  | CreateDBFailed [String] ExitCode
-  | StartPostgresFailed [String] ExitCode
-  | StartPostgresDisappeared [String]
-  deriving (Show, Eq, Typeable)
+defaultPostgresPlan :: CommonOptions -> PartialPostgresPlan
+defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
+  { partialPostgresPlanConfig  = Replace $ unlines $
+      defaultConfig <> listenAddressConfig commonOptionsSocketClass
+  , partialPostgresPlanOptions = mempty
+      { partialProcessOptionsName = pure "postgres"
+      }
+  }
 
-instance Exception StartError
+completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
+completePostgresPlan = error "completePostgresPlan"
 
-throwIfError :: (ExitCode -> StartError) -> ExitCode -> IO ()
-throwIfError f e = case e of
-  ExitSuccess -> return ()
-  _       -> throwIO $ f e
+data PostgresPlan = PostgresPlan
+  { postgresPlanConfig  :: String
+  , postgresPlanOptions :: ProcessOptions
+  }
 
-pidString :: ProcessHandle -> IO String
-pidString phandle = withProcessHandle phandle (\case
-        OpenHandle p   -> return $ show p
-        OpenExtHandle {} -> return "" -- TODO log windows is not supported
-        ClosedHandle _ -> return ""
-        )
+data PostgresInput = PostgresInput
+  { postgresOptionsProcessOptions :: ProcessInput
+  , postgresOptionsConfig  :: String
+  } deriving (Show, Eq, Ord)
 
-runProcessWith :: Handle -> Handle -> String -> String -> [String] -> IO ExitCode
-runProcessWith stdOut stdErr name cmd args
-  =   createProcess_ name (procWith stdOut stdErr cmd args)
-  >>= waitForProcess . fourth
+toPostgresInput :: PostgresPlan -> PostgresInput
+toPostgresInput PostgresPlan {..} = PostgresInput
+  { postgresOptionsProcessOptions = toProcessInput postgresPlanOptions
+  , postgresOptionsConfig  = postgresPlanConfig
+  }
 
--- | Start postgres and pass in handles for stdout and stderr
-startWithHandles :: SocketClass
-                 -> Options
-                 -- ^ Extra options which override the defaults
-                 -> Handle
-                 -- ^ @stdout@
-                 -> Handle
-                 -- ^ @stderr@
-                 -> IO (Either StartError DB)
-startWithHandles socketClass options stdOut stdErr = do
-  mainDir <- createTempDirectory "/tmp" "tmp-postgres"
-  startWithHandlesAndDir socketClass options mainDir stdOut stdErr
+data PostgresProcess = PostgresProcess
+  { pidLock :: MVar ()
+  -- ^ A lock used internally to makes sure access to 'pid' is serialized
+  , pid :: IORef (Maybe ProcessHandle)
+  -- ^ The process handle for the @postgres@ process.
+  , options         :: PostgresClient.Options
+  , postgresInput   :: PostgresInput
+  }
 
-startWithHandlesAndDir :: SocketClass
-                       -> Options
-                       -> FilePath
-                       -> Handle
-                       -> Handle
-                       -> IO (Either StartError DB)
-startWithHandlesAndDir = startWithLogger $ \_ -> return ()
+connectionString :: PostgresProcess -> String
+connectionString = BSC.unpack . PostgresClient.toConnectionString . options
 
--- | This error is thrown is 'startPostgres' is called twice without calling
---  'stopPostgres' first.
-data AnotherPostgresProcessActive = AnotherPostgresProcessActive
-  deriving (Show, Eq, Typeable)
+-- | Force all connections to the database to close. Can be useful in some testing situations.
+--   Called during shutdown as well.
+terminateConnections :: PostgresProcess -> IO ()
+terminateConnections db@PostgresProcess {..} = do
+  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack $ connectionString db)
+          PG.close
+          $ \conn -> do
+            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
+            void $ PG.execute conn q [PostgresClient.oDbname options]
+  case e of
+    Left (_ :: IOError) -> pure () -- expected
+    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
 
-instance Exception AnotherPostgresProcessActive
 
--- A helper that attempts to blocks until a connection can be made, throws
--- 'StartPostgresFailed' if the postgres process fails or throws
--- 'StartPostgresDisappeared' if the 'pid' somehow becomes 'Nothing'.
-waitOnPostgres :: DB -> IO ()
-waitOnPostgres DB {..} = do
-  let postgresOptions = makePostgresOptions extraOptions (mainDir ++ "/data") port
-      checkForCrash = readIORef pid >>= \case
-        Nothing -> throwIO $ StartPostgresDisappeared postgresOptions
-        Just thePid -> do
-          mExitCode <- getProcessExitCode thePid
-          for_ mExitCode (throwIO . StartPostgresFailed postgresOptions)
-  waitForDB options `race_`
-    forever (checkForCrash >> threadDelay 100000)
-
--- | Send the SIGHUP signal to the postgres process to start a config reload
-reloadConfig :: DB -> IO ()
-reloadConfig DB {..} = do
-  mHandle <- readIORef pid
-  for_ mHandle $ \theHandle -> do
-    mPid <- getPid theHandle
-    for_ mPid $ signalProcess sigHUP
-
--- | This throws 'AnotherPostgresProcessActive' if the postgres
---  has not been stopped using 'stopPostgres'.
---  This function attempts to the 'pidLock' before running.
---  If postgres process fails this throws 'StartPostgresFailed'.
---  If the postgres process becomes 'Nothing' while starting
---  this function throws 'StartPostgresDisappeared'.
-startPostgres :: DB -> IO ()
-startPostgres db@DB {..} = withLock pidLock $
-  readIORef pid >>= \case
-    Just _ -> throwIO AnotherPostgresProcessActive
-    Nothing -> do
-      let postgresOptions = makePostgresOptions extraOptions (mainDir ++ "/data") port
-      bracketOnError
-        (runPostgres stdErr stdOut postgresOptions)
-        (const $ stopPostgres db)
-        $ \thePid -> do
-          writeIORef pid $ Just thePid
-          waitOnPostgres db
+commonOptionsToConnectionOptions :: CommonOptions -> PostgresClient.Options
+commonOptionsToConnectionOptions = error "commonOptionsToConnectionOptions"
 
 -- | Stop the postgres process. This function attempts to the 'pidLock' before running.
 --   'stopPostgres' will terminate all connections before shutting down postgres.
 --   'stopPostgres' is useful for testing backup strategies.
-stopPostgres :: DB -> IO (Maybe ExitCode)
-stopPostgres db@DB {..} = withLock pidLock $ readIORef pid >>= \case
+stop :: PostgresProcess -> IO (Maybe ExitCode)
+stop db@PostgresProcess{..} = withLock pidLock $ readIORef pid >>= \case
   Nothing -> pure Nothing
   Just pHandle -> do
     withProcessHandle pHandle (\case
@@ -247,21 +211,55 @@ stopPostgres db@DB {..} = withLock pidLock $ readIORef pid >>= \case
     writeIORef pid Nothing
     pure $ Just exitCode
 
-makePostgresOptions :: [(String, String)]
-                    -> FilePath
-                    -> Int
-                    -> [String]
-makePostgresOptions options dataDir port =
-  let extraOptions = map (\(key, value) -> "--" ++ key ++ "=" ++ value) options
-  in ["-D", dataDir, "-p", show port] ++ extraOptions
+data StartError
+  = InitDBFailed   ExitCode
+  | CreateDBFailed [String] ExitCode
+  | StartPostgresFailed PostgresInput ExitCode
+  | StartPostgresDisappeared PostgresInput
+  | InitDbCompleteOptions
+  | CreateDbCompleteOptions
+  | PostgresCompleteOptions
+  deriving (Show, Eq, Typeable)
 
-runPostgres :: Handle
-            -> Handle
-            -> [String]
-            -> IO ProcessHandle
-runPostgres theStdOut theStdErr postgresOptions =
-  fmap fourth $ createProcess_ "postgres" $
-    procWith theStdOut theStdErr "postgres" postgresOptions
+instance Exception StartError
+
+data PartialSocketClass = PIpSocket (Maybe String) | PUnixSocket (Maybe FilePath)
+  deriving stock (Show, Eq, Read, Ord, Generic, Typeable)
+
+instance Semigroup PartialSocketClass where
+  x <> y = case (x, y) of
+    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <|> b
+    (a@(PIpSocket _), PUnixSocket _) -> a
+    (PUnixSocket _, a@(PIpSocket _)) -> a
+    (PUnixSocket a, PUnixSocket b) -> PUnixSocket $ a <|> b
+
+instance Monoid PartialSocketClass where
+  mempty = PUnixSocket Nothing
+
+data SocketClass = IpSocket String | UnixSocket FilePath
+  deriving (Show, Eq, Read, Ord, Generic, Typeable)
+
+listenAddressConfig :: SocketClass -> [String]
+listenAddressConfig = \case
+  IpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
+  UnixSocket dir ->
+    [ "listen_addresses = ''"
+    , "unix_socket_directories = '" <> dir <> "'"
+    ]
+
+socketClassToHost :: SocketClass -> String
+socketClassToHost = \case
+  IpSocket ip    -> ip
+  UnixSocket dir -> dir
+
+startPartialSocketClass :: PartialSocketClass -> (SocketClass -> IO a) -> IO a
+startPartialSocketClass theClass f = case theClass of
+  PIpSocket mIp -> f $ IpSocket $ fromMaybe "127.0.0.1" mIp
+  PUnixSocket mFilePath -> do
+    let (dirCreate, dirDelete) = case mFilePath of
+          Nothing -> (createTempDirectory "/tmp" "tmp-postgres-socket", rmDirIgnoreErrors)
+          Just x  -> (pure x, const $ pure ())
+    bracketOnError dirCreate dirDelete $ \socketPath -> f $ UnixSocket socketPath
 
 data Event
   = InitDB
@@ -277,137 +275,196 @@ rmDirIgnoreErrors :: FilePath -> IO ()
 rmDirIgnoreErrors mainDir =
   removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
 
-startWithLogger :: (Event -> IO ())
-                -> SocketClass
-                -> Options
-                -> FilePath
-                -> Handle
-                -> Handle
-                -> IO (Either StartError DB)
-startWithLogger logger socketClass (Options {..}) mainDir stdOut stdErr =
-  try $ flip onException (rmDirIgnoreErrors mainDir) $ do
+data CommonOptions = CommonOptions
+  { commonOptionsDbName      :: String
+  , commonOptionsDataDir     :: FilePath
+  , commonOptionsPort        :: Int
+  , commonOptionsSocketClass :: SocketClass
+  , commonOptionsLogger      :: Event -> IO ()
+  }
 
-  let dataDir = mainDir ++ "/data"
+data PartialCommonOptions = PartialCommonOptions
+  { partialCommonOptionsDbName      :: Maybe String
+  , partialCommonOptionsDataDir     :: Maybe FilePath
+  , partialCommonOptionsPort        :: Maybe Int
+  , partialCommonOptionsSocketClass :: PartialSocketClass
+  , partialCommonOptionsLogger      :: Maybe (Event -> IO ())
+  }
+  deriving stock (Generic)
 
-  logger InitDB
-  initDBExitCode <- runProcessWith stdOut stdErr "initdb"
-      "initdb" $ initDbToCommandLingArgs tmpInitDbOptions { initDbPgData = Just dataDir }
-  throwIfError InitDBFailed initDBExitCode
-
-  logger WriteConfig
-  writeFile (dataDir ++ "/postgresql.conf") $ config $ if socketClass == Unix then Just mainDir else Nothing
-
-  logger FreePort
-  port <- getFreePort
-  -- slight race here, the port might not be free anymore!
-  let user = initDbUser tmpInitDbOptions
-      host = case socketClass of
-        Localhost -> "127.0.0.1"
-        Unix -> mainDir
-  let mkOptions dbName = (Options.defaultOptions dbName) {
-      Options.oHost = Just host
-    , Options.oPort = Just port
-    , Options.oUser = user
+instance Semigroup PartialCommonOptions where
+  x <> y = PartialCommonOptions
+    { partialCommonOptionsDbName      =
+        partialCommonOptionsDbName x <|> partialCommonOptionsDbName y
+    , partialCommonOptionsDataDir     =
+        partialCommonOptionsDataDir x <|> partialCommonOptionsDataDir y
+    , partialCommonOptionsPort        =
+        partialCommonOptionsPort x <|> partialCommonOptionsPort y
+    , partialCommonOptionsSocketClass =
+        partialCommonOptionsSocketClass x <> partialCommonOptionsSocketClass y
+    , partialCommonOptionsLogger      =
+        partialCommonOptionsLogger x <|> partialCommonOptionsLogger y
     }
 
-  logger StartPostgres
-  pidLock <- newMVar ()
+instance Monoid PartialCommonOptions where
+  mempty = PartialCommonOptions
+    { partialCommonOptionsDbName      = Nothing
+    , partialCommonOptionsDataDir     = Nothing
+    , partialCommonOptionsPort        = Nothing
+    , partialCommonOptionsSocketClass = mempty
+    , partialCommonOptionsLogger      = Nothing
+    }
 
-  let postgresOptions = makePostgresOptions tmpCmdLineOptions dataDir port
-      createDBResult = do
-        thePid <- runPostgres stdOut stdErr postgresOptions
-        pid <- newIORef $ Just thePid
-        pure $ DB mainDir (mkOptions tmpDbName) tmpCmdLineOptions stdErr stdOut pidLock port socketClass pid
+data CommonInput = CommonInput
+  { commonInputDbName      :: String
+  , commonInputDataDir     :: FilePath
+  , commonInputSocketClass :: SocketClass
+  , commonInputPort        :: Int
+  }
 
+commonOptionsToCommonInput :: CommonOptions -> CommonInput
+commonOptionsToCommonInput CommonOptions {..} = CommonInput
+  { commonInputDbName      = commonOptionsDbName
+  , commonInputDataDir     = commonOptionsDataDir
+  , commonInputSocketClass = commonOptionsSocketClass
+  , commonInputPort        = commonOptionsPort
+  }
+
+startPartialCommonOptions :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
+startPartialCommonOptions PartialCommonOptions {..} f = do
+  commonOptionsPort <- maybe getFreePort pure partialCommonOptionsPort
+
+  let commonOptionsDbName = fromMaybe "test" partialCommonOptionsDbName
+      commonOptionsLogger = fromMaybe (const $ pure ()) partialCommonOptionsLogger
+      (dirCreate, dirDelete) = case partialCommonOptionsDataDir of
+        Nothing -> (createTempDirectory "/tmp" "tmp-postgres-data", rmDirIgnoreErrors)
+        Just x  -> (pure x, const $ pure ())
+
+  bracketOnError dirCreate dirDelete $ \commonOptionsDataDir ->
+    startPartialSocketClass partialCommonOptionsSocketClass $ \commonOptionsSocketClass ->
+      f CommonOptions {..}
+
+evaluatePostgresPlan
+  :: CommonOptions -> PostgresPlan -> IO PostgresProcess
+evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
+  let createDBResult = do
+        thePid  <- evaluateProcess $ postgresPlanOptions
+        pid     <- newIORef $ Just thePid
+        pidLock <- newMVar ()
+        let options = commonOptionsToConnectionOptions common
+            postgresInput = toPostgresInput plan
+        pure PostgresProcess {..}
+
+  commonOptionsLogger StartPostgres
   bracketOnError createDBResult stop $ \result -> do
     let checkForCrash = readIORef (pid result) >>= \case
-          Nothing -> throwIO $ StartPostgresDisappeared postgresOptions
+          -- This should be impossible because we created the pid with a Just.
+          Nothing -> throwIO $ StartPostgresDisappeared $ toPostgresInput plan
+          -- Check the exit code on the pid
           Just thePid -> do
             mExitCode <- getProcessExitCode thePid
-            for_ mExitCode (throwIO . StartPostgresFailed postgresOptions)
+            for_ mExitCode (throwIO . StartPostgresFailed (toPostgresInput plan))
 
-    logger WaitForDB
-    waitForDB (mkOptions "template1") `race_`
-      forever (checkForCrash >> threadDelay 100000)
+    commonOptionsLogger WaitForDB
+    let connOpts = (commonOptionsToConnectionOptions common)
+          { PostgresClient.oDbname = "template1"
+          }
+    waitForDB connOpts `race_` forever (checkForCrash >> threadDelay 100000)
 
-    logger CreateDB
-    let createDBHostArgs = case socketClass of
-          Unix -> ["-h", mainDir]
-          Localhost -> ["-h", "127.0.0.1"]
-
-        createDBUserArg = maybe [] (\u->["--username="++u]) user
-        createDBArgs = createDBHostArgs ++ ["-p", show port, tmpDbName] ++ createDBUserArg
-    throwIfError (CreateDBFailed createDBArgs) =<<
-      runProcessWith stdOut stdErr "createDB" "createdb" createDBArgs
-
-    logger Finished
     return result
 
--- | Start postgres and log it's all stdout to {'mainDir'}\/output.txt and {'mainDir'}\/error.txt
-startAndLogToTmp :: Options
-                 -- ^ Extra options which override the defaults
-                 -> IO (Either StartError DB)
-startAndLogToTmp options = do
-  mainDir <- createTempDirectory "/tmp" "tmp-postgres"
+data Plan = Plan
+  { planCommonOptions :: PartialCommonOptions
+  , planInitDb        :: Maybe PartialProcessOptions
+  , planCreateDb      :: Maybe PartialProcessOptions
+  , planPostgres      :: PartialPostgresPlan
+  }
+  deriving stock (Generic)
+  deriving Semigroup via GenericSemigroup Plan
+  deriving Monoid    via GenericMonoid Plan
 
-  stdOutFile <- openFile (mainDir ++ "/" ++ "output.txt") WriteMode
-  stdErrFile <- openFile (mainDir ++ "/" ++ "error.txt") WriteMode
+data DB = DB
+  { dbCommonInput     :: CommonInput
+  , dbPostgresProcess :: PostgresProcess
+  , dbInitDbInput     :: Maybe ProcessInput
+  , dbCreateDbInput   :: Maybe ProcessInput
+  }
 
-  startWithHandlesAndDir Unix options mainDir stdOutFile stdErrFile
+addConnectionParams :: PostgresClient.Options -> ProcessOptions -> ProcessOptions
+addConnectionParams = error "addConnectionParams"
 
--- | Force all connections to the database to close. Can be useful in some testing situations.
---   Called during shutdown as well.
-terminateConnections :: DB -> IO ()
-terminateConnections db@DB {..} = do
-  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack $ connectionString db)
-          PG.close
-          $ \conn -> do
-            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
-            void $ PG.execute conn q [Options.oDbname options]
-  case e of
-    Left (_ :: IOError) -> pure () -- expected
-    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
+throwMaybe :: Exception e => e -> Maybe a -> IO a
+throwMaybe e = \case
+  Nothing -> throwIO e
+  Just  x -> pure x
 
--- | Stop postgres and clean up the temporary database folder.
-stop :: DB -> IO (Maybe ExitCode)
-stop db@DB {..} = do
-  result <- stopPostgres db
-  removeDirectoryRecursive mainDir
-  return result
+initDbDefaultCommandLineOptions :: CommonOptions -> [String]
+initDbDefaultCommandLineOptions CommonOptions {..} =
+  let strArgs = (\(a,b) -> "--" <> a <> "=" <> b) <$>
+        [ ("pgdata"  , commonOptionsDataDir)
+        ]
+  in "--nosync" : strArgs
 
-data InitDbOptions = InitDbOptions
-  { initDbUser               :: Maybe String
-  , initDbEncoding           :: Maybe String
-  , initDbAuth               :: Maybe String
-  , initDbPgData             :: Maybe String
-  , initDbNoSync             :: Bool
-  , initDbDebug              :: Bool
-  , initDbExtraOptions       :: [String]
-  } deriving (Show, Eq, Read, Ord, Generic, Typeable)
+defaultInitDbOptions :: CommonOptions -> PartialProcessOptions
+defaultInitDbOptions commonOptions = mempty
+    { partialProcessOptionsCmdLine = Replace $ initDbDefaultCommandLineOptions commonOptions
+    , partialProcessOptionsName    = pure "initdb"
+    }
 
-defaultInitDbOptions :: InitDbOptions
-defaultInitDbOptions = InitDbOptions {
-   initDbUser = Nothing
- , initDbEncoding = Just "UNICODE"
- , initDbAuth = Just "trust"
- , initDbPgData = Nothing
- , initDbNoSync = True
- , initDbDebug = False
- , initDbExtraOptions = []
-}
+executeInitDb :: CommonOptions -> PartialProcessOptions -> IO ProcessInput
+executeInitDb commonOptions userOptions = do
+  let defs = defaultInitDbOptions commonOptions
+  completeOptions <- throwMaybe InitDbCompleteOptions $ completeProcessOptions $
+    userOptions <> defs
 
-initDbToCommandLingArgs :: InitDbOptions -> [String]
-initDbToCommandLingArgs InitDbOptions {..} = strArgs <> boolArgs <> initDbExtraOptions
-  where
-  strArgs = fmap (\(a,b) -> "--" <> a <> "=" <> b) . catMaybes $ strength <$>
-    [ ("username", initDbUser)
-    , ("encoding", initDbEncoding)
-    , ("auth", initDbAuth)
-    , ("pgdata", initDbPgData)
-    ]
-  boolArgs = fmap fst . filter snd $
-    [ ("--nosync", initDbNoSync)
-    , ("--debug", initDbDebug) ]
+  pure $ toProcessInput completeOptions
 
-  strength :: Functor f => (a, f b) -> f (a, b)
-  strength (a, fb) = (a,) <$> fb
+createDbDefaultCommandLineOptions :: CommonOptions -> [String]
+createDbDefaultCommandLineOptions CommonOptions {..} =
+  let strArgs = (\(a,b) -> a <> "=" <> b) <$>
+        [ ("-h", socketClassToHost commonOptionsSocketClass)
+        , ("-p", show commonOptionsPort)
+        ]
+  in strArgs <> [commonOptionsDbName]
+
+defaultCreateDbOptions :: CommonOptions -> PartialProcessOptions
+defaultCreateDbOptions commonOptions = mempty
+    { partialProcessOptionsCmdLine = Replace $ createDbDefaultCommandLineOptions commonOptions
+    , partialProcessOptionsName    = pure "createdb"
+    }
+
+executeCreateDb :: CommonOptions -> PartialProcessOptions -> IO ProcessInput
+executeCreateDb commonOptions userOptions = do
+  let defs = defaultCreateDbOptions commonOptions
+  completeOptions <- throwMaybe CreateDbCompleteOptions $ completeProcessOptions $
+    userOptions <> defs
+
+  pure $ toProcessInput completeOptions
+
+
+startWith :: Plan -> IO (Either StartError DB)
+startWith Plan {..} = startPartialCommonOptions planCommonOptions $
+  \commonOptions@CommonOptions {..} -> try $ do
+    initDbOutput <- for planInitDb $ executeInitDb commonOptions
+    postgresPlan <- throwMaybe PostgresCompleteOptions $ completePostgresPlan $
+      planPostgres <> defaultPostgresPlan commonOptions
+    bracketOnError (evaluatePostgresPlan commonOptions postgresPlan) stop $ \result -> do
+      createDbOutput <- for planCreateDb $ executeCreateDb commonOptions
+
+      pure $ DB
+        { dbCommonInput     = commonOptionsToCommonInput commonOptions
+        , dbPostgresProcess = result
+        , dbInitDbInput     = initDbOutput
+        , dbCreateDbInput   = createDbOutput
+        }
+
+
+-- | Send the SIGHUP signal to the postgres process to start a config reload
+reloadConfig :: DB -> IO ()
+reloadConfig DB {..} = do
+  let PostgresProcess {..} = dbPostgresProcess
+  mHandle <- readIORef pid
+  for_ mHandle $ \theHandle -> do
+    mPid <- getPid theHandle
+    for_ mPid $ signalProcess sigHUP
+

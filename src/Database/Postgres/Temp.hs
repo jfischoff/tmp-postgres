@@ -25,6 +25,7 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 
 
 -}
+{-
 module Database.Postgres.Temp
   ( -- * Types
     DB (..)
@@ -47,6 +48,11 @@ module Database.Postgres.Temp
   -- * Reloading the config
   , reloadConfig
   , SocketClass (..)
+  ) where
+import Database.Postgres.Temp.Internal
+-}
+module Database.Postgres.Temp
+  ( module Database.Postgres.Temp.Internal
   ) where
 import Database.Postgres.Temp.Internal
 

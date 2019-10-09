@@ -52,6 +52,7 @@ library
                , postgres-options
                , port-utils
                , async
+               , generic-monoid
   ghc-options: -Wall
   default-language:    Haskell2010
 
