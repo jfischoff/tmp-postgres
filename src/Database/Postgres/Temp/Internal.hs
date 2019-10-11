@@ -92,12 +92,6 @@ data ProcessOptions = ProcessOptions
   , processOptionsName    :: String
   }
 
-data ProcessInput = ProcessInput
-  { processInputEnvVars :: [(String, String)]
-  , processInputCmdLine :: [String]
-  , processInputName    :: String
-  } deriving (Show, Eq, Ord)
-
 completeProcessOptions :: PartialProcessOptions -> Maybe ProcessOptions
 completeProcessOptions PartialProcessOptions {..} = do
   processOptionsName <- getLast partialProcessOptionsName
@@ -112,6 +106,12 @@ completeProcessOptions PartialProcessOptions {..} = do
   processOptionsStdErr <- getLast partialProcessOptionsStdErr
 
   pure ProcessOptions {..}
+
+data ProcessInput = ProcessInput
+  { processInputEnvVars :: [(String, String)]
+  , processInputCmdLine :: [String]
+  , processInputName    :: String
+  } deriving (Show, Eq, Ord)
 
 -- envs might not be true
 toProcessInput :: ProcessOptions -> ProcessInput
@@ -137,6 +137,9 @@ evaluateProcess ProcessOptions {..} = fmap fourth $
 executeProcess :: ProcessOptions -> IO ExitCode
 executeProcess = waitForProcess <=< evaluateProcess
 
+-------------------------------------------------------------------------------
+-- PostgresPlan
+-------------------------------------------------------------------------------
 data PartialPostgresPlan = PartialPostgresPlan
   { partialPostgresPlanConfig  :: Lastoid String
   , partialPostgresPlanOptions :: PartialProcessOptions
@@ -165,6 +168,11 @@ defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
       }
   }
 
+data PostgresPlan = PostgresPlan
+  { postgresPlanConfig  :: String
+  , postgresPlanOptions :: ProcessOptions
+  }
+
 completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
 completePostgresPlan PartialPostgresPlan {..} = do
   postgresPlanConfig <- case partialPostgresPlanConfig of
@@ -174,11 +182,6 @@ completePostgresPlan PartialPostgresPlan {..} = do
   postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
 
   pure PostgresPlan {..}
-
-data PostgresPlan = PostgresPlan
-  { postgresPlanConfig  :: String
-  , postgresPlanOptions :: ProcessOptions
-  }
 
 data PostgresInput = PostgresInput
   { postgresOptionsProcessOptions :: ProcessInput
@@ -508,6 +511,8 @@ startWith Plan {..} = startPartialCommonOptions planCommonOptions $
         , dbCreateDbInput   = createDbOutput
         }
 
+start :: IO (Either StartError DB)
+start = startWith mempty
 
 -- | Send the SIGHUP signal to the postgres process to start a config reload
 reloadConfig :: DB -> IO ()
@@ -517,4 +522,3 @@ reloadConfig DB {..} = do
   for_ mHandle $ \theHandle -> do
     mPid <- getPid theHandle
     for_ mPid $ signalProcess sigHUP
-
