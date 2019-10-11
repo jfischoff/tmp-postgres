@@ -31,6 +31,11 @@ import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import System.Environment
 
+throwMaybe :: Exception e => e -> Maybe a -> IO a
+throwMaybe e = \case
+  Nothing -> throwIO e
+  Just  x -> pure x
+
 waitForDB :: PostgresClient.Options -> IO ()
 waitForDB options = do
   let theConnectionString = PostgresClient.toConnectionString options
@@ -138,120 +143,8 @@ executeProcess :: ProcessOptions -> IO ExitCode
 executeProcess = waitForProcess <=< evaluateProcess
 
 -------------------------------------------------------------------------------
--- PostgresPlan
+-- Events and Exceptions
 -------------------------------------------------------------------------------
-data PartialPostgresPlan = PartialPostgresPlan
-  { partialPostgresPlanConfig  :: Lastoid String
-  , partialPostgresPlanOptions :: PartialProcessOptions
-  } deriving stock (Generic)
-    deriving Semigroup via GenericSemigroup PartialPostgresPlan
-    deriving Monoid    via GenericMonoid PartialPostgresPlan
-
-defaultConfig :: [String]
-defaultConfig =
-  [ "shared_buffers = 12MB"
-  , "fsync = off"
-  , "synchronous_commit = off"
-  , "full_page_writes = off"
-  , "log_min_duration_statement = 0"
-  , "log_connections = on"
-  , "log_disconnections = on"
-  , "client_min_messages = ERROR"
-  ]
-
-defaultPostgresPlan :: CommonOptions -> PartialPostgresPlan
-defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
-  { partialPostgresPlanConfig  = Replace $ unlines $
-      defaultConfig <> listenAddressConfig commonOptionsSocketClass
-  , partialPostgresPlanOptions = mempty
-      { partialProcessOptionsName = pure "postgres"
-      }
-  }
-
-data PostgresPlan = PostgresPlan
-  { postgresPlanConfig  :: String
-  , postgresPlanOptions :: ProcessOptions
-  }
-
-completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
-completePostgresPlan PartialPostgresPlan {..} = do
-  postgresPlanConfig <- case partialPostgresPlanConfig of
-    Mappend _ -> Nothing
-    Replace x -> Just x
-
-  postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
-
-  pure PostgresPlan {..}
-
-data PostgresInput = PostgresInput
-  { postgresOptionsProcessOptions :: ProcessInput
-  , postgresOptionsConfig  :: String
-  } deriving (Show, Eq, Ord)
-
-toPostgresInput :: PostgresPlan -> PostgresInput
-toPostgresInput PostgresPlan {..} = PostgresInput
-  { postgresOptionsProcessOptions = toProcessInput postgresPlanOptions
-  , postgresOptionsConfig  = postgresPlanConfig
-  }
-
-data PostgresProcess = PostgresProcess
-  { pidLock :: MVar ()
-  -- ^ A lock used internally to makes sure access to 'pid' is serialized
-  , pid :: IORef (Maybe ProcessHandle)
-  -- ^ The process handle for the @postgres@ process.
-  , options         :: PostgresClient.Options
-  , postgresInput   :: PostgresInput
-  }
-
-connectionString :: PostgresProcess -> String
-connectionString = BSC.unpack . PostgresClient.toConnectionString . options
-
--- | Force all connections to the database to close. Can be useful in some testing situations.
---   Called during shutdown as well.
-terminateConnections :: PostgresProcess -> IO ()
-terminateConnections db@PostgresProcess {..} = do
-  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack $ connectionString db)
-          PG.close
-          $ \conn -> do
-            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
-            void $ PG.execute conn q [PostgresClient.oDbname options]
-  case e of
-    Left (_ :: IOError) -> pure () -- expected
-    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
-
-commonOptionsToConnectionOptions :: CommonOptions -> Maybe PostgresClient.Options
-commonOptionsToConnectionOptions CommonOptions {..}
-  = either (const Nothing) pure
-  $ Client.completeOptions
-  $  commonOptionsClientOptions
-  <> ( mempty
-       { Client.host   = pure $ socketClassToHost commonOptionsSocketClass
-       , Client.port   = pure commonOptionsPort
-       , Client.dbname = pure commonOptionsDbName
-       }
-     )
-
--- | Stop the postgres process. This function attempts to the 'pidLock' before running.
---   'stopPostgres' will terminate all connections before shutting down postgres.
---   'stopPostgres' is useful for testing backup strategies.
-stop :: PostgresProcess -> IO (Maybe ExitCode)
-stop db@PostgresProcess{..} = withLock pidLock $ readIORef pid >>= \case
-  Nothing -> pure Nothing
-  Just pHandle -> do
-    withProcessHandle pHandle (\case
-          OpenHandle p   -> do
-            -- try to terminate the connects first. If we can't terminate still
-            -- keep shutting down
-            terminateConnections db
-
-            signalProcess sigINT p
-          OpenExtHandle {} -> pure () -- TODO log windows is not supported
-          ClosedHandle _ -> return ()
-          )
-
-    exitCode <- waitForProcess pHandle
-    writeIORef pid Nothing
-    pure $ Just exitCode
 
 data StartError
   = InitDBFailed   ExitCode
@@ -265,6 +158,20 @@ data StartError
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
+
+data Event
+  = InitDB
+  | WriteConfig
+  | FreePort
+  | StartPostgres
+  | WaitForDB
+  | CreateDB
+  | Finished
+  deriving (Show, Eq, Enum, Bounded, Ord)
+
+-------------------------------------------------------------------------------
+-- PartialSocketClass
+-------------------------------------------------------------------------------
 
 data PartialSocketClass = PIpSocket (Maybe String) | PUnixSocket (Maybe FilePath)
   deriving stock (Show, Eq, Read, Ord, Generic, Typeable)
@@ -304,15 +211,9 @@ startPartialSocketClass theClass f = case theClass of
           Just x  -> (pure x, const $ pure ())
     bracketOnError dirCreate dirDelete $ \socketPath -> f $ UnixSocket socketPath
 
-data Event
-  = InitDB
-  | WriteConfig
-  | FreePort
-  | StartPostgres
-  | WaitForDB
-  | CreateDB
-  | Finished
-  deriving (Show, Eq, Enum, Bounded, Ord)
+-------------------------------------------------------------------------------
+-- CommonOptions
+-------------------------------------------------------------------------------
 
 rmDirIgnoreErrors :: FilePath -> IO ()
 rmDirIgnoreErrors mainDir =
@@ -378,6 +279,18 @@ commonOptionsToCommonInput CommonOptions {..} = CommonInput
   , commonInputPort        = commonOptionsPort
   }
 
+commonOptionsToConnectionOptions :: CommonOptions -> Maybe PostgresClient.Options
+commonOptionsToConnectionOptions CommonOptions {..}
+  = either (const Nothing) pure
+  $ Client.completeOptions
+  $  commonOptionsClientOptions
+  <> ( mempty
+        { Client.host   = pure $ socketClassToHost commonOptionsSocketClass
+        , Client.port   = pure commonOptionsPort
+        , Client.dbname = pure commonOptionsDbName
+        }
+      )
+
 startPartialCommonOptions :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
 startPartialCommonOptions PartialCommonOptions {..} f = do
   commonOptionsPort <- maybe getFreePort pure partialCommonOptionsPort
@@ -393,6 +306,111 @@ startPartialCommonOptions PartialCommonOptions {..} f = do
     startPartialSocketClass partialCommonOptionsSocketClass $ \commonOptionsSocketClass ->
       f CommonOptions {..}
 
+-- TODO stopPartialCommonOptions
+
+-------------------------------------------------------------------------------
+-- PostgresPlan
+-------------------------------------------------------------------------------
+data PartialPostgresPlan = PartialPostgresPlan
+  { partialPostgresPlanConfig  :: Lastoid String
+  , partialPostgresPlanOptions :: PartialProcessOptions
+  } deriving stock (Generic)
+    deriving Semigroup via GenericSemigroup PartialPostgresPlan
+    deriving Monoid    via GenericMonoid PartialPostgresPlan
+
+defaultConfig :: [String]
+defaultConfig =
+  [ "shared_buffers = 12MB"
+  , "fsync = off"
+  , "synchronous_commit = off"
+  , "full_page_writes = off"
+  , "log_min_duration_statement = 0"
+  , "log_connections = on"
+  , "log_disconnections = on"
+  , "client_min_messages = ERROR"
+  ]
+
+defaultPostgresPlan :: CommonOptions -> PartialPostgresPlan
+defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
+  { partialPostgresPlanConfig  = Replace $ unlines $
+      defaultConfig <> listenAddressConfig commonOptionsSocketClass
+  , partialPostgresPlanOptions = mempty
+      { partialProcessOptionsName = pure "postgres"
+      }
+  }
+
+data PostgresPlan = PostgresPlan
+  { postgresPlanConfig  :: String
+  , postgresPlanOptions :: ProcessOptions
+  }
+
+completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
+completePostgresPlan PartialPostgresPlan {..} = do
+  postgresPlanConfig <- case partialPostgresPlanConfig of
+    Mappend _ -> Nothing
+    Replace x -> Just x
+
+  postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
+
+  pure PostgresPlan {..}
+
+data PostgresInput = PostgresInput
+  { postgresOptionsProcessOptions :: ProcessInput
+  , postgresOptionsConfig  :: String
+  } deriving (Show, Eq, Ord)
+
+toPostgresInput :: PostgresPlan -> PostgresInput
+toPostgresInput PostgresPlan {..} = PostgresInput
+  { postgresOptionsProcessOptions = toProcessInput postgresPlanOptions
+  , postgresOptionsConfig  = postgresPlanConfig
+  }
+
+data PostgresProcess = PostgresProcess
+  { pidLock :: MVar ()
+  -- ^ A lock used internally to makes sure access to 'pid' is serialized
+  , pid :: IORef (Maybe ProcessHandle)
+  -- ^ The process handle for the @postgres@ process.
+  , options         :: PostgresClient.Options
+  , postgresInput   :: PostgresInput
+  }
+
+-- | Force all connections to the database to close. Can be useful in some testing situations.
+--   Called during shutdown as well.
+terminateConnections :: PostgresProcess -> IO ()
+terminateConnections PostgresProcess {..} = do
+  let theConnectionString =
+        BSC.unpack . PostgresClient.toConnectionString $ options
+  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack theConnectionString)
+          PG.close
+          $ \conn -> do
+            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
+            void $ PG.execute conn q [PostgresClient.oDbname options]
+  case e of
+    Left (_ :: IOError) -> pure () -- expected
+    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
+
+-- | Stop the postgres process. This function attempts to the 'pidLock' before running.
+--   'stopPostgres' will terminate all connections before shutting down postgres.
+--   'stopPostgres' is useful for testing backup strategies.
+stopPostgres :: PostgresProcess -> IO (Maybe ExitCode)
+stopPostgres db@PostgresProcess{..} = withLock pidLock $ readIORef pid >>= \case
+  Nothing -> pure Nothing
+  Just pHandle -> do
+    withProcessHandle pHandle (\case
+          OpenHandle p   -> do
+            -- try to terminate the connects first. If we can't terminate still
+            -- keep shutting down
+            terminateConnections db
+
+            signalProcess sigINT p
+          OpenExtHandle {} -> pure () -- TODO log windows is not supported
+          ClosedHandle _ -> return ()
+          )
+
+    exitCode <- waitForProcess pHandle
+    writeIORef pid Nothing
+    pure $ Just exitCode
+
 evaluatePostgresPlan
   :: CommonOptions -> PostgresPlan -> IO PostgresProcess
 evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
@@ -406,7 +424,7 @@ evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
         pure PostgresProcess {..}
 
   commonOptionsLogger StartPostgres
-  bracketOnError createDBResult stop $ \result -> do
+  bracketOnError createDBResult stopPostgres $ \result -> do
     let checkForCrash = readIORef (pid result) >>= \case
           -- This should be impossible because we created the pid with a Just.
           Nothing -> throwIO $ StartPostgresDisappeared $ toPostgresInput plan
@@ -422,7 +440,9 @@ evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
     waitForDB connOpts `race_` forever (checkForCrash >> threadDelay 100000)
 
     return result
-
+-------------------------------------------------------------------------------
+-- Plan
+-------------------------------------------------------------------------------
 data Plan = Plan
   { planCommonOptions :: PartialCommonOptions
   , planInitDb        :: Maybe PartialProcessOptions
@@ -442,11 +462,6 @@ data DB = DB
 
 addConnectionParams :: PostgresClient.Options -> ProcessOptions -> ProcessOptions
 addConnectionParams = error "addConnectionParams"
-
-throwMaybe :: Exception e => e -> Maybe a -> IO a
-throwMaybe e = \case
-  Nothing -> throwIO e
-  Just  x -> pure x
 
 initDbDefaultCommandLineOptions :: CommonOptions -> [String]
 initDbDefaultCommandLineOptions CommonOptions {..} =
@@ -501,7 +516,7 @@ startWith Plan {..} = startPartialCommonOptions planCommonOptions $
     initDbOutput <- for planInitDb $ executeInitDb commonOptions
     postgresPlan <- throwMaybe PostgresCompleteOptions $ completePostgresPlan $
       planPostgres <> defaultPostgresPlan commonOptions
-    bracketOnError (evaluatePostgresPlan commonOptions postgresPlan) stop $ \result -> do
+    bracketOnError (evaluatePostgresPlan commonOptions postgresPlan) stopPostgres $ \result -> do
       createDbOutput <- for planCreateDb $ executeCreateDb commonOptions
 
       pure $ DB
