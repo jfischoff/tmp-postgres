@@ -28,6 +28,8 @@ import Data.Traversable (for)
 import Data.Monoid
 import Data.Monoid.Generic
 import Control.Applicative
+import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import System.Environment
 
 waitForDB :: PostgresClient.Options -> IO ()
 waitForDB options = do
@@ -71,23 +73,45 @@ data PartialProcessOptions = PartialProcessOptions
   deriving Semigroup via GenericSemigroup PartialProcessOptions
   deriving Monoid    via GenericMonoid PartialProcessOptions
 
+standardProcessOptions :: IO PartialProcessOptions
+standardProcessOptions = do
+  env <- getEnvironment
+  pure mempty
+    { partialProcessOptionsEnvVars = Replace env
+    , partialProcessOptionsStdIn   = pure stdin
+    , partialProcessOptionsStdOut  = pure stdout
+    , partialProcessOptionsStdErr  = pure stderr
+    }
+
 data ProcessOptions = ProcessOptions
-  { processOptionsEnvVars :: Maybe [(String, String)]
+  { processOptionsEnvVars :: [(String, String)]
   , processOptionsCmdLine :: [String]
-  , processOptionsStdIn   :: Maybe Handle
-  , processOptionsStdOut  :: Maybe Handle
-  , processOptionsStdErr  :: Maybe Handle
+  , processOptionsStdIn   :: Handle
+  , processOptionsStdOut  :: Handle
+  , processOptionsStdErr  :: Handle
   , processOptionsName    :: String
   }
 
 data ProcessInput = ProcessInput
-  { processInputEnvVars :: Maybe [(String, String)]
+  { processInputEnvVars :: [(String, String)]
   , processInputCmdLine :: [String]
   , processInputName    :: String
   } deriving (Show, Eq, Ord)
 
 completeProcessOptions :: PartialProcessOptions -> Maybe ProcessOptions
-completeProcessOptions = error "completeProcessOptions"
+completeProcessOptions PartialProcessOptions {..} = do
+  processOptionsName <- getLast partialProcessOptionsName
+  processOptionsEnvVars <- case partialProcessOptionsEnvVars of
+    Replace x -> Just x
+    Mappend _ -> Nothing
+  processOptionsCmdLine <- case partialProcessOptionsCmdLine of
+    Replace x -> pure x
+    Mappend _ -> Nothing
+  processOptionsStdIn  <- getLast partialProcessOptionsStdIn
+  processOptionsStdOut <- getLast partialProcessOptionsStdOut
+  processOptionsStdErr <- getLast partialProcessOptionsStdErr
+
+  pure ProcessOptions {..}
 
 -- envs might not be true
 toProcessInput :: ProcessOptions -> ProcessInput
@@ -104,10 +128,10 @@ evaluateProcess :: ProcessOptions -> IO ProcessHandle
 evaluateProcess ProcessOptions {..} = fmap fourth $
   createProcess_ processOptionsName $
     (proc processOptionsName processOptionsCmdLine)
-      { std_err = UseHandle $ fromMaybe stderr processOptionsStdErr
-      , std_out = UseHandle $ fromMaybe stdout processOptionsStdOut
-      , std_in  = UseHandle $ fromMaybe stdin processOptionsStdIn
-      , env     = processOptionsEnvVars
+      { std_err = UseHandle processOptionsStdErr
+      , std_out = UseHandle processOptionsStdOut
+      , std_in  = UseHandle processOptionsStdIn
+      , env     = Just processOptionsEnvVars
       }
 
 executeProcess :: ProcessOptions -> IO ExitCode
@@ -142,7 +166,14 @@ defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
   }
 
 completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
-completePostgresPlan = error "completePostgresPlan"
+completePostgresPlan PartialPostgresPlan {..} = do
+  postgresPlanConfig <- case partialPostgresPlanConfig of
+    Mappend _ -> Nothing
+    Replace x -> Just x
+
+  postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
+
+  pure PostgresPlan {..}
 
 data PostgresPlan = PostgresPlan
   { postgresPlanConfig  :: String
@@ -185,9 +216,17 @@ terminateConnections db@PostgresProcess {..} = do
     Left (_ :: IOError) -> pure () -- expected
     Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
 
-
-commonOptionsToConnectionOptions :: CommonOptions -> PostgresClient.Options
-commonOptionsToConnectionOptions = error "commonOptionsToConnectionOptions"
+commonOptionsToConnectionOptions :: CommonOptions -> Maybe PostgresClient.Options
+commonOptionsToConnectionOptions CommonOptions {..}
+  = either (const Nothing) pure
+  $ Client.completeOptions
+  $  commonOptionsClientOptions
+  <> ( mempty
+       { Client.host   = pure $ socketClassToHost commonOptionsSocketClass
+       , Client.port   = pure commonOptionsPort
+       , Client.dbname = pure commonOptionsDbName
+       }
+     )
 
 -- | Stop the postgres process. This function attempts to the 'pidLock' before running.
 --   'stopPostgres' will terminate all connections before shutting down postgres.
@@ -219,6 +258,7 @@ data StartError
   | InitDbCompleteOptions
   | CreateDbCompleteOptions
   | PostgresCompleteOptions
+  | ClientCompleteOptions
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -280,15 +320,17 @@ data CommonOptions = CommonOptions
   , commonOptionsDataDir     :: FilePath
   , commonOptionsPort        :: Int
   , commonOptionsSocketClass :: SocketClass
+  , commonOptionsClientOptions :: Client.PartialOptions
   , commonOptionsLogger      :: Event -> IO ()
   }
 
 data PartialCommonOptions = PartialCommonOptions
-  { partialCommonOptionsDbName      :: Maybe String
-  , partialCommonOptionsDataDir     :: Maybe FilePath
-  , partialCommonOptionsPort        :: Maybe Int
-  , partialCommonOptionsSocketClass :: PartialSocketClass
-  , partialCommonOptionsLogger      :: Maybe (Event -> IO ())
+  { partialCommonOptionsDbName        :: Maybe String
+  , partialCommonOptionsDataDir       :: Maybe FilePath
+  , partialCommonOptionsPort          :: Maybe Int
+  , partialCommonOptionsSocketClass   :: PartialSocketClass
+  , partialCommonOptionsLogger        :: Maybe (Event -> IO ())
+  , partialCommonOptionsClientOptions :: Client.PartialOptions
   }
   deriving stock (Generic)
 
@@ -304,15 +346,18 @@ instance Semigroup PartialCommonOptions where
         partialCommonOptionsSocketClass x <> partialCommonOptionsSocketClass y
     , partialCommonOptionsLogger      =
         partialCommonOptionsLogger x <|> partialCommonOptionsLogger y
+    , partialCommonOptionsClientOptions =
+      partialCommonOptionsClientOptions x <> partialCommonOptionsClientOptions y
     }
 
 instance Monoid PartialCommonOptions where
   mempty = PartialCommonOptions
-    { partialCommonOptionsDbName      = Nothing
-    , partialCommonOptionsDataDir     = Nothing
-    , partialCommonOptionsPort        = Nothing
-    , partialCommonOptionsSocketClass = mempty
-    , partialCommonOptionsLogger      = Nothing
+    { partialCommonOptionsDbName        = Nothing
+    , partialCommonOptionsDataDir       = Nothing
+    , partialCommonOptionsPort          = Nothing
+    , partialCommonOptionsSocketClass   = mempty
+    , partialCommonOptionsLogger        = Nothing
+    , partialCommonOptionsClientOptions = mempty
     }
 
 data CommonInput = CommonInput
@@ -334,8 +379,9 @@ startPartialCommonOptions :: PartialCommonOptions -> (CommonOptions -> IO a) -> 
 startPartialCommonOptions PartialCommonOptions {..} f = do
   commonOptionsPort <- maybe getFreePort pure partialCommonOptionsPort
 
-  let commonOptionsDbName = fromMaybe "test" partialCommonOptionsDbName
-      commonOptionsLogger = fromMaybe (const $ pure ()) partialCommonOptionsLogger
+  let commonOptionsDbName        = fromMaybe "test" partialCommonOptionsDbName
+      commonOptionsLogger        = fromMaybe (const $ pure ()) partialCommonOptionsLogger
+      commonOptionsClientOptions = partialCommonOptionsClientOptions
       (dirCreate, dirDelete) = case partialCommonOptionsDataDir of
         Nothing -> (createTempDirectory "/tmp" "tmp-postgres-data", rmDirIgnoreErrors)
         Just x  -> (pure x, const $ pure ())
@@ -347,12 +393,13 @@ startPartialCommonOptions PartialCommonOptions {..} f = do
 evaluatePostgresPlan
   :: CommonOptions -> PostgresPlan -> IO PostgresProcess
 evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
+  options <- throwMaybe ClientCompleteOptions $ commonOptionsToConnectionOptions common
   let createDBResult = do
         thePid  <- evaluateProcess $ postgresPlanOptions
         pid     <- newIORef $ Just thePid
         pidLock <- newMVar ()
-        let options = commonOptionsToConnectionOptions common
-            postgresInput = toPostgresInput plan
+
+        let postgresInput = toPostgresInput plan
         pure PostgresProcess {..}
 
   commonOptionsLogger StartPostgres
@@ -366,7 +413,7 @@ evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
             for_ mExitCode (throwIO . StartPostgresFailed (toPostgresInput plan))
 
     commonOptionsLogger WaitForDB
-    let connOpts = (commonOptionsToConnectionOptions common)
+    let connOpts = options
           { PostgresClient.oDbname = "template1"
           }
     waitForDB connOpts `race_` forever (checkForCrash >> threadDelay 100000)
@@ -405,15 +452,17 @@ initDbDefaultCommandLineOptions CommonOptions {..} =
         ]
   in "--nosync" : strArgs
 
-defaultInitDbOptions :: CommonOptions -> PartialProcessOptions
-defaultInitDbOptions commonOptions = mempty
+defaultInitDbOptions :: CommonOptions -> IO PartialProcessOptions
+defaultInitDbOptions commonOptions = do
+  def <- standardProcessOptions
+  pure $ def
     { partialProcessOptionsCmdLine = Replace $ initDbDefaultCommandLineOptions commonOptions
     , partialProcessOptionsName    = pure "initdb"
     }
 
 executeInitDb :: CommonOptions -> PartialProcessOptions -> IO ProcessInput
 executeInitDb commonOptions userOptions = do
-  let defs = defaultInitDbOptions commonOptions
+  defs <- defaultInitDbOptions commonOptions
   completeOptions <- throwMaybe InitDbCompleteOptions $ completeProcessOptions $
     userOptions <> defs
 
@@ -427,20 +476,21 @@ createDbDefaultCommandLineOptions CommonOptions {..} =
         ]
   in strArgs <> [commonOptionsDbName]
 
-defaultCreateDbOptions :: CommonOptions -> PartialProcessOptions
-defaultCreateDbOptions commonOptions = mempty
+defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
+defaultCreateDbOptions commonOptions = do
+  def <- standardProcessOptions
+  pure $ def
     { partialProcessOptionsCmdLine = Replace $ createDbDefaultCommandLineOptions commonOptions
     , partialProcessOptionsName    = pure "createdb"
     }
 
 executeCreateDb :: CommonOptions -> PartialProcessOptions -> IO ProcessInput
 executeCreateDb commonOptions userOptions = do
-  let defs = defaultCreateDbOptions commonOptions
+  defs <- defaultCreateDbOptions commonOptions
   completeOptions <- throwMaybe CreateDbCompleteOptions $ completeProcessOptions $
     userOptions <> defs
 
   pure $ toProcessInput completeOptions
-
 
 startWith :: Plan -> IO (Either StartError DB)
 startWith Plan {..} = startPartialCommonOptions planCommonOptions $
