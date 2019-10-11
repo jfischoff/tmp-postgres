@@ -460,21 +460,12 @@ data DB = DB
   , dbCreateDbInput   :: Maybe ProcessInput
   }
 
-addConnectionParams :: PostgresClient.Options -> ProcessOptions -> ProcessOptions
-addConnectionParams = error "addConnectionParams"
-
-initDbDefaultCommandLineOptions :: CommonOptions -> [String]
-initDbDefaultCommandLineOptions CommonOptions {..} =
-  let strArgs = (\(a,b) -> "--" <> a <> "=" <> b) <$>
-        [ ("pgdata"  , commonOptionsDataDir)
-        ]
-  in "--nosync" : strArgs
-
 defaultInitDbOptions :: CommonOptions -> IO PartialProcessOptions
-defaultInitDbOptions commonOptions = do
+defaultInitDbOptions CommonOptions {..} = do
   def <- standardProcessOptions
   pure $ def
-    { partialProcessOptionsCmdLine = Replace $ initDbDefaultCommandLineOptions commonOptions
+    { partialProcessOptionsCmdLine = Replace $
+        "--nosync" : ["--pgdata=" <> commonOptionsDataDir]
     , partialProcessOptionsName    = pure "initdb"
     }
 
@@ -486,19 +477,15 @@ executeInitDb commonOptions userOptions = do
 
   pure $ toProcessInput completeOptions
 
-createDbDefaultCommandLineOptions :: CommonOptions -> [String]
-createDbDefaultCommandLineOptions CommonOptions {..} =
+defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
+defaultCreateDbOptions CommonOptions {..} = do
   let strArgs = (\(a,b) -> a <> "=" <> b) <$>
         [ ("-h", socketClassToHost commonOptionsSocketClass)
         , ("-p", show commonOptionsPort)
         ]
-  in strArgs <> [commonOptionsDbName]
-
-defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
-defaultCreateDbOptions commonOptions = do
   def <- standardProcessOptions
   pure $ def
-    { partialProcessOptionsCmdLine = Replace $ createDbDefaultCommandLineOptions commonOptions
+    { partialProcessOptionsCmdLine = Replace $ strArgs <> [commonOptionsDbName]
     , partialProcessOptionsName    = pure "createdb"
     }
 
