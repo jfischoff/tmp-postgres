@@ -306,7 +306,8 @@ startPartialCommonOptions PartialCommonOptions {..} f = do
     startPartialSocketClass partialCommonOptionsSocketClass $ \commonOptionsSocketClass ->
       f CommonOptions {..}
 
--- TODO stopPartialCommonOptions
+stopPartialCommonOptions :: PartialCommonOptions -> IO ()
+stopPartialCommonOptions = error "stopPartialCommonOptions"
 
 -------------------------------------------------------------------------------
 -- PostgresPlan
@@ -458,6 +459,7 @@ data DB = DB
   , dbPostgresProcess :: PostgresProcess
   , dbInitDbInput     :: Maybe ProcessInput
   , dbCreateDbInput   :: Maybe ProcessInput
+  , dbOriginalOptions :: PartialCommonOptions
   }
 
 defaultInitDbOptions :: CommonOptions -> IO PartialProcessOptions
@@ -511,10 +513,16 @@ startWith Plan {..} = startPartialCommonOptions planCommonOptions $
         , dbPostgresProcess = result
         , dbInitDbInput     = initDbOutput
         , dbCreateDbInput   = createDbOutput
+        , dbOriginalOptions = planCommonOptions
         }
 
 start :: IO (Either StartError DB)
 start = startWith mempty
+
+stop :: DB -> IO ()
+stop DB {..} = do
+  void $ stopPostgres dbPostgresProcess
+  stopPartialCommonOptions dbOriginalOptions
 
 -- | Send the SIGHUP signal to the postgres process to start a config reload
 reloadConfig :: DB -> IO ()
