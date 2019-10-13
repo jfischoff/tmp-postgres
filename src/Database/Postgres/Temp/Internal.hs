@@ -31,23 +31,28 @@ import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import System.Environment
 
+fourth :: (a, b, c, d) -> d
+fourth (_, _, _, x) = x
+
 throwMaybe :: Exception e => e -> Maybe a -> IO a
 throwMaybe e = \case
   Nothing -> throwIO e
   Just  x -> pure x
 
-waitForDB :: PostgresClient.Options -> IO ()
-waitForDB options = do
-  let theConnectionString = PostgresClient.toConnectionString options
-  eresult <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $ \_ -> return ()
-  case eresult of
-    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
-    Right _ -> return ()
-
 -- A helper for dealing with locks
 withLock :: MVar a -> IO b -> IO b
 withLock m f = withMVar m (const f)
 
+rmDirIgnoreErrors :: FilePath -> IO ()
+rmDirIgnoreErrors mainDir =
+  removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
+
+waitForDB :: PostgresClient.Options -> IO ()
+waitForDB options = do
+  let theConnectionString = PostgresClient.toConnectionString options
+  try (bracket (PG.connectPostgreSQL theConnectionString) PG.close mempty) >>= \case
+    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
+    Right () -> return ()
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
@@ -62,9 +67,8 @@ instance Semigroup a => Semigroup (Lastoid a) where
 instance Monoid a => Monoid (Lastoid a) where
   mempty = Mappend mempty
   mappend = (<>)
-
 -------------------------------------------------------------------------------
--- ProcessOptions
+-- PartialProcessOptions
 -------------------------------------------------------------------------------
 data PartialProcessOptions = PartialProcessOptions
   { partialProcessOptionsEnvVars :: Lastoid [(String, String)]
@@ -87,7 +91,9 @@ standardProcessOptions = do
     , partialProcessOptionsStdOut  = pure stdout
     , partialProcessOptionsStdErr  = pure stderr
     }
-
+-------------------------------------------------------------------------------
+-- ProcessOptions
+-------------------------------------------------------------------------------
 data ProcessOptions = ProcessOptions
   { processOptionsEnvVars :: [(String, String)]
   , processOptionsCmdLine :: [String]
@@ -111,7 +117,9 @@ completeProcessOptions PartialProcessOptions {..} = do
   processOptionsStdErr <- getLast partialProcessOptionsStdErr
 
   pure ProcessOptions {..}
-
+-------------------------------------------------------------------------------
+-- ProcessInput
+-------------------------------------------------------------------------------
 data ProcessInput = ProcessInput
   { processInputEnvVars :: [(String, String)]
   , processInputCmdLine :: [String]
@@ -126,9 +134,6 @@ toProcessInput ProcessOptions {..} = ProcessInput
   , processInputName    = processOptionsName
   }
 
-fourth :: (a, b, c, d) -> d
-fourth (_, _, _, x) = x
-
 evaluateProcess :: ProcessOptions -> IO ProcessHandle
 evaluateProcess ProcessOptions {..} = fmap fourth $
   createProcess_ processOptionsName $
@@ -141,11 +146,83 @@ evaluateProcess ProcessOptions {..} = fmap fourth $
 
 executeProcess :: ProcessOptions -> IO ExitCode
 executeProcess = waitForProcess <=< evaluateProcess
+-------------------------------------------------------------------------------
+-- DirectoryType
+-------------------------------------------------------------------------------
+data DirectoryType = Permanent FilePath | Temporary FilePath
+  deriving(Show, Eq, Ord)
 
+toFilePath :: DirectoryType -> FilePath
+toFilePath = \case
+  Permanent x -> x
+  Temporary x -> x
+
+initializeDirectoryType :: String -> Maybe FilePath -> IO DirectoryType
+initializeDirectoryType pattern = \case
+  Nothing -> Temporary <$> createTempDirectory "/tmp" pattern
+  Just x  -> pure $ Permanent x
+
+cleanupDirectoryType :: DirectoryType -> IO ()
+cleanupDirectoryType = \case
+  Permanent _ -> pure ()
+  Temporary filePath -> rmDirIgnoreErrors filePath
+-------------------------------------------------------------------------------
+-- PartialSocketClass
+-------------------------------------------------------------------------------
+data PartialSocketClass =
+  PIpSocket (Maybe String) | PUnixSocket (Maybe FilePath)
+    deriving stock (Show, Eq, Read, Ord, Generic, Typeable)
+
+instance Semigroup PartialSocketClass where
+  x <> y = case (x, y) of
+    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <|> b
+    (a@(PIpSocket _), PUnixSocket _) -> a
+    (PUnixSocket _, a@(PIpSocket _)) -> a
+    (PUnixSocket a, PUnixSocket b) -> PUnixSocket $ a <|> b
+
+instance Monoid PartialSocketClass where
+ mempty = PUnixSocket Nothing
+
+isTempSocket :: PartialSocketClass -> Bool
+isTempSocket = \case
+  PUnixSocket mFilePath -> isNothing mFilePath
+  _ -> False
+-------------------------------------------------------------------------------
+-- SocketClass
+-------------------------------------------------------------------------------
+data SocketClass = IpSocket String | UnixSocket DirectoryType
+  deriving (Show, Eq, Ord, Generic, Typeable)
+
+listenAddressConfig :: SocketClass -> [String]
+listenAddressConfig = \case
+  IpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
+  UnixSocket dir ->
+    [ "listen_addresses = ''"
+    , "unix_socket_directories = '" <> toFilePath dir <> "'"
+    ]
+
+socketClassToHost :: SocketClass -> String
+socketClassToHost = \case
+  IpSocket ip    -> ip
+  UnixSocket dir -> toFilePath dir
+
+startPartialSocketClass
+  :: PartialSocketClass
+  -> (SocketClass -> IO a)
+  -> IO a
+startPartialSocketClass theClass f = case theClass of
+  PIpSocket mIp -> f $ IpSocket $ fromMaybe "127.0.0.1" mIp
+  PUnixSocket mFilePath ->
+    bracketOnError (initializeDirectoryType "tmp-postgres-socket" mFilePath)
+      cleanupDirectoryType $ \socketPath -> f $ UnixSocket socketPath
+
+stopSocketOptions :: SocketClass -> IO ()
+stopSocketOptions = \case
+  IpSocket   {}  -> pure ()
+  UnixSocket dir -> cleanupDirectoryType dir
 -------------------------------------------------------------------------------
 -- Events and Exceptions
--------------------------------------------------------------------------------
-
+--------------------------------------------------------------------------------
 data StartError
   = InitDBFailed   ExitCode
   | CreateDBFailed [String] ExitCode
@@ -168,66 +245,9 @@ data Event
   | CreateDB
   | Finished
   deriving (Show, Eq, Enum, Bounded, Ord)
-
 -------------------------------------------------------------------------------
--- PartialSocketClass
+-- PartialCommonOptions
 -------------------------------------------------------------------------------
-
-data PartialSocketClass = PIpSocket (Maybe String) | PUnixSocket (Maybe FilePath)
-  deriving stock (Show, Eq, Read, Ord, Generic, Typeable)
-
-instance Semigroup PartialSocketClass where
-  x <> y = case (x, y) of
-    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <|> b
-    (a@(PIpSocket _), PUnixSocket _) -> a
-    (PUnixSocket _, a@(PIpSocket _)) -> a
-    (PUnixSocket a, PUnixSocket b) -> PUnixSocket $ a <|> b
-
-instance Monoid PartialSocketClass where
-  mempty = PUnixSocket Nothing
-
-data SocketClass = IpSocket String | UnixSocket FilePath
-  deriving (Show, Eq, Read, Ord, Generic, Typeable)
-
-listenAddressConfig :: SocketClass -> [String]
-listenAddressConfig = \case
-  IpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
-  UnixSocket dir ->
-    [ "listen_addresses = ''"
-    , "unix_socket_directories = '" <> dir <> "'"
-    ]
-
-socketClassToHost :: SocketClass -> String
-socketClassToHost = \case
-  IpSocket ip    -> ip
-  UnixSocket dir -> dir
-
-startPartialSocketClass :: PartialSocketClass -> (SocketClass -> IO a) -> IO a
-startPartialSocketClass theClass f = case theClass of
-  PIpSocket mIp -> f $ IpSocket $ fromMaybe "127.0.0.1" mIp
-  PUnixSocket mFilePath -> do
-    let (dirCreate, dirDelete) = case mFilePath of
-          Nothing -> (createTempDirectory "/tmp" "tmp-postgres-socket", rmDirIgnoreErrors)
-          Just x  -> (pure x, const $ pure ())
-    bracketOnError dirCreate dirDelete $ \socketPath -> f $ UnixSocket socketPath
-
--------------------------------------------------------------------------------
--- CommonOptions
--------------------------------------------------------------------------------
-
-rmDirIgnoreErrors :: FilePath -> IO ()
-rmDirIgnoreErrors mainDir =
-  removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
-
-data CommonOptions = CommonOptions
-  { commonOptionsDbName      :: String
-  , commonOptionsDataDir     :: FilePath
-  , commonOptionsPort        :: Int
-  , commonOptionsSocketClass :: SocketClass
-  , commonOptionsClientOptions :: Client.PartialOptions
-  , commonOptionsLogger      :: Event -> IO ()
-  }
-
 data PartialCommonOptions = PartialCommonOptions
   { partialCommonOptionsDbName        :: Maybe String
   , partialCommonOptionsDataDir       :: Maybe FilePath
@@ -263,20 +283,16 @@ instance Monoid PartialCommonOptions where
     , partialCommonOptionsLogger        = Nothing
     , partialCommonOptionsClientOptions = mempty
     }
-
-data CommonInput = CommonInput
-  { commonInputDbName      :: String
-  , commonInputDataDir     :: FilePath
-  , commonInputSocketClass :: SocketClass
-  , commonInputPort        :: Int
-  }
-
-commonOptionsToCommonInput :: CommonOptions -> CommonInput
-commonOptionsToCommonInput CommonOptions {..} = CommonInput
-  { commonInputDbName      = commonOptionsDbName
-  , commonInputDataDir     = commonOptionsDataDir
-  , commonInputSocketClass = commonOptionsSocketClass
-  , commonInputPort        = commonOptionsPort
+-------------------------------------------------------------------------------
+-- CommonOptions
+-------------------------------------------------------------------------------
+data CommonOptions = CommonOptions
+  { commonOptionsDbName        :: String
+  , commonOptionsDataDir       :: DirectoryType
+  , commonOptionsPort          :: Int
+  , commonOptionsSocketClass   :: SocketClass
+  , commonOptionsClientOptions :: Client.PartialOptions
+  , commonOptionsLogger        :: Event -> IO ()
   }
 
 commonOptionsToConnectionOptions :: CommonOptions -> Maybe PostgresClient.Options
@@ -290,6 +306,23 @@ commonOptionsToConnectionOptions CommonOptions {..}
         , Client.dbname = pure commonOptionsDbName
         }
       )
+-------------------------------------------------------------------------------
+-- CommonInput
+-------------------------------------------------------------------------------
+data CommonInput = CommonInput
+  { commonInputDbName      :: String
+  , commonInputDataDir     :: DirectoryType
+  , commonInputSocketClass :: SocketClass
+  , commonInputPort        :: Int
+  }
+
+commonOptionsToCommonInput :: CommonOptions -> CommonInput
+commonOptionsToCommonInput CommonOptions {..} = CommonInput
+  { commonInputDbName      = commonOptionsDbName
+  , commonInputDataDir     = commonOptionsDataDir
+  , commonInputSocketClass = commonOptionsSocketClass
+  , commonInputPort        = commonOptionsPort
+  }
 
 startPartialCommonOptions :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
 startPartialCommonOptions PartialCommonOptions {..} f = do
@@ -298,19 +331,19 @@ startPartialCommonOptions PartialCommonOptions {..} f = do
   let commonOptionsDbName        = fromMaybe "test" partialCommonOptionsDbName
       commonOptionsLogger        = fromMaybe (const $ pure ()) partialCommonOptionsLogger
       commonOptionsClientOptions = partialCommonOptionsClientOptions
-      (dirCreate, dirDelete) = case partialCommonOptionsDataDir of
-        Nothing -> (createTempDirectory "/tmp" "tmp-postgres-data", rmDirIgnoreErrors)
-        Just x  -> (pure x, const $ pure ())
 
-  bracketOnError dirCreate dirDelete $ \commonOptionsDataDir ->
-    startPartialSocketClass partialCommonOptionsSocketClass $ \commonOptionsSocketClass ->
-      f CommonOptions {..}
+  bracketOnError (initializeDirectoryType "tmp-postgres-data" partialCommonOptionsDataDir) cleanupDirectoryType $
+    \commonOptionsDataDir ->
+      startPartialSocketClass partialCommonOptionsSocketClass $
+        \commonOptionsSocketClass ->
+          f CommonOptions {..}
 
-stopPartialCommonOptions :: PartialCommonOptions -> IO ()
-stopPartialCommonOptions = error "stopPartialCommonOptions"
-
+stopCommonInput :: CommonInput -> IO ()
+stopCommonInput CommonInput {..} = do
+  stopSocketOptions commonInputSocketClass
+  cleanupDirectoryType commonInputDataDir
 -------------------------------------------------------------------------------
--- PostgresPlan
+-- PartialPostgresPlan
 -------------------------------------------------------------------------------
 data PartialPostgresPlan = PartialPostgresPlan
   { partialPostgresPlanConfig  :: Lastoid String
@@ -339,7 +372,9 @@ defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
       { partialProcessOptionsName = pure "postgres"
       }
   }
-
+-------------------------------------------------------------------------------
+-- PostgresPlan
+-------------------------------------------------------------------------------
 data PostgresPlan = PostgresPlan
   { postgresPlanConfig  :: String
   , postgresPlanOptions :: ProcessOptions
@@ -354,7 +389,9 @@ completePostgresPlan PartialPostgresPlan {..} = do
   postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
 
   pure PostgresPlan {..}
-
+-------------------------------------------------------------------------------
+-- PostgresInput
+-------------------------------------------------------------------------------
 data PostgresInput = PostgresInput
   { postgresOptionsProcessOptions :: ProcessInput
   , postgresOptionsConfig  :: String
@@ -365,11 +402,13 @@ toPostgresInput PostgresPlan {..} = PostgresInput
   { postgresOptionsProcessOptions = toProcessInput postgresPlanOptions
   , postgresOptionsConfig  = postgresPlanConfig
   }
-
+-------------------------------------------------------------------------------
+-- PostgresProcess
+-------------------------------------------------------------------------------
 data PostgresProcess = PostgresProcess
-  { pidLock :: MVar ()
+  { pidLock         :: MVar ()
   -- ^ A lock used internally to makes sure access to 'pid' is serialized
-  , pid :: IORef (Maybe ProcessHandle)
+  , pid             :: IORef (Maybe ProcessHandle)
   -- ^ The process handle for the @postgres@ process.
   , options         :: PostgresClient.Options
   , postgresInput   :: PostgresInput
@@ -453,21 +492,33 @@ data Plan = Plan
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Plan
   deriving Monoid    via GenericMonoid Plan
-
+-------------------------------------------------------------------------------
+-- DB
+-------------------------------------------------------------------------------
 data DB = DB
   { dbCommonInput     :: CommonInput
   , dbPostgresProcess :: PostgresProcess
   , dbInitDbInput     :: Maybe ProcessInput
   , dbCreateDbInput   :: Maybe ProcessInput
-  , dbOriginalOptions :: PartialCommonOptions
   }
 
+-- | Send the SIGHUP signal to the postgres process to start a config reload
+reloadConfig :: DB -> IO ()
+reloadConfig DB {..} = do
+  let PostgresProcess {..} = dbPostgresProcess
+  mHandle <- readIORef pid
+  for_ mHandle $ \theHandle -> do
+    mPid <- getPid theHandle
+    for_ mPid $ signalProcess sigHUP
+-------------------------------------------------------------------------------
+-- Starting
+-------------------------------------------------------------------------------
 defaultInitDbOptions :: CommonOptions -> IO PartialProcessOptions
 defaultInitDbOptions CommonOptions {..} = do
   def <- standardProcessOptions
   pure $ def
     { partialProcessOptionsCmdLine = Replace $
-        "--nosync" : ["--pgdata=" <> commonOptionsDataDir]
+        "--nosync" : ["--pgdata=" <> toFilePath commonOptionsDataDir]
     , partialProcessOptionsName    = pure "initdb"
     }
 
@@ -513,22 +564,23 @@ startWith Plan {..} = startPartialCommonOptions planCommonOptions $
         , dbPostgresProcess = result
         , dbInitDbInput     = initDbOutput
         , dbCreateDbInput   = createDbOutput
-        , dbOriginalOptions = planCommonOptions
         }
 
 start :: IO (Either StartError DB)
 start = startWith mempty
-
+-------------------------------------------------------------------------------
+-- Stopping
+-------------------------------------------------------------------------------
 stop :: DB -> IO ()
 stop DB {..} = do
   void $ stopPostgres dbPostgresProcess
-  stopPartialCommonOptions dbOriginalOptions
+  stopCommonInput dbCommonInput
+-------------------------------------------------------------------------------
+-- with
+-------------------------------------------------------------------------------
+withPlan :: Plan -> (DB -> IO a) -> IO (Either StartError a)
+withPlan plan f = bracket (startWith plan) (either (const $ pure ()) stop) $
+  either (pure . Left) (fmap Right . f)
 
--- | Send the SIGHUP signal to the postgres process to start a config reload
-reloadConfig :: DB -> IO ()
-reloadConfig DB {..} = do
-  let PostgresProcess {..} = dbPostgresProcess
-  mHandle <- readIORef pid
-  for_ mHandle $ \theHandle -> do
-    mPid <- getPid theHandle
-    for_ mPid $ signalProcess sigHUP
+with :: (DB -> IO a) -> IO (Either StartError a)
+with = withPlan mempty
