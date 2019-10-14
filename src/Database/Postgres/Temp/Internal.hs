@@ -6,7 +6,6 @@ import Control.Concurrent.Async (race_)
 import Control.Exception
 import Control.Monad (forever, void)
 import Data.Maybe
-import qualified Data.ByteString.Char8 as BSC
 import Data.Foldable (for_)
 import Data.Typeable (Typeable)
 import qualified Database.PostgreSQL.Simple as PG
@@ -21,6 +20,7 @@ import Data.Traversable (for)
 import Data.Monoid.Generic
 import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import Data.String
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
@@ -187,17 +187,19 @@ data PostgresProcess = PostgresProcess
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
--- | Force all connections to the database to close. Can be useful in some testing situations.
+-- | Force all connections to the database to close. Can be useful in some
+--   testing situations.
 --   Called during shutdown as well.
 terminateConnections :: PostgresProcess -> IO ()
 terminateConnections PostgresProcess {..} = do
-  let theConnectionString =
-        BSC.unpack . PostgresClient.toConnectionString $ options
-  e <- try $ bracket (PG.connectPostgreSQL $ BSC.pack theConnectionString)
-          PG.close
-          $ \conn -> do
-            let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
-            void $ PG.execute conn q [PostgresClient.oDbname options]
+  let theConnectionString = PostgresClient.toConnectionString $ options
+      terminationQuery = fromString $ unlines
+        [ "SELECT pg_terminate_backend(pid)"
+        , "FROM pg_stat_activity"
+        , "WHERE datname=?;"
+        ]
+  e <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $
+    \conn -> PG.execute conn terminationQuery [PostgresClient.oDbname options]
   case e of
     Left (_ :: IOError) -> pure ()
     Right _ -> pure ()
@@ -331,15 +333,6 @@ stop DB {..} = do
   void $ stopPostgresProcess dbPostgresProcess
   stopCommonOptions dbCommonOptions
 -------------------------------------------------------------------------------
--- with
--------------------------------------------------------------------------------
-withPlan :: Plan -> (DB -> IO a) -> IO (Either StartError a)
-withPlan plan f = bracket (startWith plan) (either mempty stop) $
-  either (pure . Left) (fmap Right . f)
-
-with :: (DB -> IO a) -> IO (Either StartError a)
-with = withPlan mempty
--------------------------------------------------------------------------------
 -- stopPostgres
 -------------------------------------------------------------------------------
 stopPostgres :: DB -> IO ExitCode
@@ -353,3 +346,16 @@ restartPostgres db@DB{..} = try $ do
   bracketOnError (startPostgres dbCommonOptions dbPostgresPlan)
     stopPostgresProcess $ \result ->
       pure $ db { dbPostgresProcess = result }
+-------------------------------------------------------------------------------
+-- Exception safe interface
+-------------------------------------------------------------------------------
+withPlan :: Plan -> (DB -> IO a) -> IO (Either StartError a)
+withPlan plan f = bracket (startWith plan) (either mempty stop) $
+  either (pure . Left) (fmap Right . f)
+
+with :: (DB -> IO a) -> IO (Either StartError a)
+with = withPlan mempty
+
+withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)
+withRestart db f = bracket (restartPostgres db) (either mempty stop) $
+  either (pure . Left) (fmap Right . f)
