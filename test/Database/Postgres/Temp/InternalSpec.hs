@@ -1,22 +1,55 @@
 {-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables, LambdaCase #-}
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
-import System.IO.Temp
+-- import System.IO.Temp
 import Database.Postgres.Temp.Internal
-import Data.Typeable
+-- import Data.Typeable
 import Control.Exception
-import System.IO
-import System.Directory
-import Control.Monad
+-- import System.IO
+-- import System.Directory
+-- import Control.Monad
 import System.Process
-import Database.PostgreSQL.Simple
-import qualified Data.ByteString.Char8 as BSC
-import System.Exit
-import System.Timeout(timeout)
-import Data.Either
-import Data.Function (fix)
-import Control.Concurrent
+-- import Database.PostgreSQL.Simple
+-- import qualified Data.ByteString.Char8 as BSC
+-- import System.Exit
+-- import System.Timeout(timeout)
+-- import Data.Either
+-- import Data.Function (fix)
+-- import Control.Concurrent
 
+-- What are the properties of startWith/stop?
+-- TODO
+-- I should check for various exes on the path and complain with better error messages if they are not there
+
+-- postgres should be running after start
+-- postgres should not be running after stop
+-- if initdb is called it should make database folders if
+-- in a clean directory
+-- If initdb is not called the folder should be unmodified
+-- if a temp folder is used it should be created and cleaned up
+-- if a temp port is used it should be free
+-- Once the db is returned we should be able to connect to it
+-- everything should be exceptions safe
+-- adding command line arguments works
+-- adding config works
+-- If there is initdb/createdb plan there are options
+-- and they should match
+
+-- Some usage tests
+-- creating a db with a specific user and db works
+-- backup stuff works
+
+spec :: Spec
+spec = describe "Database.Postgres.Temp.Internal" $ do
+  it "start/stop the postgres process is running and then it is not" $ do
+    bracket start (either mempty stop)   $ \result -> do
+
+      DB {..} <- case result of
+        Left err -> throwIO err
+        Right x -> pure x
+      getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Nothing
+
+{-
 mkDevNull :: IO Handle
 mkDevNull = openFile "/dev/null" WriteMode
 
@@ -33,8 +66,7 @@ countPostgresProcesses = do
 
   pure $ length $ lines xs
 
-spec :: Spec
-spec = describe "Database.Postgres.Temp.Internal" $ do
+
   before (createTempDirectory "/tmp" "tmp-postgres") $ after rmDirIgnoreErrors $ describe "startWithLogger/stop" $ do
     forM_ [minBound .. maxBound] $ \event ->
       it ("deletes the temp dir and postgres on exception in " ++ show event) $ \mainFilePath -> do
@@ -176,3 +208,4 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
 
             query_ conn1 "SELECT id FROM foo ORDER BY id ASC"
               `shouldReturn` [Only (1 :: Int)]
+-}

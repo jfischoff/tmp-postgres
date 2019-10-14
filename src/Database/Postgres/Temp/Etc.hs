@@ -32,9 +32,15 @@ rmDirIgnoreErrors mainDir =
 waitForDB :: PostgresClient.Options -> IO ()
 waitForDB options = do
   let theConnectionString = PostgresClient.toConnectionString options
+  print theConnectionString
   try (bracket (PG.connectPostgreSQL theConnectionString) PG.close mempty) >>= \case
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right () -> return ()
+
+throwIfNotSuccess :: ExitCode -> IO ()
+throwIfNotSuccess = \case
+  ExitSuccess -> pure ()
+  e -> throwIO e
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
@@ -93,7 +99,7 @@ completeProcessOptions PartialProcessOptions {..} = do
     Mappend _ -> Nothing
   processOptionsCmdLine <- case partialProcessOptionsCmdLine of
     Replace x -> pure x
-    Mappend _ -> Nothing
+    Mappend x -> pure x
   processOptionsStdIn  <- getLast partialProcessOptionsStdIn
   processOptionsStdOut <- getLast partialProcessOptionsStdOut
   processOptionsStdErr <- getLast partialProcessOptionsStdErr

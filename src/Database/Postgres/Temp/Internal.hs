@@ -1,6 +1,5 @@
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Etc
-
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
 import Control.Exception
@@ -16,11 +15,11 @@ import System.Exit (ExitCode(..))
 import System.Posix.Signals (sigINT, signalProcess)
 import System.Process (getProcessExitCode, waitForProcess)
 import System.Process.Internals
-import Data.Traversable (for)
 import Data.Monoid.Generic
 import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import Data.String
+import Data.Monoid
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
@@ -33,6 +32,8 @@ data StartError
   | CreateDbCompleteOptions
   | PostgresCompleteOptions
   | ClientCompleteOptions
+  | InitDbNotOnPath
+  | CreateDbNotOnPath
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -110,19 +111,21 @@ commonOptionsToConnectionOptions CommonOptions {..}
 -------------------------------------------------------------------------------
 -- CommonOptions life cycle
 -------------------------------------------------------------------------------
-startPartialCommonOptions :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
+startPartialCommonOptions
+  :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
 startPartialCommonOptions PartialCommonOptions {..} f = do
   commonOptionsPort <- maybe getFreePort pure partialCommonOptionsPort
 
   let commonOptionsDbName        = fromMaybe "test" partialCommonOptionsDbName
-      commonOptionsLogger        = fromMaybe (const $ pure ()) partialCommonOptionsLogger
+      commonOptionsLogger        = fromMaybe mempty partialCommonOptionsLogger
       commonOptionsClientOptions = partialCommonOptionsClientOptions
 
-  bracketOnError (initializeDirectoryType "tmp-postgres-data" partialCommonOptionsDataDir) cleanupDirectoryType $
-    \commonOptionsDataDir ->
+      initCommon = initializeDirectoryType "tmp-postgres-data"
+        partialCommonOptionsDataDir
+
+  bracketOnError initCommon cleanupDirectoryType $ \commonOptionsDataDir ->
       startPartialSocketClass partialCommonOptionsSocketClass $
-        \commonOptionsSocketClass ->
-          f CommonOptions {..}
+        \commonOptionsSocketClass -> f CommonOptions {..}
 
 stopCommonOptions :: CommonOptions -> IO ()
 stopCommonOptions CommonOptions {..} = do
@@ -150,14 +153,20 @@ defaultConfig =
   , "client_min_messages = ERROR"
   ]
 
-defaultPostgresPlan :: CommonOptions -> PartialPostgresPlan
-defaultPostgresPlan CommonOptions {..} = PartialPostgresPlan
-  { partialPostgresPlanConfig  = Replace $ unlines $
-      defaultConfig <> listenAddressConfig commonOptionsSocketClass
-  , partialPostgresPlanOptions = mempty
-      { partialProcessOptionsName = pure "postgres"
-      }
-  }
+defaultPostgresPlan :: CommonOptions -> IO PartialPostgresPlan
+defaultPostgresPlan CommonOptions {..} = do
+  processOptions <- standardProcessOptions
+  pure $ PartialPostgresPlan
+    { partialPostgresPlanConfig  = Replace $ unlines $
+        defaultConfig <> listenAddressConfig commonOptionsSocketClass
+    , partialPostgresPlanOptions = processOptions
+        { partialProcessOptionsName = pure "postgres"
+        , partialProcessOptionsCmdLine = Replace
+            [ "-D" <> toFilePath commonOptionsDataDir
+            , "-p" <> show commonOptionsPort
+            ]
+        }
+    }
 -------------------------------------------------------------------------------
 -- PostgresPlan
 -------------------------------------------------------------------------------
@@ -226,6 +235,7 @@ stopPostgresProcess db@PostgresProcess{..} = do
 startPostgres
   :: CommonOptions -> PostgresPlan -> IO PostgresProcess
 startPostgres common@CommonOptions {..} plan@PostgresPlan {..} = do
+  writeFile (toFilePath commonOptionsDataDir <> "/postgresql.conf") postgresPlanConfig
   options <- throwMaybe ClientCompleteOptions $
     commonOptionsToConnectionOptions common
   let createDBResult = do
@@ -252,13 +262,24 @@ startPostgres common@CommonOptions {..} plan@PostgresPlan {..} = do
 -------------------------------------------------------------------------------
 data Plan = Plan
   { planCommonOptions :: PartialCommonOptions
-  , planInitDb        :: Maybe PartialProcessOptions
-  , planCreateDb      :: Maybe PartialProcessOptions
+  , planInitDb        :: Last (Maybe PartialProcessOptions)
+  , planCreateDb      :: Last (Maybe PartialProcessOptions)
   , planPostgres      :: PartialPostgresPlan
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Plan
   deriving Monoid    via GenericMonoid Plan
+{-
+  defaultPlan :: IO Plan
+  defaultPlan = do
+
+    pure $ Plan
+      { planCommonOptions =
+      , planInitDb        = Just
+      , planCreateDb      :: Maybe PartialProcessOptions
+      , planPostgres      :: PartialPostgresPlan
+      }
+-}
 -------------------------------------------------------------------------------
 -- DB
 -------------------------------------------------------------------------------
@@ -287,11 +308,13 @@ executeInitDb commonOptions userOptions = do
   completeOptions <- throwMaybe InitDbCompleteOptions $ completeProcessOptions $
     userOptions <> defs
 
+  throwIfNotSuccess =<< executeProcess completeOptions
+
   pure completeOptions
 
 defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
 defaultCreateDbOptions CommonOptions {..} = do
-  let strArgs = (\(a,b) -> a <> "=" <> b) <$>
+  let strArgs = (\(a,b) -> a <> b) <$>
         [ ("-h", socketClassToHost commonOptionsSocketClass)
         , ("-p", show commonOptionsPort)
         ]
@@ -304,24 +327,34 @@ defaultCreateDbOptions CommonOptions {..} = do
 executeCreateDb :: CommonOptions -> PartialProcessOptions -> IO ProcessOptions
 executeCreateDb commonOptions userOptions = do
   defs <- defaultCreateDbOptions commonOptions
-  completeOptions <- throwMaybe CreateDbCompleteOptions $ completeProcessOptions $
-    userOptions <> defs
+  completeOptions <- throwMaybe CreateDbCompleteOptions $
+    completeProcessOptions $ userOptions <> defs
+
+  throwIfNotSuccess =<< executeProcess completeOptions
 
   pure completeOptions
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
 startWith :: Plan -> IO (Either StartError DB)
-startWith Plan {..} = startPartialCommonOptions planCommonOptions $
-  \dbCommonOptions@CommonOptions {..} -> try $ do
-    dbInitDbInput <- for planInitDb $ executeInitDb dbCommonOptions
-    dbPostgresPlan <- throwMaybe PostgresCompleteOptions $ completePostgresPlan $
-      planPostgres <> defaultPostgresPlan dbCommonOptions
-    bracketOnError (startPostgres dbCommonOptions dbPostgresPlan)
-      stopPostgresProcess $ \dbPostgresProcess -> do
-        dbCreateDbInput <- for planCreateDb $ executeCreateDb dbCommonOptions
+startWith Plan {..} = try $ startPartialCommonOptions planCommonOptions $
+  \dbCommonOptions@CommonOptions {..} -> do
+    dbInitDbInput <- case getLast planInitDb of
+      Nothing      -> Just <$> executeInitDb dbCommonOptions mempty
+      Just Nothing -> pure Nothing
+      Just (Just x)       -> Just <$> executeInitDb dbCommonOptions x
+    dbPostgresPlan <- throwMaybe PostgresCompleteOptions
+      . completePostgresPlan
+      . mappend planPostgres
+      =<< defaultPostgresPlan dbCommonOptions
 
-        pure DB {..}
+    let postgresStart = startPostgres dbCommonOptions dbPostgresPlan
+    bracketOnError postgresStart stopPostgresProcess $ \dbPostgresProcess -> do
+      dbCreateDbInput <- case getLast planCreateDb of
+        Nothing      -> Just <$> executeCreateDb dbCommonOptions mempty
+        Just Nothing -> pure Nothing
+        Just (Just x)       -> Just <$> executeCreateDb dbCommonOptions x
+      pure DB {..}
 
 start :: IO (Either StartError DB)
 start = startWith mempty
