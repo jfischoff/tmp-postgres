@@ -1,7 +1,3 @@
-{-# LANGUAGE RecordWildCards, LambdaCase, ScopedTypeVariables, DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric, OverloadedStrings #-}
-{-# LANGUAGE TupleSections, DerivingStrategies, DerivingVia #-}
-
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Etc
 
@@ -25,9 +21,6 @@ import Data.Traversable (for)
 import Data.Monoid.Generic
 import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
-
--- TODO get rid of the Input types
-
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
@@ -115,23 +108,8 @@ commonOptionsToConnectionOptions CommonOptions {..}
         }
       )
 -------------------------------------------------------------------------------
--- CommonInput
+-- CommonOptions life cycle
 -------------------------------------------------------------------------------
-data CommonInput = CommonInput
-  { commonInputDbName      :: String
-  , commonInputDataDir     :: DirectoryType
-  , commonInputSocketClass :: SocketClass
-  , commonInputPort        :: Int
-  }
-
-commonOptionsToCommonInput :: CommonOptions -> CommonInput
-commonOptionsToCommonInput CommonOptions {..} = CommonInput
-  { commonInputDbName      = commonOptionsDbName
-  , commonInputDataDir     = commonOptionsDataDir
-  , commonInputSocketClass = commonOptionsSocketClass
-  , commonInputPort        = commonOptionsPort
-  }
-
 startPartialCommonOptions :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
 startPartialCommonOptions PartialCommonOptions {..} f = do
   commonOptionsPort <- maybe getFreePort pure partialCommonOptionsPort
@@ -146,10 +124,10 @@ startPartialCommonOptions PartialCommonOptions {..} f = do
         \commonOptionsSocketClass ->
           f CommonOptions {..}
 
-stopCommonInput :: CommonInput -> IO ()
-stopCommonInput CommonInput {..} = do
-  stopSocketOptions commonInputSocketClass
-  cleanupDirectoryType commonInputDataDir
+stopCommonOptions :: CommonOptions -> IO ()
+stopCommonOptions CommonOptions {..} = do
+  stopSocketOptions commonOptionsSocketClass
+  cleanupDirectoryType commonOptionsDataDir
 -------------------------------------------------------------------------------
 -- PartialPostgresPlan
 -------------------------------------------------------------------------------
@@ -198,28 +176,17 @@ completePostgresPlan PartialPostgresPlan {..} = do
 
   pure PostgresPlan {..}
 -------------------------------------------------------------------------------
--- PostgresInput
--------------------------------------------------------------------------------
-data PostgresInput = PostgresInput
-  { postgresOptionsProcessOptions :: ProcessOptions
-  , postgresOptionsConfig  :: String
-  }
-
-toPostgresInput :: PostgresPlan -> PostgresInput
-toPostgresInput PostgresPlan {..} = PostgresInput
-  { postgresOptionsProcessOptions = postgresPlanOptions
-  , postgresOptionsConfig  = postgresPlanConfig
-  }
--------------------------------------------------------------------------------
 -- PostgresProcess
 -------------------------------------------------------------------------------
 data PostgresProcess = PostgresProcess
-  { pid             :: ProcessHandle
+  { pid          :: ProcessHandle
   -- ^ The process handle for the @postgres@ process.
-  , options         :: PostgresClient.Options
-  , postgresInput   :: PostgresInput
+  , options      :: PostgresClient.Options
+  , postgresPlan :: PostgresPlan
   }
-
+-------------------------------------------------------------------------------
+-- PostgresProcess Life cycle management
+-------------------------------------------------------------------------------
 -- | Force all connections to the database to close. Can be useful in some testing situations.
 --   Called during shutdown as well.
 terminateConnections :: PostgresProcess -> IO ()
@@ -232,14 +199,14 @@ terminateConnections PostgresProcess {..} = do
             let q = "select pg_terminate_backend(pid) from pg_stat_activity where datname=?;"
             void $ PG.execute conn q [PostgresClient.oDbname options]
   case e of
-    Left (_ :: IOError) -> pure () -- expected
-    Right _ -> pure () -- Surprising ... but I do not know yet if this is a failure of termination or not.
+    Left (_ :: IOError) -> pure ()
+    Right _ -> pure ()
 
 -- | Stop the postgres process. This function attempts to the 'pidLock' before running.
 --   'stopPostgres' will terminate all connections before shutting down postgres.
 --   'stopPostgres' is useful for testing backup strategies.
-stopPostgres :: PostgresProcess -> IO ExitCode
-stopPostgres db@PostgresProcess{..} = do
+stopPostgresProcess :: PostgresProcess -> IO ExitCode
+stopPostgresProcess db@PostgresProcess{..} = do
   withProcessHandle pid (\case
         OpenHandle p   -> do
           -- try to terminate the connects first. If we can't terminate still
@@ -254,18 +221,19 @@ stopPostgres db@PostgresProcess{..} = do
   exitCode <- waitForProcess pid
   pure exitCode
 
-evaluatePostgresPlan
+startPostgres
   :: CommonOptions -> PostgresPlan -> IO PostgresProcess
-evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
-  options <- throwMaybe ClientCompleteOptions $ commonOptionsToConnectionOptions common
+startPostgres common@CommonOptions {..} plan@PostgresPlan {..} = do
+  options <- throwMaybe ClientCompleteOptions $
+    commonOptionsToConnectionOptions common
   let createDBResult = do
         pid  <- evaluateProcess $ postgresPlanOptions
 
-        let postgresInput = toPostgresInput plan
+        let postgresPlan = plan
         pure PostgresProcess {..}
 
   commonOptionsLogger StartPostgres
-  bracketOnError createDBResult stopPostgres $ \result -> do
+  bracketOnError createDBResult stopPostgresProcess $ \result -> do
     let checkForCrash = do
             mExitCode <- getProcessExitCode $ pid result
             for_ mExitCode (throwIO . StartPostgresFailed)
@@ -293,10 +261,11 @@ data Plan = Plan
 -- DB
 -------------------------------------------------------------------------------
 data DB = DB
-  { dbCommonInput     :: CommonInput
+  { dbCommonOptions   :: CommonOptions
   , dbPostgresProcess :: PostgresProcess
   , dbInitDbInput     :: Maybe ProcessOptions
   , dbCreateDbInput   :: Maybe ProcessOptions
+  , dbPostgresPlan    :: PostgresPlan
   }
 -------------------------------------------------------------------------------
 -- Starting
@@ -337,22 +306,20 @@ executeCreateDb commonOptions userOptions = do
     userOptions <> defs
 
   pure completeOptions
-
+-------------------------------------------------------------------------------
+-- Life Cycle Management
+-------------------------------------------------------------------------------
 startWith :: Plan -> IO (Either StartError DB)
 startWith Plan {..} = startPartialCommonOptions planCommonOptions $
-  \commonOptions@CommonOptions {..} -> try $ do
-    initDbOutput <- for planInitDb $ executeInitDb commonOptions
-    postgresPlan <- throwMaybe PostgresCompleteOptions $ completePostgresPlan $
-      planPostgres <> defaultPostgresPlan commonOptions
-    bracketOnError (evaluatePostgresPlan commonOptions postgresPlan) stopPostgres $ \result -> do
-      createDbOutput <- for planCreateDb $ executeCreateDb commonOptions
+  \dbCommonOptions@CommonOptions {..} -> try $ do
+    dbInitDbInput <- for planInitDb $ executeInitDb dbCommonOptions
+    dbPostgresPlan <- throwMaybe PostgresCompleteOptions $ completePostgresPlan $
+      planPostgres <> defaultPostgresPlan dbCommonOptions
+    bracketOnError (startPostgres dbCommonOptions dbPostgresPlan)
+      stopPostgresProcess $ \dbPostgresProcess -> do
+        dbCreateDbInput <- for planCreateDb $ executeCreateDb dbCommonOptions
 
-      pure $ DB
-        { dbCommonInput     = commonOptionsToCommonInput commonOptions
-        , dbPostgresProcess = result
-        , dbInitDbInput     = initDbOutput
-        , dbCreateDbInput   = createDbOutput
-        }
+        pure DB {..}
 
 start :: IO (Either StartError DB)
 start = startWith mempty
@@ -361,14 +328,28 @@ start = startWith mempty
 -------------------------------------------------------------------------------
 stop :: DB -> IO ()
 stop DB {..} = do
-  void $ stopPostgres dbPostgresProcess
-  stopCommonInput dbCommonInput
+  void $ stopPostgresProcess dbPostgresProcess
+  stopCommonOptions dbCommonOptions
 -------------------------------------------------------------------------------
 -- with
 -------------------------------------------------------------------------------
 withPlan :: Plan -> (DB -> IO a) -> IO (Either StartError a)
-withPlan plan f = bracket (startWith plan) (either (const $ pure ()) stop) $
+withPlan plan f = bracket (startWith plan) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
 with :: (DB -> IO a) -> IO (Either StartError a)
 with = withPlan mempty
+-------------------------------------------------------------------------------
+-- stopPostgres
+-------------------------------------------------------------------------------
+stopPostgres :: DB -> IO ExitCode
+stopPostgres = stopPostgresProcess . dbPostgresProcess
+-------------------------------------------------------------------------------
+-- restart
+-------------------------------------------------------------------------------
+restartPostgres :: DB -> IO (Either StartError DB)
+restartPostgres db@DB{..} = try $ do
+  void $ stopPostgres db
+  bracketOnError (startPostgres dbCommonOptions dbPostgresPlan)
+    stopPostgresProcess $ \result ->
+      pure $ db { dbPostgresProcess = result }
