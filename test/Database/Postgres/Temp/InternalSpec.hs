@@ -11,7 +11,8 @@ import Control.Exception
 import System.Process
 -- import Database.PostgreSQL.Simple
 -- import qualified Data.ByteString.Char8 as BSC
--- import System.Exit
+import System.Exit
+import qualified Database.PostgreSQL.Simple as PG
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
@@ -44,10 +45,23 @@ spec = describe "Database.Postgres.Temp.Internal" $ do
   it "start/stop the postgres process is running and then it is not" $ do
     bracket start (either mempty stop)   $ \result -> do
 
-      DB {..} <- case result of
+      db@DB {..} <- case result of
         Left err -> throwIO err
         Right x -> pure x
       getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Nothing
+
+      stop db
+
+      getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Just ExitSuccess
+
+  it "Can connect to the db after it starts" $ do
+    Right one <- with $ \db -> do
+      fmap (PG.fromOnly . head) $ bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
+        \conn -> PG.query_ conn "SELECT 1"
+
+    one `shouldBe` (1 :: Int)
+
+
 
 {-
 mkDevNull :: IO Handle

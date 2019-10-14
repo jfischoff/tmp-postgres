@@ -20,6 +20,7 @@ import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import Data.String
 import Data.Monoid
+import Data.ByteString (ByteString)
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
@@ -269,17 +270,6 @@ data Plan = Plan
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Plan
   deriving Monoid    via GenericMonoid Plan
-{-
-  defaultPlan :: IO Plan
-  defaultPlan = do
-
-    pure $ Plan
-      { planCommonOptions =
-      , planInitDb        = Just
-      , planCreateDb      :: Maybe PartialProcessOptions
-      , planPostgres      :: PartialPostgresPlan
-      }
--}
 -------------------------------------------------------------------------------
 -- DB
 -------------------------------------------------------------------------------
@@ -290,6 +280,10 @@ data DB = DB
   , dbCreateDbInput   :: Maybe ProcessOptions
   , dbPostgresPlan    :: PostgresPlan
   }
+
+toConnectionString :: DB -> ByteString
+toConnectionString = PostgresClient.toConnectionString  . options . dbPostgresProcess
+
 -------------------------------------------------------------------------------
 -- Starting
 -------------------------------------------------------------------------------
