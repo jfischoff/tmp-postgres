@@ -25,10 +25,6 @@ throwMaybe e = \case
   Nothing -> throwIO e
   Just  x -> pure x
 
--- A helper for dealing with locks
-withLock :: MVar a -> IO b -> IO b
-withLock m f = withMVar m (const f)
-
 rmDirIgnoreErrors :: FilePath -> IO ()
 rmDirIgnoreErrors mainDir =
   removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())

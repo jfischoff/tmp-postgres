@@ -5,22 +5,21 @@
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Etc
 
-import Control.Concurrent (MVar, newMVar, threadDelay)
+import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
 import Control.Exception
 import Control.Monad (forever, void)
 import Data.Maybe
 import qualified Data.ByteString.Char8 as BSC
 import Data.Foldable (for_)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Typeable (Typeable)
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import GHC.Generics (Generic)
 import Network.Socket.Free (getFreePort)
 import System.Exit (ExitCode(..))
-import System.Posix.Signals (sigHUP, sigINT, signalProcess)
-import System.Process (getPid, getProcessExitCode, waitForProcess)
+import System.Posix.Signals (sigINT, signalProcess)
+import System.Process (getProcessExitCode, waitForProcess)
 import System.Process.Internals
 import Data.Traversable (for)
 import Data.Monoid.Generic
@@ -213,9 +212,7 @@ toPostgresInput PostgresPlan {..} = PostgresInput
 -- PostgresProcess
 -------------------------------------------------------------------------------
 data PostgresProcess = PostgresProcess
-  { pidLock         :: MVar ()
-  -- ^ A lock used internally to makes sure access to 'pid' is serialized
-  , pid             :: IORef (Maybe ProcessHandle)
+  { pid             :: ProcessHandle
   -- ^ The process handle for the @postgres@ process.
   , options         :: PostgresClient.Options
   , postgresInput   :: PostgresInput
@@ -239,45 +236,36 @@ terminateConnections PostgresProcess {..} = do
 -- | Stop the postgres process. This function attempts to the 'pidLock' before running.
 --   'stopPostgres' will terminate all connections before shutting down postgres.
 --   'stopPostgres' is useful for testing backup strategies.
-stopPostgres :: PostgresProcess -> IO (Maybe ExitCode)
-stopPostgres db@PostgresProcess{..} = withLock pidLock $ readIORef pid >>= \case
-  Nothing -> pure Nothing
-  Just pHandle -> do
-    withProcessHandle pHandle (\case
-          OpenHandle p   -> do
-            -- try to terminate the connects first. If we can't terminate still
-            -- keep shutting down
-            terminateConnections db
+stopPostgres :: PostgresProcess -> IO ExitCode
+stopPostgres db@PostgresProcess{..} = do
+  withProcessHandle pid (\case
+        OpenHandle p   -> do
+          -- try to terminate the connects first. If we can't terminate still
+          -- keep shutting down
+          terminateConnections db
 
-            signalProcess sigINT p
-          OpenExtHandle {} -> pure () -- TODO log windows is not supported
-          ClosedHandle _ -> return ()
-          )
+          signalProcess sigINT p
+        OpenExtHandle {} -> pure () -- TODO log windows is not supported
+        ClosedHandle _ -> return ()
+        )
 
-    exitCode <- waitForProcess pHandle
-    writeIORef pid Nothing
-    pure $ Just exitCode
+  exitCode <- waitForProcess pid
+  pure exitCode
 
 evaluatePostgresPlan
   :: CommonOptions -> PostgresPlan -> IO PostgresProcess
 evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
   options <- throwMaybe ClientCompleteOptions $ commonOptionsToConnectionOptions common
   let createDBResult = do
-        thePid  <- evaluateProcess $ postgresPlanOptions
-        pid     <- newIORef $ Just thePid
-        pidLock <- newMVar ()
+        pid  <- evaluateProcess $ postgresPlanOptions
 
         let postgresInput = toPostgresInput plan
         pure PostgresProcess {..}
 
   commonOptionsLogger StartPostgres
   bracketOnError createDBResult stopPostgres $ \result -> do
-    let checkForCrash = readIORef (pid result) >>= \case
-          -- This should be impossible because we created the pid with a Just.
-          Nothing -> throwIO $ StartPostgresDisappeared $ toPostgresInput plan
-          -- Check the exit code on the pid
-          Just thePid -> do
-            mExitCode <- getProcessExitCode thePid
+    let checkForCrash = do
+            mExitCode <- getProcessExitCode $ pid result
             for_ mExitCode (throwIO . StartPostgresFailed (toPostgresInput plan))
 
     commonOptionsLogger WaitForDB
@@ -308,16 +296,6 @@ data DB = DB
   , dbInitDbInput     :: Maybe ProcessInput
   , dbCreateDbInput   :: Maybe ProcessInput
   }
-
--- | Send the SIGHUP signal to the postgres process to start a config reload
---   TODO use `reload_config()`. Maybe it makes it easier to simplify things
-reloadConfig :: DB -> IO ()
-reloadConfig DB {..} = do
-  let PostgresProcess {..} = dbPostgresProcess
-  mHandle <- readIORef pid
-  for_ mHandle $ \theHandle -> do
-    mPid <- getPid theHandle
-    for_ mPid $ signalProcess sigHUP
 -------------------------------------------------------------------------------
 -- Starting
 -------------------------------------------------------------------------------
