@@ -100,21 +100,8 @@ completeProcessOptions PartialProcessOptions {..} = do
 
   pure ProcessOptions {..}
 -------------------------------------------------------------------------------
--- ProcessInput
+-- Starting Processes
 -------------------------------------------------------------------------------
-data ProcessInput = ProcessInput
-  { processInputEnvVars :: [(String, String)]
-  , processInputCmdLine :: [String]
-  , processInputName    :: String
-  } deriving (Show, Eq, Ord)
-
--- envs might not be true
-toProcessInput :: ProcessOptions -> ProcessInput
-toProcessInput ProcessOptions {..} = ProcessInput
-  { processInputEnvVars = processOptionsEnvVars
-  , processInputCmdLine = processOptionsCmdLine
-  , processInputName    = processOptionsName
-  }
 
 evaluateProcess :: ProcessOptions -> IO ProcessHandle
 evaluateProcess ProcessOptions {..} = fmap fourth $

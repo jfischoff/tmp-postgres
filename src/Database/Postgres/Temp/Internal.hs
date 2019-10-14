@@ -26,14 +26,16 @@ import Data.Monoid.Generic
 import Control.Applicative
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 
+-- TODO get rid of the Input types
+
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
 data StartError
   = InitDBFailed   ExitCode
   | CreateDBFailed [String] ExitCode
-  | StartPostgresFailed PostgresInput ExitCode
-  | StartPostgresDisappeared PostgresInput
+  | StartPostgresFailed ExitCode
+  | StartPostgresDisappeared
   | InitDbCompleteOptions
   | CreateDbCompleteOptions
   | PostgresCompleteOptions
@@ -199,13 +201,13 @@ completePostgresPlan PartialPostgresPlan {..} = do
 -- PostgresInput
 -------------------------------------------------------------------------------
 data PostgresInput = PostgresInput
-  { postgresOptionsProcessOptions :: ProcessInput
+  { postgresOptionsProcessOptions :: ProcessOptions
   , postgresOptionsConfig  :: String
-  } deriving (Show, Eq, Ord)
+  }
 
 toPostgresInput :: PostgresPlan -> PostgresInput
 toPostgresInput PostgresPlan {..} = PostgresInput
-  { postgresOptionsProcessOptions = toProcessInput postgresPlanOptions
+  { postgresOptionsProcessOptions = postgresPlanOptions
   , postgresOptionsConfig  = postgresPlanConfig
   }
 -------------------------------------------------------------------------------
@@ -266,7 +268,7 @@ evaluatePostgresPlan common@CommonOptions {..} plan@PostgresPlan {..} = do
   bracketOnError createDBResult stopPostgres $ \result -> do
     let checkForCrash = do
             mExitCode <- getProcessExitCode $ pid result
-            for_ mExitCode (throwIO . StartPostgresFailed (toPostgresInput plan))
+            for_ mExitCode (throwIO . StartPostgresFailed)
 
     commonOptionsLogger WaitForDB
     let connOpts = options
@@ -293,8 +295,8 @@ data Plan = Plan
 data DB = DB
   { dbCommonInput     :: CommonInput
   , dbPostgresProcess :: PostgresProcess
-  , dbInitDbInput     :: Maybe ProcessInput
-  , dbCreateDbInput   :: Maybe ProcessInput
+  , dbInitDbInput     :: Maybe ProcessOptions
+  , dbCreateDbInput   :: Maybe ProcessOptions
   }
 -------------------------------------------------------------------------------
 -- Starting
@@ -308,13 +310,13 @@ defaultInitDbOptions CommonOptions {..} = do
     , partialProcessOptionsName    = pure "initdb"
     }
 
-executeInitDb :: CommonOptions -> PartialProcessOptions -> IO ProcessInput
+executeInitDb :: CommonOptions -> PartialProcessOptions -> IO ProcessOptions
 executeInitDb commonOptions userOptions = do
   defs <- defaultInitDbOptions commonOptions
   completeOptions <- throwMaybe InitDbCompleteOptions $ completeProcessOptions $
     userOptions <> defs
 
-  pure $ toProcessInput completeOptions
+  pure completeOptions
 
 defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
 defaultCreateDbOptions CommonOptions {..} = do
@@ -328,13 +330,13 @@ defaultCreateDbOptions CommonOptions {..} = do
     , partialProcessOptionsName    = pure "createdb"
     }
 
-executeCreateDb :: CommonOptions -> PartialProcessOptions -> IO ProcessInput
+executeCreateDb :: CommonOptions -> PartialProcessOptions -> IO ProcessOptions
 executeCreateDb commonOptions userOptions = do
   defs <- defaultCreateDbOptions commonOptions
   completeOptions <- throwMaybe CreateDbCompleteOptions $ completeProcessOptions $
     userOptions <> defs
 
-  pure $ toProcessInput completeOptions
+  pure completeOptions
 
 startWith :: Plan -> IO (Either StartError DB)
 startWith Plan {..} = startPartialCommonOptions planCommonOptions $
