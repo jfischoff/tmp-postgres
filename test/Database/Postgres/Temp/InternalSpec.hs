@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables, LambdaCase #-}
+{-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables, LambdaCase, RankNTypes #-}
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 -- import System.IO.Temp
@@ -40,26 +40,45 @@ import qualified Database.PostgreSQL.Simple as PG
 -- creating a db with a specific user and db works
 -- backup stuff works
 
-spec :: Spec
-spec = describe "Database.Postgres.Temp.Internal" $ do
-  it "start/stop the postgres process is running and then it is not" $ do
-    bracket start (either mempty stop)   $ \result -> do
+newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 
-      db@DB {..} <- case result of
-        Left err -> throwIO err
-        Right x -> pure x
-      getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Nothing
+withRunner :: (DB -> IO ()) -> Runner -> IO ()
+withRunner g (Runner f) = f g
 
-      stop db
+withAnyPlan :: SpecWith Runner
+withAnyPlan = do
+  it "start/stop the postgres process is running and then it is not" $ withRunner $ \db@DB{..} -> do
+    getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Nothing
 
-      getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Just ExitSuccess
+    stop db
 
-  it "Can connect to the db after it starts" $ do
-    Right one <- with $ \db -> do
-      fmap (PG.fromOnly . head) $ bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
+    getProcessExitCode (pid dbPostgresProcess) `shouldReturn` Just ExitSuccess
+
+  it "Can connect to the db after it starts" $ withRunner $ \db -> do
+    one <- fmap (PG.fromOnly . head) $
+      bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
         \conn -> PG.query_ conn "SELECT 1"
 
     one `shouldBe` (1 :: Int)
+
+-- This assumes that the directory is initially empty
+withInitDbEmptyInitially :: SpecWith Runner
+withInitDbEmptyInitially = describe "with active initDb non-empty folder initially" $
+  it "the data directory has been initialize" $ \_ -> pending
+
+-- the Runner should throw when starting
+withInitDbNotEmptyInitially :: SpecWith Runner
+withInitDbNotEmptyInitially = describe "with active initDb non-empty folder initially" $
+  it "the runner throws" $ \_ -> pending
+
+spec :: Spec
+spec = do
+  describe "start/stop" $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
+      withAnyPlan
+      withInitDbEmptyInitially
+      withInitDbNotEmptyInitially
+
 
 
 
