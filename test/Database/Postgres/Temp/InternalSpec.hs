@@ -61,6 +61,8 @@ withAnyPlan = do
 
     one `shouldBe` (1 :: Int)
 
+  it "cleans up temp files" $ \_ -> pending -- check for tmp-postgres files in /tmp before and after the runner. Should be the same.
+
 -- This assumes that the directory is initially empty
 withInitDbEmptyInitially :: SpecWith Runner
 withInitDbEmptyInitially = describe "with active initDb non-empty folder initially" $
@@ -71,13 +73,24 @@ withInitDbNotEmptyInitially :: SpecWith Runner
 withInitDbNotEmptyInitially = describe "with active initDb non-empty folder initially" $
   it "the runner throws" $ \_ -> pending
 
+createDbCreatesTheDb :: String -> SpecWith Runner
+createDbCreatesTheDb _dbName = describe "createdb " $
+  it "creates the db if it didn't exit" $ \_ -> pending
+
+createDbThrowsIfTheDbExists :: String -> SpecWith Runner
+createDbThrowsIfTheDbExists _dbName = describe "createdb" $
+  it "throws if the db is not there" $ \_ -> pending
+
+
+
 spec :: Spec
 spec = do
   describe "start/stop" $
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       withAnyPlan
       withInitDbEmptyInitially
-      withInitDbNotEmptyInitially
+      createDbCreatesTheDb "test"
+      createDbThrowsIfTheDbExists "template1"
 
 
 

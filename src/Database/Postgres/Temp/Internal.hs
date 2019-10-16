@@ -21,6 +21,7 @@ import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import Data.String
 import Data.Monoid
 import Data.ByteString (ByteString)
+import System.Directory
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
@@ -33,8 +34,8 @@ data StartError
   | CreateDbCompleteOptions
   | PostgresCompleteOptions
   | ClientCompleteOptions
-  | InitDbNotOnPath
-  | CreateDbNotOnPath
+  | InitDbNotFound
+  | CreateDbNotFound
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -298,6 +299,7 @@ defaultInitDbOptions CommonOptions {..} = do
 
 executeInitDb :: CommonOptions -> PartialProcessOptions -> IO ProcessOptions
 executeInitDb commonOptions userOptions = do
+  void $ throwMaybe InitDbNotFound =<< findExecutable "initdb"
   defs <- defaultInitDbOptions commonOptions
   completeOptions <- throwMaybe InitDbCompleteOptions $ completeProcessOptions $
     userOptions <> defs
@@ -320,6 +322,7 @@ defaultCreateDbOptions CommonOptions {..} = do
 
 executeCreateDb :: CommonOptions -> PartialProcessOptions -> IO ProcessOptions
 executeCreateDb commonOptions userOptions = do
+  void $ throwMaybe CreateDbNotFound =<< findExecutable "createdb"
   defs <- defaultCreateDbOptions commonOptions
   completeOptions <- throwMaybe CreateDbCompleteOptions $
     completeProcessOptions $ userOptions <> defs
@@ -332,23 +335,23 @@ executeCreateDb commonOptions userOptions = do
 -------------------------------------------------------------------------------
 startWith :: Plan -> IO (Either StartError DB)
 startWith Plan {..} = try $ startPartialCommonOptions planCommonOptions $
-  \dbCommonOptions@CommonOptions {..} -> do
-    dbInitDbInput <- case getLast planInitDb of
-      Nothing      -> Just <$> executeInitDb dbCommonOptions mempty
-      Just Nothing -> pure Nothing
-      Just (Just x)       -> Just <$> executeInitDb dbCommonOptions x
-    dbPostgresPlan <- throwMaybe PostgresCompleteOptions
-      . completePostgresPlan
-      . mappend planPostgres
-      =<< defaultPostgresPlan dbCommonOptions
-
-    let postgresStart = startPostgres dbCommonOptions dbPostgresPlan
-    bracketOnError postgresStart stopPostgresProcess $ \dbPostgresProcess -> do
-      dbCreateDbInput <- case getLast planCreateDb of
-        Nothing      -> Just <$> executeCreateDb dbCommonOptions mempty
+    \dbCommonOptions@CommonOptions {..} -> do
+      dbInitDbInput <- case getLast planInitDb of
+        Nothing      -> Just <$> executeInitDb dbCommonOptions mempty
         Just Nothing -> pure Nothing
-        Just (Just x)       -> Just <$> executeCreateDb dbCommonOptions x
-      pure DB {..}
+        Just (Just x)       -> Just <$> executeInitDb dbCommonOptions x
+      dbPostgresPlan <- throwMaybe PostgresCompleteOptions
+        . completePostgresPlan
+        . mappend planPostgres
+        =<< defaultPostgresPlan dbCommonOptions
+
+      let postgresStart = startPostgres dbCommonOptions dbPostgresPlan
+      bracketOnError postgresStart stopPostgresProcess $ \dbPostgresProcess -> do
+        dbCreateDbInput <- case getLast planCreateDb of
+          Nothing      -> Just <$> executeCreateDb dbCommonOptions mempty
+          Just Nothing -> pure Nothing
+          Just (Just x)       -> Just <$> executeCreateDb dbCommonOptions x
+        pure DB {..}
 
 start :: IO (Either StartError DB)
 start = startWith mempty
