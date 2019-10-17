@@ -3,6 +3,7 @@ module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 -- import System.IO.Temp
 import Database.Postgres.Temp.Internal
+-- import Database.Postgres.Temp.Etc
 -- import Data.Typeable
 import Control.Exception
 -- import System.IO
@@ -13,6 +14,7 @@ import System.Process
 -- import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import qualified Database.PostgreSQL.Simple as PG
+import System.Environment
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
@@ -20,30 +22,31 @@ import qualified Database.PostgreSQL.Simple as PG
 
 -- What are the properties of startWith/stop?
 -- TODO
+-- set the envs to something with an empty path
 -- I should check for various exes on the path and complain with better error messages if they are not there
 
--- postgres should be running after start
--- postgres should not be running after stop
--- if initdb is called it should make database folders if
--- in a clean directory
--- If initdb is not called the folder should be unmodified
--- if a temp folder is used it should be created and cleaned up
--- if a temp port is used it should be free
--- Once the db is returned we should be able to connect to it
 -- everything should be exceptions safe
--- adding command line arguments works
--- adding config works
--- If there is initdb/createdb plan there are options
--- and they should match
 
 -- Some usage tests
+
+-- If there is initdb/createdb plan there are options
+-- and they should match
 -- creating a db with a specific user and db works
+-- adding command line arguments works
+-- adding config works
 -- backup stuff works
 
 newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
 withRunner g (Runner f) = f g
+
+throwsIfInitDbIsNotOnThePath :: IO a -> Spec
+throwsIfInitDbIsNotOnThePath action = it "throws if initdb is not on the path" $ do
+  path <-  getEnv "PATH"
+
+  bracket (setEnv "PATH" "/foo") (const $ setEnv "PATH" path) $ \_ ->
+    action `shouldThrow` (==InitDbNotFound)
 
 withAnyPlan :: SpecWith Runner
 withAnyPlan = do
@@ -66,6 +69,7 @@ withAnyPlan = do
 -- This assumes that the directory is initially empty
 withInitDbEmptyInitially :: SpecWith Runner
 withInitDbEmptyInitially = describe "with active initDb non-empty folder initially" $
+
   it "the data directory has been initialize" $ \_ -> pending
 
 -- the Runner should throw when starting
@@ -81,18 +85,23 @@ createDbThrowsIfTheDbExists :: String -> SpecWith Runner
 createDbThrowsIfTheDbExists _dbName = describe "createdb" $
   it "throws if the db is not there" $ \_ -> pending
 
-
-
 spec :: Spec
 spec = do
+  describe "start" $ do
+    throwsIfInitDbIsNotOnThePath (bracket (either throwIO pure =<< start) stop (const $ pure ()))
+  describe "startWith" $ do
+    throwsIfInitDbIsNotOnThePath (bracket (either throwIO pure =<< startWith mempty) stop (const $ pure ()))
+  describe "with" $ do
+    throwsIfInitDbIsNotOnThePath (either throwIO pure =<< with (const $ pure ()))
+  describe "withPlan" $ do
+    throwsIfInitDbIsNotOnThePath (either throwIO pure =<< withPlan mempty (const $ pure ()))
+
   describe "start/stop" $
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       withAnyPlan
       withInitDbEmptyInitially
       createDbCreatesTheDb "test"
       createDbThrowsIfTheDbExists "template1"
-
-
 
 
 {-
