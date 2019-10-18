@@ -304,7 +304,7 @@ defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
 defaultCreateDbOptions CommonOptions {..} = do
   let strArgs = (\(a,b) -> a <> b) <$>
         [ ("-h", socketClassToHost commonOptionsSocketClass)
-        , ("-p", show (PostgresClient.oPort commonOptionsClientOptions))
+        , ("-p", show (fromJust $ PostgresClient.oPort commonOptionsClientOptions))
         ]
   def <- standardProcessOptions
   pure $ def

@@ -56,6 +56,7 @@ defaultOptionsShouldMatchDefaultPlan =
     commonOptionsClientOptions `shouldBe`
       ((PostgresClient.defaultOptions (PostgresClient.oDbname commonOptionsClientOptions))
         { PostgresClient.oPort = PostgresClient.oPort commonOptionsClientOptions
+        , PostgresClient.oHost = PostgresClient.oHost commonOptionsClientOptions
         })
 
 
