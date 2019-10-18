@@ -18,6 +18,7 @@ import System.Environment
 import System.Posix.Files
 import System.IO.Temp
 import System.Directory
+import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
@@ -45,13 +46,25 @@ defaultOptionsShouldMatchDefaultPlan :: SpecWith Runner
 defaultOptionsShouldMatchDefaultPlan =
   it "default options should match default plan" $ withRunner $ \DB{..} -> do
     let CommonOptions {..} = dbCommonOptions
-    commonOptionsDbName `shouldBe` "test"
+    PostgresClient.oDbname commonOptionsClientOptions `shouldBe` "test"
     let Temporary tmpDataDir = commonOptionsDataDir
     tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
-    commonOptionsPort `shouldSatisfy` (>32768)
+    let Just port = PostgresClient.oPort commonOptionsClientOptions
+    port `shouldSatisfy` (>32768)
     let UnixSocket (Temporary unixSocket) = commonOptionsSocketClass
     unixSocket `shouldStartWith` "/tmp/tmp-postgres-socket"
-    commonOptionsClientOptions `shouldBe` mempty
+    commonOptionsClientOptions `shouldBe`
+      ((PostgresClient.defaultOptions (PostgresClient.oDbname commonOptionsClientOptions))
+        { PostgresClient.oPort = PostgresClient.oPort commonOptionsClientOptions
+        })
+
+
+{-
+customDbAndUser :: Plan
+customDbAndUser = mempty
+  { planCommonOptions
+  }
+-}
 
 throwsIfCreateDbIsNotOnThePath :: IO a -> Spec
 throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the path" $

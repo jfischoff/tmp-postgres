@@ -52,10 +52,9 @@ data Event
 -------------------------------------------------------------------------------
 -- PartialCommonOptions
 -------------------------------------------------------------------------------
+-- TODO use last and derive the monoid
 data PartialCommonOptions = PartialCommonOptions
-  { partialCommonOptionsDbName        :: Maybe String
-  , partialCommonOptionsDataDir       :: Maybe FilePath
-  , partialCommonOptionsPort          :: Maybe Int
+  { partialCommonOptionsDataDir       :: Maybe FilePath
   , partialCommonOptionsSocketClass   :: PartialSocketClass
   , partialCommonOptionsLogger        :: Maybe (Event -> IO ())
   , partialCommonOptionsClientOptions :: Client.PartialOptions
@@ -64,25 +63,19 @@ data PartialCommonOptions = PartialCommonOptions
 
 instance Semigroup PartialCommonOptions where
   x <> y = PartialCommonOptions
-    { partialCommonOptionsDbName      =
-        partialCommonOptionsDbName x <|> partialCommonOptionsDbName y
-    , partialCommonOptionsDataDir     =
+    { partialCommonOptionsDataDir     =
         partialCommonOptionsDataDir x <|> partialCommonOptionsDataDir y
-    , partialCommonOptionsPort        =
-        partialCommonOptionsPort x <|> partialCommonOptionsPort y
     , partialCommonOptionsSocketClass =
         partialCommonOptionsSocketClass x <> partialCommonOptionsSocketClass y
     , partialCommonOptionsLogger      =
         partialCommonOptionsLogger x <|> partialCommonOptionsLogger y
     , partialCommonOptionsClientOptions =
-      partialCommonOptionsClientOptions x <> partialCommonOptionsClientOptions y
+        partialCommonOptionsClientOptions x <> partialCommonOptionsClientOptions y
     }
 
 instance Monoid PartialCommonOptions where
   mempty = PartialCommonOptions
-    { partialCommonOptionsDbName        = Nothing
-    , partialCommonOptionsDataDir       = Nothing
-    , partialCommonOptionsPort          = Nothing
+    { partialCommonOptionsDataDir       = Nothing
     , partialCommonOptionsSocketClass   = mempty
     , partialCommonOptionsLogger        = Nothing
     , partialCommonOptionsClientOptions = mempty
@@ -92,43 +85,46 @@ instance Monoid PartialCommonOptions where
 -------------------------------------------------------------------------------
 --TODO remove DbName and Port
 data CommonOptions = CommonOptions
-  { commonOptionsDbName        :: String
-  , commonOptionsDataDir       :: DirectoryType
-  , commonOptionsPort          :: Int
+  { commonOptionsDataDir       :: DirectoryType
   , commonOptionsSocketClass   :: SocketClass
-  , commonOptionsClientOptions :: Client.PartialOptions
+  , commonOptionsClientOptions :: PostgresClient.Options
   , commonOptionsLogger        :: Event -> IO ()
   }
-
-commonOptionsToConnectionOptions :: CommonOptions -> Maybe PostgresClient.Options
-commonOptionsToConnectionOptions CommonOptions {..}
-  = either (const Nothing) pure
-  $ Client.completeOptions
-  $  commonOptionsClientOptions
-  <> ( mempty
-        { Client.host   = pure $ socketClassToHost commonOptionsSocketClass
-        , Client.port   = pure commonOptionsPort
-        , Client.dbname = pure commonOptionsDbName
-        }
-      )
 -------------------------------------------------------------------------------
 -- CommonOptions life cycle
 -------------------------------------------------------------------------------
 startPartialCommonOptions
   :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
 startPartialCommonOptions PartialCommonOptions {..} f = do
-  commonOptionsPort <- maybe getFreePort pure partialCommonOptionsPort
+  port <- maybe getFreePort pure $ getLast $
+    Client.port partialCommonOptionsClientOptions
 
-  let commonOptionsDbName        = fromMaybe "test" partialCommonOptionsDbName
-      commonOptionsLogger        = fromMaybe mempty partialCommonOptionsLogger
-      commonOptionsClientOptions = partialCommonOptionsClientOptions
+  let dbName = fromMaybe "test" $ getLast $
+        Client.dbname partialCommonOptionsClientOptions
+
+
+
+
+
+  let commonOptionsLogger        = fromMaybe mempty partialCommonOptionsLogger
 
       initCommon = initializeDirectoryType "tmp-postgres-data"
         partialCommonOptionsDataDir
 
   bracketOnError initCommon cleanupDirectoryType $ \commonOptionsDataDir ->
       startPartialSocketClass partialCommonOptionsSocketClass $
-        \commonOptionsSocketClass -> f CommonOptions {..}
+        \commonOptionsSocketClass -> do
+          let host = socketClassToHost commonOptionsSocketClass
+              defaultClientOptions = mempty
+                { Client.port = pure port
+                , Client.dbname = pure dbName
+                , Client.host = pure host
+                }
+          commonOptionsClientOptions <- throwMaybe ClientCompleteOptions .
+              either (const Nothing) Just $
+                Client.completeOptions $
+                  partialCommonOptionsClientOptions <> defaultClientOptions
+          f CommonOptions {..}
 
 stopCommonOptions :: CommonOptions -> IO ()
 stopCommonOptions CommonOptions {..} = do
@@ -166,7 +162,7 @@ defaultPostgresPlan CommonOptions {..} = do
         { partialProcessOptionsName = pure "postgres"
         , partialProcessOptionsCmdLine = Replace
             [ "-D" <> toFilePath commonOptionsDataDir
-            , "-p" <> show commonOptionsPort
+            , "-p" <> show (fromJust $ PostgresClient.oPort commonOptionsClientOptions)
             ]
         }
     }
@@ -237,10 +233,9 @@ stopPostgresProcess db@PostgresProcess{..} = do
 
 startPostgres
   :: CommonOptions -> PostgresPlan -> IO PostgresProcess
-startPostgres common@CommonOptions {..} plan@PostgresPlan {..} = do
+startPostgres CommonOptions {..} plan@PostgresPlan {..} = do
   writeFile (toFilePath commonOptionsDataDir <> "/postgresql.conf") postgresPlanConfig
-  options <- throwMaybe ClientCompleteOptions $
-    commonOptionsToConnectionOptions common
+  let options = commonOptionsClientOptions
   let createDBResult = do
         pid  <- evaluateProcess $ postgresPlanOptions
 
@@ -313,11 +308,11 @@ defaultCreateDbOptions :: CommonOptions -> IO PartialProcessOptions
 defaultCreateDbOptions CommonOptions {..} = do
   let strArgs = (\(a,b) -> a <> b) <$>
         [ ("-h", socketClassToHost commonOptionsSocketClass)
-        , ("-p", show commonOptionsPort)
+        , ("-p", show (PostgresClient.oPort commonOptionsClientOptions))
         ]
   def <- standardProcessOptions
   pure $ def
-    { partialProcessOptionsCmdLine = Replace $ strArgs <> [commonOptionsDbName]
+    { partialProcessOptionsCmdLine = Replace $ strArgs <> [PostgresClient.oDbname commonOptionsClientOptions]
     , partialProcessOptionsName    = pure "createdb"
     }
 
