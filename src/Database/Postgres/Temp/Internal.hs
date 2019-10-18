@@ -102,11 +102,7 @@ startPartialCommonOptions PartialCommonOptions {..} f = do
   let dbName = fromMaybe "test" $ getLast $
         Client.dbname partialCommonOptionsClientOptions
 
-
-
-
-
-  let commonOptionsLogger        = fromMaybe mempty partialCommonOptionsLogger
+      commonOptionsLogger        = fromMaybe mempty partialCommonOptionsLogger
 
       initCommon = initializeDirectoryType "tmp-postgres-data"
         partialCommonOptionsDataDir
