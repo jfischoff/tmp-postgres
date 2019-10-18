@@ -3,7 +3,7 @@ module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 -- import System.IO.Temp
 import Database.Postgres.Temp.Internal
--- import Database.Postgres.Temp.Etc
+import Database.Postgres.Temp.Etc
 -- import Data.Typeable
 import Control.Exception
 -- import System.IO
@@ -15,15 +15,15 @@ import System.Process
 import System.Exit
 import qualified Database.PostgreSQL.Simple as PG
 import System.Environment
+import System.Posix.Files
+import System.IO.Temp
+import System.Directory
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
 -- import Control.Concurrent
 
 -- What are the properties of startWith/stop?
--- TODO
--- set the envs to something with an empty path
--- I should check for various exes on the path and complain with better error messages if they are not there
 
 -- everything should be exceptions safe
 
@@ -40,6 +40,33 @@ newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
 withRunner g (Runner f) = f g
+
+defaultOptionsShouldMatchDefaultPlan :: SpecWith Runner
+defaultOptionsShouldMatchDefaultPlan =
+  it "default options should match default plan" $ withRunner $ \DB{..} -> do
+    let CommonOptions {..} = dbCommonOptions
+    commonOptionsDbName `shouldBe` "test"
+    let Temporary tmpDataDir = commonOptionsDataDir
+    tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
+    commonOptionsPort `shouldSatisfy` (>32768)
+    let UnixSocket (Temporary unixSocket) = commonOptionsSocketClass
+    unixSocket `shouldStartWith` "/tmp/tmp-postgres-socket"
+    commonOptionsClientOptions `shouldBe` mempty
+
+throwsIfCreateDbIsNotOnThePath :: IO a -> Spec
+throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the path" $
+  withSystemTempDirectory "createdb-not-on-path-test" $ \dir -> do
+    Just initDbPath   <- findExecutable "initdb"
+    Just postgresPath <- findExecutable "postgres"
+
+    -- create symlinks
+    createSymbolicLink initDbPath $ dir <> "/initdb"
+    createSymbolicLink postgresPath $ dir <> "/postgres"
+
+    path <-  getEnv "PATH"
+
+    bracket (setEnv "PATH" dir) (const $ setEnv "PATH" path) $ \_ ->
+      action `shouldThrow` (==CreateDbNotFound)
 
 throwsIfInitDbIsNotOnThePath :: IO a -> Spec
 throwsIfInitDbIsNotOnThePath action = it "throws if initdb is not on the path" $ do
@@ -88,13 +115,21 @@ createDbThrowsIfTheDbExists _dbName = describe "createdb" $
 spec :: Spec
 spec = do
   describe "start" $ do
-    throwsIfInitDbIsNotOnThePath (bracket (either throwIO pure =<< start) stop (const $ pure ()))
+    let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
-    throwsIfInitDbIsNotOnThePath (bracket (either throwIO pure =<< startWith mempty) stop (const $ pure ()))
+    let startAction = bracket (either throwIO pure =<< startWith mempty) stop (const $ pure ())
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
   describe "with" $ do
-    throwsIfInitDbIsNotOnThePath (either throwIO pure =<< with (const $ pure ()))
+    let startAction = either throwIO pure =<< with (const $ pure ())
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
   describe "withPlan" $ do
-    throwsIfInitDbIsNotOnThePath (either throwIO pure =<< withPlan mempty (const $ pure ()))
+    let startAction = either throwIO pure =<< withPlan mempty (const $ pure ())
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
 
   describe "start/stop" $
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
@@ -102,6 +137,7 @@ spec = do
       withInitDbEmptyInitially
       createDbCreatesTheDb "test"
       createDbThrowsIfTheDbExists "template1"
+      defaultOptionsShouldMatchDefaultPlan
 
 
 {-

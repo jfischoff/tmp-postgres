@@ -90,6 +90,7 @@ instance Monoid PartialCommonOptions where
 -------------------------------------------------------------------------------
 -- CommonOptions
 -------------------------------------------------------------------------------
+--TODO remove DbName and Port
 data CommonOptions = CommonOptions
   { commonOptionsDbName        :: String
   , commonOptionsDataDir       :: DirectoryType
