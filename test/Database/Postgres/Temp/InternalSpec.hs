@@ -19,6 +19,7 @@ import System.Posix.Files
 import System.IO.Temp
 import System.Directory
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
+import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
@@ -59,13 +60,42 @@ defaultOptionsShouldMatchDefaultPlan =
         , PostgresClient.oHost = PostgresClient.oHost commonOptionsClientOptions
         })
 
+customOptionsWork :: (Plan -> IO PostgresClient.Options) -> Spec
+customOptionsWork action = do
+  let expectedDbName = "thedb"
+      expectedPassword = "password"
+      expectedUser = "user-name"
+      customPlan = mempty
+        { planCommonOptions = mempty
+            { partialCommonOptionsClientOptions = mempty
+                { Client.user = pure expectedUser
+                , Client.password = pure expectedPassword
+                , Client.dbname = pure expectedDbName
+                }
+            }
+        , planInitDb = pure $ pure $ mempty
+            { partialProcessOptionsCmdLine = Mappend
+                ["--user", "user-name"
+                ]
+            , partialProcessOptionsEnvVars = Mappend
+                [ ("PGPASSWORD", "password")
+                ]
+            }
+        , planCreateDb =pure $ pure $ mempty
+            { partialProcessOptionsCmdLine = Mappend
+                ["--user", "user-name"
+                ]
+            , partialProcessOptionsEnvVars = Mappend
+                [ ("PGPASSWORD", "password")
+                ]
+            }
+        }
+  it "returns the right client options for the plan" $ do
+    actualOptions <- action customPlan
 
-{-
-customDbAndUser :: Plan
-customDbAndUser = mempty
-  { planCommonOptions
-  }
--}
+    PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
+    PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
+    PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
 
 throwsIfCreateDbIsNotOnThePath :: IO a -> Spec
 throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the path" $
@@ -133,9 +163,11 @@ spec = do
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
-    let startAction = bracket (either throwIO pure =<< startWith mempty) stop (const $ pure ())
-    throwsIfInitDbIsNotOnThePath startAction
-    throwsIfCreateDbIsNotOnThePath startAction
+    let startAction plan = bracket (either throwIO pure =<< startWith plan) stop $ \db -> pure $
+          commonOptionsClientOptions $ dbCommonOptions db
+    throwsIfInitDbIsNotOnThePath $ startAction mempty
+    throwsIfCreateDbIsNotOnThePath $ startAction mempty
+    customOptionsWork startAction
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction

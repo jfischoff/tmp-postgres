@@ -83,7 +83,7 @@ instance Monoid PartialCommonOptions where
 -------------------------------------------------------------------------------
 -- CommonOptions
 -------------------------------------------------------------------------------
---TODO remove DbName and Port
+-- This is really the postgres process input
 data CommonOptions = CommonOptions
   { commonOptionsDataDir       :: DirectoryType
   , commonOptionsSocketClass   :: SocketClass
@@ -147,6 +147,7 @@ defaultConfig =
   , "log_disconnections = on"
   , "client_min_messages = ERROR"
   ]
+
 
 defaultPostgresPlan :: CommonOptions -> IO PartialPostgresPlan
 defaultPostgresPlan CommonOptions {..} = do
