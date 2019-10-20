@@ -33,8 +33,6 @@ import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 
 -- If there is initdb/createdb plan there are options
 -- and they should match
--- creating a db with a specific user and db works
--- adding command line arguments works
 -- adding config works
 -- backup stuff works
 
@@ -60,11 +58,12 @@ defaultOptionsShouldMatchDefaultPlan =
         , PostgresClient.oHost = PostgresClient.oHost commonOptionsClientOptions
         })
 
-customOptionsWork :: (Plan -> IO PostgresClient.Options) -> Spec
+customOptionsWork :: (Plan -> IO DB) -> Spec
 customOptionsWork action = do
   let expectedDbName = "thedb"
       expectedPassword = "password"
       expectedUser = "user-name"
+      extraConfig = "log_statement='mod'"
       customPlan = mempty
         { planCommonOptions = mempty
             { partialCommonOptionsClientOptions = mempty
@@ -81,7 +80,7 @@ customOptionsWork action = do
                 [ ("PGPASSWORD", "password")
                 ]
             }
-        , planCreateDb =pure $ pure $ mempty
+        , planCreateDb = pure $ pure $ mempty
             { partialProcessOptionsCmdLine = Mappend
                 ["--user", "user-name"
                 ]
@@ -89,13 +88,18 @@ customOptionsWork action = do
                 [ ("PGPASSWORD", "password")
                 ]
             }
+        , planPostgres = mempty
+            { partialPostgresPlanConfig = Mappend [extraConfig]
+            }
         }
   it "returns the right client options for the plan" $ do
-    actualOptions <- action customPlan
-
+    DB {..} <- action customPlan
+    let actualOptions = commonOptionsClientOptions dbCommonOptions
+        actualConfig  = postgresPlanConfig dbPostgresPlan
     PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
     PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
     PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
+    lines actualConfig `shouldContain` extraConfig:defaultConfig
 
 throwsIfCreateDbIsNotOnThePath :: IO a -> Spec
 throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the path" $
@@ -163,8 +167,7 @@ spec = do
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
-    let startAction plan = bracket (either throwIO pure =<< startWith plan) stop $ \db -> pure $
-          commonOptionsClientOptions $ dbCommonOptions db
+    let startAction plan = bracket (either throwIO pure =<< startWith plan) stop $ \db -> pure db
     throwsIfInitDbIsNotOnThePath $ startAction mempty
     throwsIfCreateDbIsNotOnThePath $ startAction mempty
     customOptionsWork startAction

@@ -22,6 +22,7 @@ import Data.String
 import Data.Monoid
 import Data.ByteString (ByteString)
 import System.Directory
+-- TODO return stderr if there is an exception
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
@@ -130,7 +131,7 @@ stopCommonOptions CommonOptions {..} = do
 -- PartialPostgresPlan
 -------------------------------------------------------------------------------
 data PartialPostgresPlan = PartialPostgresPlan
-  { partialPostgresPlanConfig  :: Lastoid String
+  { partialPostgresPlanConfig  :: Lastoid [String]
   , partialPostgresPlanOptions :: PartialProcessOptions
   } deriving stock (Generic)
     deriving Semigroup via GenericSemigroup PartialPostgresPlan
@@ -148,12 +149,11 @@ defaultConfig =
   , "client_min_messages = ERROR"
   ]
 
-
 defaultPostgresPlan :: CommonOptions -> IO PartialPostgresPlan
 defaultPostgresPlan CommonOptions {..} = do
   processOptions <- standardProcessOptions
   pure $ PartialPostgresPlan
-    { partialPostgresPlanConfig  = Replace $ unlines $
+    { partialPostgresPlanConfig  = Replace $
         defaultConfig <> listenAddressConfig commonOptionsSocketClass
     , partialPostgresPlanOptions = processOptions
         { partialProcessOptionsName = pure "postgres"
@@ -175,7 +175,7 @@ completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
 completePostgresPlan PartialPostgresPlan {..} = do
   postgresPlanConfig <- case partialPostgresPlanConfig of
     Mappend _ -> Nothing
-    Replace x -> Just x
+    Replace x -> Just $ unlines x
 
   postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
 
