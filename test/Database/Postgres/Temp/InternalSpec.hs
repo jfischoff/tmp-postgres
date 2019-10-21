@@ -30,10 +30,6 @@ import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 -- everything should be exceptions safe
 
 -- Some usage tests
-
--- If there is initdb/createdb plan there are options
--- and they should match
--- adding config works
 -- backup stuff works
 
 newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
@@ -150,7 +146,7 @@ withInitDbEmptyInitially = describe "with active initDb non-empty folder initial
 -- the Runner should throw when starting
 withInitDbNotEmptyInitially :: SpecWith Runner
 withInitDbNotEmptyInitially = describe "with active initDb non-empty folder initially" $
-  it "the runner throws" $ \_ -> pending
+  it "the runner throws" $ \_ -> pending --  -> InitDBFailed
 
 createDbCreatesTheDb :: String -> SpecWith Runner
 createDbCreatesTheDb _dbName = describe "createdb " $
