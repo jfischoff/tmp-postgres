@@ -2,6 +2,7 @@
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 -- import System.IO.Temp
+import Database.Postgres.Temp.Core
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Etc
 -- import Data.Typeable

@@ -37,10 +37,10 @@ waitForDB options = do
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right () -> return ()
 
-throwIfNotSuccess :: ExitCode -> IO ()
-throwIfNotSuccess = \case
+throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
+throwIfNotSuccess f = \case
   ExitSuccess -> pure ()
-  e -> throwIO e
+  e -> throwIO $ f e
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
@@ -64,7 +64,6 @@ data PartialProcessOptions = PartialProcessOptions
   , partialProcessOptionsStdIn   :: Last Handle
   , partialProcessOptionsStdOut  :: Last Handle
   , partialProcessOptionsStdErr  :: Last Handle
-  , partialProcessOptionsName    :: Last String
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup PartialProcessOptions
@@ -82,18 +81,17 @@ standardProcessOptions = do
 -------------------------------------------------------------------------------
 -- ProcessOptions
 -------------------------------------------------------------------------------
+-- remove name
 data ProcessOptions = ProcessOptions
   { processOptionsEnvVars :: [(String, String)]
   , processOptionsCmdLine :: [String]
   , processOptionsStdIn   :: Handle
   , processOptionsStdOut  :: Handle
   , processOptionsStdErr  :: Handle
-  , processOptionsName    :: String
   }
 
 completeProcessOptions :: PartialProcessOptions -> Maybe ProcessOptions
 completeProcessOptions PartialProcessOptions {..} = do
-  processOptionsName <- getLast partialProcessOptionsName
   processOptionsEnvVars <- case partialProcessOptionsEnvVars of
     Replace x -> Just x
     Mappend _ -> Nothing
@@ -108,19 +106,18 @@ completeProcessOptions PartialProcessOptions {..} = do
 -------------------------------------------------------------------------------
 -- Starting Processes
 -------------------------------------------------------------------------------
-
-evaluateProcess :: ProcessOptions -> IO ProcessHandle
-evaluateProcess ProcessOptions {..} = fmap fourth $
-  createProcess_ processOptionsName $
-    (proc processOptionsName processOptionsCmdLine)
+evaluateProcess :: String -> ProcessOptions -> IO ProcessHandle
+evaluateProcess name ProcessOptions {..} = fmap fourth $
+  createProcess_ name $
+    (proc name processOptionsCmdLine)
       { std_err = UseHandle processOptionsStdErr
       , std_out = UseHandle processOptionsStdOut
       , std_in  = UseHandle processOptionsStdIn
       , env     = Just processOptionsEnvVars
       }
 
-executeProcess :: ProcessOptions -> IO ExitCode
-executeProcess = waitForProcess <=< evaluateProcess
+executeProcess :: String -> ProcessOptions -> IO ExitCode
+executeProcess name = waitForProcess <=< evaluateProcess name
 -------------------------------------------------------------------------------
 -- DirectoryType
 -------------------------------------------------------------------------------

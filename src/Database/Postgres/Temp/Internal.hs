@@ -1,4 +1,5 @@
 module Database.Postgres.Temp.Internal where
+import Database.Postgres.Temp.Core
 import Database.Postgres.Temp.Etc
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
@@ -50,6 +51,8 @@ data Event
   | CreateDB
   | Finished
   deriving (Show, Eq, Enum, Bounded, Ord)
+
+type CommonOptions = GCommonOptions Event
 -------------------------------------------------------------------------------
 -- PartialCommonOptions
 -------------------------------------------------------------------------------
@@ -81,16 +84,7 @@ instance Monoid PartialCommonOptions where
     , partialCommonOptionsLogger        = Nothing
     , partialCommonOptionsClientOptions = mempty
     }
--------------------------------------------------------------------------------
--- CommonOptions
--------------------------------------------------------------------------------
--- This is really the postgres process input
-data CommonOptions = CommonOptions
-  { commonOptionsDataDir       :: DirectoryType
-  , commonOptionsSocketClass   :: SocketClass
-  , commonOptionsClientOptions :: PostgresClient.Options
-  , commonOptionsLogger        :: Event -> IO ()
-  }
+
 -------------------------------------------------------------------------------
 -- CommonOptions life cycle
 -------------------------------------------------------------------------------
@@ -163,13 +157,7 @@ defaultPostgresPlan CommonOptions {..} = do
             ]
         }
     }
--------------------------------------------------------------------------------
--- PostgresPlan
--------------------------------------------------------------------------------
-data PostgresPlan = PostgresPlan
-  { postgresPlanConfig  :: String
-  , postgresPlanOptions :: ProcessOptions
-  }
+
 
 completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
 completePostgresPlan PartialPostgresPlan {..} = do
@@ -180,90 +168,20 @@ completePostgresPlan PartialPostgresPlan {..} = do
   postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
 
   pure PostgresPlan {..}
+
+
 -------------------------------------------------------------------------------
--- PostgresProcess
+-- PartialPlan
 -------------------------------------------------------------------------------
-data PostgresProcess = PostgresProcess
-  { pid          :: ProcessHandle
-  -- ^ The process handle for the @postgres@ process.
-  , options      :: PostgresClient.Options
-  , postgresPlan :: PostgresPlan
-  }
--------------------------------------------------------------------------------
--- PostgresProcess Life cycle management
--------------------------------------------------------------------------------
--- | Force all connections to the database to close. Can be useful in some
---   testing situations.
---   Called during shutdown as well.
-terminateConnections :: PostgresProcess -> IO ()
-terminateConnections PostgresProcess {..} = do
-  let theConnectionString = PostgresClient.toConnectionString $ options
-      terminationQuery = fromString $ unlines
-        [ "SELECT pg_terminate_backend(pid)"
-        , "FROM pg_stat_activity"
-        , "WHERE datname=?;"
-        ]
-  e <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $
-    \conn -> PG.execute conn terminationQuery [PostgresClient.oDbname options]
-  case e of
-    Left (_ :: IOError) -> pure ()
-    Right _ -> pure ()
-
--- | Stop the postgres process. This function attempts to the 'pidLock' before running.
---   'stopPostgres' will terminate all connections before shutting down postgres.
---   'stopPostgres' is useful for testing backup strategies.
-stopPostgresProcess :: PostgresProcess -> IO ExitCode
-stopPostgresProcess db@PostgresProcess{..} = do
-  withProcessHandle pid (\case
-        OpenHandle p   -> do
-          -- try to terminate the connects first. If we can't terminate still
-          -- keep shutting down
-          terminateConnections db
-
-          signalProcess sigINT p
-        OpenExtHandle {} -> pure () -- TODO log windows is not supported
-        ClosedHandle _ -> return ()
-        )
-
-  exitCode <- waitForProcess pid
-  pure exitCode
-
-startPostgres
-  :: CommonOptions -> PostgresPlan -> IO PostgresProcess
-startPostgres CommonOptions {..} plan@PostgresPlan {..} = do
-  writeFile (toFilePath commonOptionsDataDir <> "/postgresql.conf") postgresPlanConfig
-  let options = commonOptionsClientOptions
-  let createDBResult = do
-        pid  <- evaluateProcess $ postgresPlanOptions
-
-        let postgresPlan = plan
-        pure PostgresProcess {..}
-
-  commonOptionsLogger StartPostgres
-  bracketOnError createDBResult stopPostgresProcess $ \result -> do
-    let checkForCrash = do
-            mExitCode <- getProcessExitCode $ pid result
-            for_ mExitCode (throwIO . StartPostgresFailed)
-
-    commonOptionsLogger WaitForDB
-    let connOpts = options
-          { PostgresClient.oDbname = "template1"
-          }
-    waitForDB connOpts `race_` forever (checkForCrash >> threadDelay 100000)
-
-    return result
--------------------------------------------------------------------------------
--- Plan
--------------------------------------------------------------------------------
-data Plan = Plan
+data PartialPlan = PartialPlan
   { planCommonOptions :: PartialCommonOptions
   , planInitDb        :: Last (Maybe PartialProcessOptions)
   , planCreateDb      :: Last (Maybe PartialProcessOptions)
   , planPostgres      :: PartialPostgresPlan
   }
   deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup Plan
-  deriving Monoid    via GenericMonoid Plan
+  deriving Semigroup via GenericSemigroup PartialPlan
+  deriving Monoid    via GenericMonoid PartialPlan
 -------------------------------------------------------------------------------
 -- DB
 -------------------------------------------------------------------------------
@@ -326,8 +244,8 @@ executeCreateDb commonOptions userOptions = do
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
-startWith :: Plan -> IO (Either StartError DB)
-startWith Plan {..} = try $ startPartialCommonOptions planCommonOptions $
+startWith :: PartialPlan -> IO (Either StartError DB)
+startWith PartialPlan {..} = try $ startPartialCommonOptions planCommonOptions $
     \dbCommonOptions@CommonOptions {..} -> do
       dbInitDbInput <- case getLast planInitDb of
         Nothing      -> Just <$> executeInitDb dbCommonOptions mempty
@@ -372,7 +290,7 @@ restartPostgres db@DB{..} = try $ do
 -------------------------------------------------------------------------------
 -- Exception safe interface
 -------------------------------------------------------------------------------
-withPlan :: Plan -> (DB -> IO a) -> IO (Either StartError a)
+withPlan :: PartialPlan -> (DB -> IO a) -> IO (Either StartError a)
 withPlan plan f = bracket (startWith plan) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
