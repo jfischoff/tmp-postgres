@@ -1,6 +1,7 @@
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Core
 import Database.Postgres.Temp.Etc
+import Database.Postgres.Temp.Partial
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (race_)
 import Control.Exception
@@ -27,63 +28,6 @@ import System.Directory
 -------------------------------------------------------------------------------
 -- Events and Exceptions
 --------------------------------------------------------------------------------
-data StartError
-  = InitDBFailed   ExitCode
-  | CreateDBFailed [String] ExitCode
-  | StartPostgresFailed ExitCode
-  | StartPostgresDisappeared
-  | InitDbCompleteOptions
-  | CreateDbCompleteOptions
-  | PostgresCompleteOptions
-  | ClientCompleteOptions
-  | InitDbNotFound
-  | CreateDbNotFound
-  deriving (Show, Eq, Typeable)
-
-instance Exception StartError
-
-data Event
-  = InitDB
-  | WriteConfig
-  | FreePort
-  | StartPostgres
-  | WaitForDB
-  | CreateDB
-  | Finished
-  deriving (Show, Eq, Enum, Bounded, Ord)
-
-type CommonOptions = GCommonOptions Event
--------------------------------------------------------------------------------
--- PartialCommonOptions
--------------------------------------------------------------------------------
--- TODO use last and derive the monoid
-data PartialCommonOptions = PartialCommonOptions
-  { partialCommonOptionsDataDir       :: Maybe FilePath
-  , partialCommonOptionsSocketClass   :: PartialSocketClass
-  , partialCommonOptionsLogger        :: Maybe (Event -> IO ())
-  , partialCommonOptionsClientOptions :: Client.PartialOptions
-  }
-  deriving stock (Generic)
-
-instance Semigroup PartialCommonOptions where
-  x <> y = PartialCommonOptions
-    { partialCommonOptionsDataDir     =
-        partialCommonOptionsDataDir x <|> partialCommonOptionsDataDir y
-    , partialCommonOptionsSocketClass =
-        partialCommonOptionsSocketClass x <> partialCommonOptionsSocketClass y
-    , partialCommonOptionsLogger      =
-        partialCommonOptionsLogger x <|> partialCommonOptionsLogger y
-    , partialCommonOptionsClientOptions =
-        partialCommonOptionsClientOptions x <> partialCommonOptionsClientOptions y
-    }
-
-instance Monoid PartialCommonOptions where
-  mempty = PartialCommonOptions
-    { partialCommonOptionsDataDir       = Nothing
-    , partialCommonOptionsSocketClass   = mempty
-    , partialCommonOptionsLogger        = Nothing
-    , partialCommonOptionsClientOptions = mempty
-    }
 
 -------------------------------------------------------------------------------
 -- CommonOptions life cycle
