@@ -4,6 +4,7 @@ import Database.Postgres.Temp.Partial
 import Control.Exception
 import Control.Monad (void)
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
+import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import System.Exit (ExitCode(..))
 import Data.ByteString (ByteString)
 -- TODO return stderr if there is an exception
@@ -34,14 +35,24 @@ defaultConfig = unlines
   , "client_min_messages = ERROR"
   ]
 
-defaultPartialResources :: PartialResources
-defaultPartialResources = mempty
-  { partialResourcesPlan = mempty
-    { partialPlanInitDb = Mappend $ Just $ mempty
-      { partialProcessOptionsCmdLine = Mappend ["--no-sync"]
+defaultPartialResources :: IO PartialResources
+defaultPartialResources = do
+  theStandardProcessOptions <- standardProcessOptions
+  pure mempty
+    { partialResourcesPlan = mempty
+      { partialPlanLogger = pure print
+      , partialPlanCreateDb = Mappend $ Just $ theStandardProcessOptions
+      , partialPlanInitDb = Mappend $ Just $ theStandardProcessOptions
+        { partialProcessOptionsCmdLine = Mappend ["--no-sync"]
+        }
+      , partialPlanPostgres = mempty
+          { partialPostgresPlanProcessOptions = theStandardProcessOptions
+          , partialPostgresPlanClientOptions = mempty
+            { Client.dbname = pure "test"
+            }
+          }
       }
     }
-  }
 
 startWith :: PartialResources -> IO (Either StartError DB)
 startWith x = try $ do
@@ -52,7 +63,7 @@ startWith x = try $ do
   pure DB {..}
 
 start :: IO (Either StartError DB)
-start = startWith defaultPartialResources
+start = startWith =<< defaultPartialResources
 -------------------------------------------------------------------------------
 -- Stopping
 -------------------------------------------------------------------------------
