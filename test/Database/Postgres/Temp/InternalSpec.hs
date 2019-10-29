@@ -172,9 +172,9 @@ withInitDbEmptyInitially = describe "with active initDb non-empty folder initial
     initialFiles `shouldContain` ["PG_VERSION"]
 
 -- the Runner should throw when starting
-withInitDbNotEmptyInitially :: SpecWith Runner
-withInitDbNotEmptyInitially = describe "with active initDb non-empty folder initially" $
-  it "the runner throws" $ \_ -> pending --  -> InitDBFailed
+-- withInitDbNotEmptyInitially :: SpecWith Runner
+-- withInitDbNotEmptyInitially = describe "with active initDb non-empty folder initially" $
+--   it "the runner throws" $ \_ -> pending --  -> InitDBFailed
 
 createDbCreatesTheDb :: String -> SpecWith Runner
 createDbCreatesTheDb dbName = describe "createdb " $
@@ -183,7 +183,6 @@ createDbCreatesTheDb dbName = describe "createdb " $
       \conn -> fmap (PG.fromOnly . head) $ PG.query_ conn $ fromString $
         "SELECT EXISTS (SELECT datname FROM pg_catalog.pg_database WHERE datname = '" <> dbName <> "')"
     result `shouldBe` True
-
 
 createDbThrowsIfTheDbExists :: SpecWith Runner
 createDbThrowsIfTheDbExists = describe "createdb" $
@@ -227,6 +226,15 @@ spec = do
             }
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
+
+    before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $
+      it "fails on non-empty data directory" $ \dirPath -> do
+        writeFile (dirPath <> "/PG_VERSION") "1 million"
+        let nonEmptyFolderPlan = theDefaultResources
+              { partialResourcesDataDir = Perm dirPath
+              }
+            startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
+        startAction `shouldThrow` (== InitDbFailed (ExitFailure 1))
 
 
 {-
