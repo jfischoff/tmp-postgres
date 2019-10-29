@@ -23,8 +23,8 @@ toConnectionString
 -- Life Cycle Management
 -------------------------------------------------------------------------------
 -- Default postgres options
-defaultConfig :: String
-defaultConfig = unlines
+defaultConfig :: [String]
+defaultConfig =
   [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
@@ -41,7 +41,10 @@ defaultPartialResources = do
   pure mempty
     { partialResourcesPlan = mempty
       { partialPlanLogger = pure print
+      , partialPlanConfig = Mappend defaultConfig
       , partialPlanCreateDb = Mappend $ Just $ theStandardProcessOptions
+          { partialProcessOptionsCmdLine = Mappend ["test"]
+          }
       , partialPlanInitDb = Mappend $ Just $ theStandardProcessOptions
         { partialProcessOptionsCmdLine = Mappend ["--no-sync"]
         }
@@ -57,8 +60,6 @@ defaultPartialResources = do
 startWith :: PartialResources -> IO (Either StartError DB)
 startWith x = try $ do
   dbResources@Resources {..} <- startPartialResources x
-  let dataDir = toFilePath resourcesDataDir
-  writeFile (dataDir <> "/" <> "postgres.config") defaultConfig
   dbPostgresProcess <- startPlan resourcesPlan
   pure DB {..}
 
