@@ -174,9 +174,8 @@ startPlan Plan {..} = do
 
   writeFile (planDataDirectory <> "/postgresql.conf") planConfig
 
-  result <- startPostgres planLogger planPostgres
+  bracketOnError (startPostgres planLogger planPostgres) stopPostgresProcess $ \result -> do
+    for_ planCreateDb $  executeProcess "createdb" >=>
+      throwIfNotSuccess CreateDbFailed
 
-  for_ planCreateDb $  executeProcess "createdb" >=>
-    throwIfNotSuccess CreateDbFailed
-
-  pure result
+    pure result

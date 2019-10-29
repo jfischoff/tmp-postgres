@@ -15,10 +15,12 @@ import Network.Socket.Free (getFreePort)
 import Control.Monad (join)
 import System.Directory
 import Data.Either.Validation
+import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Class
 
+-- TODO make functions for creating plans from PartialProcessOptions from PartialClientOptions
+-- in the next version
 
--- TODO
--- Need to add more path info to the error messages
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
@@ -268,18 +270,14 @@ toPlan port socketClass dataDirectory = mempty
       }
   }
 
--- This optional creates the temp data dir
--- It also optional makes the data dir
--- It appends those values to the Plan
--- It creates a port if one is not specified
 startPartialResources :: PartialResources -> IO Resources
-startPartialResources PartialResources {..} = do
-  port <- maybe getFreePort pure $ join $ getLast partialResourcesPort
-  resourcesSocket      <- startPartialSocketClass partialResourcesSocket
-  resourcesDataDir     <- startDirectoryType "tmp-postgres-data" partialResourcesDataDir
+startPartialResources PartialResources {..} = evalContT $ do
+  port <- lift $ maybe getFreePort pure $ join $ getLast partialResourcesPort
+  resourcesSocket <- ContT $ bracketOnError (startPartialSocketClass partialResourcesSocket) stopSocketOptions
+  resourcesDataDir <- ContT $ bracketOnError (startDirectoryType "tmp-postgres-data" partialResourcesDataDir) stopDirectoryType
   let hostAndDirPartial = toPlan port resourcesSocket $ toFilePath resourcesDataDir
-  resourcesPlan <- either (throwIO . CompletePlanFailed) pure $
-    completePlan $  hostAndDirPartial <> partialResourcesPlan
+  resourcesPlan <- lift $ either (throwIO . CompletePlanFailed) pure $
+    completePlan $ hostAndDirPartial <> partialResourcesPlan
   pure Resources {..}
 
 stopResources :: Resources -> IO ()
@@ -287,7 +285,6 @@ stopResources Resources {..} = do
   stopSocketOptions resourcesSocket
   stopDirectoryType resourcesDataDir
 
--- TODO make functions for creating plans from PartialProcessOptions from PartialClientOptions
--- in the next version
+
 
 

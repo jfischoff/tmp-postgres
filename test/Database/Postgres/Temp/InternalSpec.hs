@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables, LambdaCase, RankNTypes #-}
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
--- import System.IO.Temp
 import Database.Postgres.Temp.Core
 import Database.Postgres.Temp.Partial
 import Database.Postgres.Temp.Internal
@@ -170,11 +169,6 @@ withInitDbEmptyInitially = describe "with active initDb non-empty folder initial
   it "the data directory has been initialize" $ withRunner $ \DB {..} -> do
     initialFiles <- listDirectory $ toFilePath $ resourcesDataDir $ dbResources
     initialFiles `shouldContain` ["PG_VERSION"]
-
--- the Runner should throw when starting
--- withInitDbNotEmptyInitially :: SpecWith Runner
--- withInitDbNotEmptyInitially = describe "with active initDb non-empty folder initially" $
---   it "the runner throws" $ \_ -> pending --  -> InitDBFailed
 
 createDbCreatesTheDb :: String -> SpecWith Runner
 createDbCreatesTheDb dbName = describe "createdb " $
