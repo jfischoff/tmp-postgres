@@ -16,6 +16,7 @@ import Control.Monad (join)
 import System.Directory
 import Data.Either.Validation
 
+
 -- TODO
 -- Need to add more path info to the error messages
 -------------------------------------------------------------------------------
@@ -25,9 +26,9 @@ data Lastoid a = Replace a | Mappend a
 
 instance Semigroup a => Semigroup (Lastoid a) where
   x <> y = case (x, y) of
-    (r@Replace {}, _        ) -> r
-    (Mappend a   , Replace b) -> Replace $ a <> b
-    (Mappend a   , Mappend b) -> Mappend $ a <> b
+    (_        , r@Replace {}) -> r
+    (Replace a, Mappend   b ) -> Replace $ a <> b
+    (Mappend a, Mappend   b ) -> Mappend $ a <> b
 
 instance Monoid a => Monoid (Lastoid a) where
   mempty = Mappend mempty
@@ -60,6 +61,9 @@ standardProcessOptions = do
     , partialProcessOptionsStdOut  = pure stdout
     , partialProcessOptionsStdErr  = pure stderr
     }
+
+addErrorContext :: String -> Either [String] a -> Either [String] a
+addErrorContext cxt = either (Left . map (cxt <>)) Right
 
 getOption :: String -> Last a -> Validation [String] a
 getOption optionName = \case
@@ -182,9 +186,11 @@ data PartialPostgresPlan = PartialPostgresPlan
 completePostgresPlan :: PartialPostgresPlan -> Either [String] PostgresPlan
 completePostgresPlan PartialPostgresPlan {..} = validationToEither $ do
   postgresPlanClientOptions <-
-    eitherToValidation $ Client.completeOptions partialPostgresPlanClientOptions
+    eitherToValidation $ addErrorContext "partialPostgresPlanClientOptions: " $
+      Client.completeOptions partialPostgresPlanClientOptions
   postgresPlanProcessOptions <-
-    eitherToValidation $ completeProcessOptions partialPostgresPlanProcessOptions
+    eitherToValidation $ addErrorContext "partialPostgresPlanProcessOptions: " $
+      completeProcessOptions partialPostgresPlanProcessOptions
 
   pure PostgresPlan {..}
 -------------------------------------------------------------------------------
@@ -205,11 +211,11 @@ data PartialPlan = PartialPlan
 completePlan :: PartialPlan -> Either [String] Plan
 completePlan PartialPlan {..} = validationToEither $ do
   planLogger   <- getOption "partialPlanLogger" partialPlanLogger
-  planInitDb   <- eitherToValidation $
+  planInitDb   <- eitherToValidation $ addErrorContext "partialPlanInitDb: " $
     traverse completeProcessOptions $ getLastoid partialPlanInitDb
-  planCreateDb <- eitherToValidation $
+  planCreateDb <- eitherToValidation $ addErrorContext "partialPlanCreateDb: " $
     traverse completeProcessOptions $ getLastoid partialPlanCreateDb
-  planPostgres <- eitherToValidation $
+  planPostgres <- eitherToValidation $ addErrorContext "partialPlanPostgres: " $
     completePostgresPlan partialPlanPostgres
   let planConfig = unlines $ getLastoid partialPlanConfig
   planDataDirectory <- getOption "partialPlanDataDirectory"

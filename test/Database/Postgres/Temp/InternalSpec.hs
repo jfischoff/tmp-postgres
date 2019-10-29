@@ -227,14 +227,33 @@ spec = do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
 
-    before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $
+    before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
+
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
         let nonEmptyFolderPlan = theDefaultResources
               { partialResourcesDataDir = Perm dirPath
               }
             startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
+
         startAction `shouldThrow` (== InitDbFailed (ExitFailure 1))
+
+      it "works if on non-empty if initdb is disabled" $ \dirPath -> do
+        throwIfNotSuccess id =<< system ("initdb " <> dirPath)
+        let nonEmptyFolderPlan = theDefaultResources
+              { partialResourcesDataDir = Perm dirPath
+              , partialResourcesPlan = (partialResourcesPlan theDefaultResources)
+                  { partialPlanInitDb = Replace Nothing
+                  }
+              }
+        bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ \db -> do
+          one <- fmap (PG.fromOnly . head) $
+            bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
+              \conn -> PG.query_ conn "SELECT 1"
+
+          one `shouldBe` (1 :: Int)
+
+
 
 
 {-
