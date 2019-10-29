@@ -153,13 +153,17 @@ withAnyPlan = do
 
     one `shouldBe` (1 :: Int)
 
-  it "cleans up temp files" $ \_ -> pending -- check for tmp-postgres files in /tmp before and after the runner. Should be the same.
+  it "cleans up temp files" $ \(Runner runner) -> do
+    initialFiles <- listDirectory "/tmp"
+    runner $ const $ pure ()
+    listDirectory "/tmp" `shouldReturn` initialFiles
 
 -- This assumes that the directory is initially empty
 withInitDbEmptyInitially :: SpecWith Runner
 withInitDbEmptyInitially = describe "with active initDb non-empty folder initially" $
-
-  it "the data directory has been initialize" $ \_ -> pending
+  it "the data directory has been initialize" $ withRunner $ \DB {..} -> do
+    initialFiles <- listDirectory $ toFilePath $ resourcesDataDir $ dbResources
+    initialFiles `shouldContain` ["PG_VERSION"]
 
 -- the Runner should throw when starting
 withInitDbNotEmptyInitially :: SpecWith Runner
