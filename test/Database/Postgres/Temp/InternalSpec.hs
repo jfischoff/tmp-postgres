@@ -39,6 +39,16 @@ newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
 withRunner g (Runner f) = f g
 
+updateCreateDb :: PartialResources -> Lastoid (Maybe PartialProcessOptions) -> PartialResources
+updateCreateDb partialResources partialProcessOptions =
+  let originalPlan = partialResourcesPlan partialResources
+      newPlan = originalPlan
+        { partialPlanCreateDb = partialProcessOptions
+        }
+  in partialResources
+      { partialResourcesPlan = newPlan
+      }
+
 defaultOptionsShouldMatchDefaultPlan :: SpecWith Runner
 defaultOptionsShouldMatchDefaultPlan =
   it "default options should match default plan" $ withRunner $ \DB{..} -> do
@@ -91,21 +101,16 @@ customOptionsWork action = do
           }
     -- hmm maybe I should provide lenses
     let combinedResources = initialPlan <> customPlan
-        combinedPlan = partialResourcesPlan combinedResources
-        combinedCreateDbOptions = Mappend $ pure $ initialCreateDbOptions
-            { partialProcessOptionsCmdLine = Mappend
-                ["--user", "user-name"
-                , expectedDbName
-                ]
-            , partialProcessOptionsEnvVars = Mappend
-                [ ("PGPASSWORD", "password")
-                ]
-            }
-        finalCombinedResources = combinedResources
-          { partialResourcesPlan = combinedPlan
-              { partialPlanCreateDb = combinedCreateDbOptions
-              }
+        finalCombinedResources = updateCreateDb combinedResources $ Mappend $ pure $ initialCreateDbOptions
+          { partialProcessOptionsCmdLine = Mappend
+              ["--user", "user-name"
+              , expectedDbName
+              ]
+          , partialProcessOptionsEnvVars = Mappend
+              [ ("PGPASSWORD", "password")
+              ]
           }
+
     DB {..} <- action finalCombinedResources
     let Resources {..} = dbResources
         Plan {..} = resourcesPlan
@@ -180,39 +185,48 @@ createDbCreatesTheDb dbName = describe "createdb " $
     result `shouldBe` True
 
 
-createDbThrowsIfTheDbExists :: String -> SpecWith Runner
-createDbThrowsIfTheDbExists _dbName = describe "createdb" $
-  it "throws if the db is not there" $ \_ -> pending
+createDbThrowsIfTheDbExists :: SpecWith Runner
+createDbThrowsIfTheDbExists = describe "createdb" $
+  it "throws if the db is not there" $ \(Runner runner) ->
+    runner (const $ pure ()) `shouldThrow` (== CreateDbFailed (ExitFailure 1))
 
 spec :: Spec
 spec = do
-
+  theDefaultResources <- runIO defaultPartialResources
+  theStandardProcessOptions <- runIO standardProcessOptions
   describe "start" $ do
     let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop $ \db -> pure db
-    throwsIfInitDbIsNotOnThePath $ startAction =<< defaultPartialResources
-    throwsIfCreateDbIsNotOnThePath $ startAction =<< defaultPartialResources
+    throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
+    throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
     customOptionsWork startAction
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
   describe "withPlan" $ do
-    let startAction = either throwIO pure =<< flip withPlan (const $ pure ())
-          =<< defaultPartialResources
+    let startAction = either throwIO pure =<<
+          withPlan theDefaultResources (const $ pure ())
+
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
 
-  describe "start/stop" $
+  describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       withAnyPlan
       withInitDbEmptyInitially
       createDbCreatesTheDb "test"
-      createDbThrowsIfTheDbExists "template1"
       defaultOptionsShouldMatchDefaultPlan
+
+    let invalidCreateDbPlan = updateCreateDb theDefaultResources $
+          Mappend $ pure $ theStandardProcessOptions
+            { partialProcessOptionsCmdLine = Mappend ["template1"]
+            }
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
+      createDbThrowsIfTheDbExists
 
 
 {-
