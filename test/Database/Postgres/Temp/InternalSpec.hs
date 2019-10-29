@@ -192,7 +192,7 @@ spec = do
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
-    let startAction plan = bracket (either throwIO pure =<< startWith plan) stop $ \db -> pure db
+    let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
     throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
     customOptionsWork startAction
@@ -201,11 +201,12 @@ spec = do
     throwsIfInitDbIsNotOnThePath startAction
     throwsIfCreateDbIsNotOnThePath startAction
   describe "withPlan" $ do
-    let startAction = either throwIO pure =<<
-          withPlan theDefaultResources (const $ pure ())
+    let startAction plan = either throwIO pure =<<
+          withPlan plan pure
 
-    throwsIfInitDbIsNotOnThePath startAction
-    throwsIfCreateDbIsNotOnThePath startAction
+    throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
+    throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
+    customOptionsWork startAction
 
   describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
@@ -222,7 +223,6 @@ spec = do
       createDbThrowsIfTheDbExists
 
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
-
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
         let nonEmptyFolderPlan = theDefaultResources

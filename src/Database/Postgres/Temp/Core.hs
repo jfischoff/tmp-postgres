@@ -35,7 +35,6 @@ type Logger = Event -> IO ()
 waitForDB :: PostgresClient.Options -> IO ()
 waitForDB options = do
   let theConnectionString = PostgresClient.toConnectionString options
-  print theConnectionString
   try (bracket (PG.connectPostgreSQL theConnectionString) PG.close mempty) >>= \case
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right () -> return ()
@@ -58,16 +57,14 @@ fourth :: (a, b, c, d) -> d
 fourth (_, _, _, x) = x
 
 evaluateProcess :: String -> ProcessOptions -> IO ProcessHandle
-evaluateProcess name ProcessOptions {..} = do
-  print processOptionsCmdLine
-  fmap fourth $
-    createProcess_ name $
-      (proc name processOptionsCmdLine)
-        { std_err = UseHandle processOptionsStdErr
-        , std_out = UseHandle processOptionsStdOut
-        , std_in  = UseHandle processOptionsStdIn
-        , env     = Just processOptionsEnvVars
-        }
+evaluateProcess name ProcessOptions {..} = fmap fourth $
+  createProcess_ name $
+    (proc name processOptionsCmdLine)
+      { std_err = UseHandle processOptionsStdErr
+      , std_out = UseHandle processOptionsStdOut
+      , std_in  = UseHandle processOptionsStdIn
+      , env     = Just processOptionsEnvVars
+      }
 
 executeProcess :: String -> ProcessOptions -> IO ExitCode
 executeProcess name = evaluateProcess name >=> waitForProcess
