@@ -103,4 +103,3 @@ with f = do
 withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)
 withRestart db f = bracket (restartPostgres db) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
-

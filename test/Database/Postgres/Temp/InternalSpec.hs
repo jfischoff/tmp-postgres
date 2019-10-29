@@ -21,7 +21,8 @@ import System.Directory
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import Data.String
--- import System.Timeout(timeout)
+import System.Timeout(timeout)
+import Control.Monad (void)
 -- import Data.Either
 -- import Data.Function (fix)
 -- import Control.Concurrent
@@ -67,13 +68,13 @@ defaultOptionsShouldMatchDefaultPlan =
         , PostgresClient.oHost = PostgresClient.oHost postgresPlanClientOptions
         })
 
-customOptionsWork :: (PartialResources -> IO DB) -> Spec
+customOptionsWork :: (PartialResources -> (DB -> IO ()) -> IO ()) -> Spec
 customOptionsWork action = do
   let expectedDbName = "thedb"
       expectedPassword = "password"
       expectedUser = "user-name"
-      extraConfig = "log_statement='mod'"
-
+      expectedDuration = "100ms"
+      extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
 
   it "returns the right client options for the plan" $ do
     initialPlan <- defaultPartialResources
@@ -110,15 +111,34 @@ customOptionsWork action = do
               ]
           }
 
-    DB {..} <- action finalCombinedResources
-    let Resources {..} = dbResources
-        Plan {..} = resourcesPlan
-    let actualOptions = postgresPlanClientOptions planPostgres
-        actualConfig = planConfig
-    PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
-    PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
-    PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
-    lines actualConfig `shouldContain` defaultConfig <> [extraConfig]
+    action finalCombinedResources $ \db@DB {..} -> do
+      bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
+        [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
+        actualDuration `shouldBe` expectedDuration
+
+      let Resources {..} = dbResources
+          Plan {..} = resourcesPlan
+          actualOptions = postgresPlanClientOptions planPostgres
+          actualConfig = planConfig
+      PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
+      PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
+      PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
+      lines actualConfig `shouldContain` defaultConfig <> [extraConfig]
+
+invalidOptionsFailsQuickly :: (PartialResources -> IO ()) -> Spec
+invalidOptionsFailsQuickly action = it "quickly fails with an invalid option" $ do
+  initialPlan <- defaultPartialResources
+  let customPlan = mempty
+        { partialResourcesPlan = mempty
+            { partialPlanConfig = Mappend
+                [ "log_directory = /this/does/not/exist"
+                , "logging_collector = true"
+                ]
+            }
+        }
+  timeout 5000000 (action $ initialPlan <> customPlan) `shouldThrow`
+    (== StartPostgresFailed (ExitFailure 1))
+
 
 throwsIfCreateDbIsNotOnThePath :: IO a -> Spec
 throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the path" $
@@ -195,7 +215,9 @@ spec = do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
     throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
-    customOptionsWork startAction
+    invalidOptionsFailsQuickly $ void . startAction
+    customOptionsWork $ \plan f ->
+      bracket (either throwIO pure =<< startWith plan) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
@@ -206,13 +228,18 @@ spec = do
 
     throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
     throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
-    customOptionsWork startAction
+    invalidOptionsFailsQuickly $ void . startAction
+    customOptionsWork $ \plan f -> either throwIO pure =<<
+      withPlan plan f
+
+  let someStandardTests dbName= do
+        withAnyPlan
+        withInitDbEmptyInitially
+        createDbCreatesTheDb dbName
 
   describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
-      withAnyPlan
-      withInitDbEmptyInitially
-      createDbCreatesTheDb "test"
+      someStandardTests "test"
       defaultOptionsShouldMatchDefaultPlan
 
     let invalidCreateDbPlan = updateCreateDb theDefaultResources $
@@ -221,6 +248,21 @@ spec = do
             }
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
+
+
+    let noCreateTemplate1 = mempty
+          { partialResourcesPlan = mempty
+              { partialPlanCreateDb = Replace Nothing
+              , partialPlanPostgres = mempty
+                  { partialPostgresPlanClientOptions = mempty
+                    { Client.dbname = pure "template1"
+                    }
+                  }
+              }
+          }
+        noCreateDbPlan = theDefaultResources <> noCreateTemplate1
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith noCreateDbPlan) stop f) $
+      someStandardTests "template1"
 
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
@@ -263,52 +305,6 @@ countPostgresProcesses = do
   unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
 
   pure $ length $ lines xs
-
-
-  before (createTempDirectory "/tmp" "tmp-postgres") $ after rmDirIgnoreErrors $ describe "startWithLogger/stop" $ do
-    forM_ [minBound .. maxBound] $ \event ->
-      it ("deletes the temp dir and postgres on exception in " ++ show event) $ \mainFilePath -> do
-        -- This is not the best method ... but it works
-        beforePostgresCount <- countPostgresProcesses
-        theStdOut <- mkDevNull
-        theStdErr <- mkDevNull
-        shouldThrow
-          (startWithLogger (\currentEvent -> when (currentEvent == event) $ throwIO Except) Unix defaultOptions mainFilePath theStdOut theStdErr)
-          (\Except -> True)
-        doesDirectoryExist mainFilePath `shouldReturn` False
-        countPostgresProcesses `shouldReturn` beforePostgresCount
-
-    it "creates a useful connection string and stop still cleans up" $ \mainFilePath -> do
-      beforePostgresCount <- countPostgresProcesses
-      theStdOut <- mkDevNull
-      theStdErr <- mkDevNull
-      result <- startWithLogger (\_ -> return ()) Unix defaultOptions mainFilePath theStdOut theStdErr
-      db <- case result of
-              Right x  -> return x
-              Left err -> error $ show err
-      conn <- connectPostgreSQL $ BSC.pack $ connectionString db
-      _ <- execute_ conn "create table users (id int)"
-
-      stop db `shouldReturn` Just ExitSuccess
-      doesDirectoryExist mainFilePath `shouldReturn` False
-      countPostgresProcesses `shouldReturn` beforePostgresCount
-
-    it "can override settings" $ \mainFilePath -> do
-      let expectedDuration = "100ms"
-      theStdOut <- mkDevNull
-      theStdErr <- mkDevNull
-      bracket (startWithLogger (const $ pure ()) Unix
-                defaultOptions { tmpCmdLineOptions = [("log_min_duration_statement", expectedDuration)] }
-                mainFilePath theStdOut theStdErr
-                )
-              (either (\_ -> return ()) (void . stop)) $ \result -> do
-        db <- case result of
-                Right x  -> return x
-                Left err -> error $ show err
-        conn <- connectPostgreSQL $ BSC.pack $ connectionString db
-        [Only actualDuration] <- query_ conn "SHOW log_min_duration_statement"
-        actualDuration `shouldBe` expectedDuration
-
     it "dies promptly when a bad setting is passed" $ \mainFilePath -> do
       theStdOut <- mkDevNull
       theStdErr <- mkDevNull
