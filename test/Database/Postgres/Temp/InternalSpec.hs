@@ -21,6 +21,7 @@ import System.IO.Temp
 import System.Directory
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import Data.String
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
@@ -171,8 +172,13 @@ withInitDbNotEmptyInitially = describe "with active initDb non-empty folder init
   it "the runner throws" $ \_ -> pending --  -> InitDBFailed
 
 createDbCreatesTheDb :: String -> SpecWith Runner
-createDbCreatesTheDb _dbName = describe "createdb " $
-  it "creates the db if it didn't exit" $ \_ -> pending
+createDbCreatesTheDb dbName = describe "createdb " $
+  it "creates the db if it didn't exit" $ withRunner $ \db -> do
+    result <- bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
+      \conn -> fmap (PG.fromOnly . head) $ PG.query_ conn $ fromString $
+        "SELECT EXISTS (SELECT datname FROM pg_catalog.pg_database WHERE datname = '" <> dbName <> "')"
+    result `shouldBe` True
+
 
 createDbThrowsIfTheDbExists :: String -> SpecWith Runner
 createDbThrowsIfTheDbExists _dbName = describe "createdb" $
