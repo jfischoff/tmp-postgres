@@ -251,9 +251,6 @@ spec = do
 
 
 {-
-mkDevNull :: IO Handle
-mkDevNull = openFile "/dev/null" WriteMode
-
 data Except = Except
   deriving (Show, Eq, Typeable)
 

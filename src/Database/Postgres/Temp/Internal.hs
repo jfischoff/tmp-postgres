@@ -7,6 +7,7 @@ import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import System.Exit (ExitCode(..))
 import Data.ByteString (ByteString)
+import Control.Monad.Trans.Cont
 -- TODO return stderr if there is an exception
 
 data DB = DB
@@ -58,9 +59,9 @@ defaultPartialResources = do
     }
 
 startWith :: PartialResources -> IO (Either StartError DB)
-startWith x = try $ do
-  dbResources@Resources {..} <- startPartialResources x
-  dbPostgresProcess <- startPlan resourcesPlan
+startWith x = try $ evalContT $ do
+  dbResources@Resources {..} <- ContT $ bracketOnError (startPartialResources x) stopResources
+  dbPostgresProcess <- ContT $ bracketOnError (startPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
 
 start :: IO (Either StartError DB)
