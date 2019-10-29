@@ -25,7 +25,7 @@ data StartError
   = StartPostgresFailed ExitCode
   | InitDbFailed ExitCode
   | CreateDbFailed ExitCode
-  | CompletePlanFailed [String]
+  | CompletePlanFailed [String] -- TODO move elsewhere
   deriving (Show, Eq, Ord, Typeable)
 
 instance Exception StartError

@@ -7,7 +7,7 @@ import Database.Postgres.Temp.Partial
 import Database.Postgres.Temp.Internal
 -- import Data.Typeable
 import Control.Exception
--- import System.IO
+import System.IO.Error
 -- import System.Directory
 -- import Control.Monad
 import System.Process
@@ -15,12 +15,12 @@ import System.Process
 -- import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import qualified Database.PostgreSQL.Simple as PG
--- import System.Environment
--- import System.Posix.Files
--- import System.IO.Temp
--- import System.Directory
+import System.Environment
+import System.Posix.Files
+import System.IO.Temp
+import System.Directory
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
--- import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 -- import System.Timeout(timeout)
 -- import Data.Either
 -- import Data.Function (fix)
@@ -56,51 +56,65 @@ defaultOptionsShouldMatchDefaultPlan =
         { PostgresClient.oPort = PostgresClient.oPort postgresPlanClientOptions
         , PostgresClient.oHost = PostgresClient.oHost postgresPlanClientOptions
         })
-{-
-customOptionsWork :: (Plan -> IO DB) -> Spec
+
+customOptionsWork :: (PartialResources -> IO DB) -> Spec
 customOptionsWork action = do
   let expectedDbName = "thedb"
       expectedPassword = "password"
       expectedUser = "user-name"
       extraConfig = "log_statement='mod'"
-      customPlan = mempty
-        { planCommonOptions = mempty
-            { partialCommonOptionsClientOptions = mempty
-                { Client.user = pure expectedUser
-                , Client.password = pure expectedPassword
-                , Client.dbname = pure expectedDbName
-                }
-            }
-        , planInitDb = pure $ pure $ mempty
-            { partialProcessOptionsCmdLine = Mappend
-                ["--user", "user-name"
-                ]
-            , partialProcessOptionsEnvVars = Mappend
-                [ ("PGPASSWORD", "password")
-                ]
-            }
-        , planCreateDb = pure $ pure $ mempty
-            { partialProcessOptionsCmdLine = Mappend
-                ["--user", "user-name"
-                ]
-            , partialProcessOptionsEnvVars = Mappend
-                [ ("PGPASSWORD", "password")
-                ]
-            }
-        , planPostgres = mempty
-            { partialPostgresPlanConfig = Mappend [extraConfig]
-            }
-        }
+
+
   it "returns the right client options for the plan" $ do
-    DB {..} <- action customPlan
-    let actualOptions = commonOptionsClientOptions dbCommonOptions
-        actualConfig  = postgresPlanConfig dbPostgresPlan
-    PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
+    initialPlan <- defaultPartialResources
+    initialCreateDbOptions <- standardProcessOptions
+    let customPlan = mempty
+          { partialResourcesPlan = mempty
+              { partialPlanPostgres = mempty
+                  { partialPostgresPlanClientOptions = mempty
+                      { Client.user     = pure expectedUser
+                      , Client.password = pure expectedPassword
+                      , Client.dbname   = pure expectedDbName
+                      }
+                  }
+              , partialPlanInitDb = Mappend $ pure $ mempty
+                  { partialProcessOptionsCmdLine = Mappend
+                      ["--user", "user-name"
+                      ]
+                  , partialProcessOptionsEnvVars = Mappend
+                      [ ("PGPASSWORD", "password")
+                      ]
+                  }
+              , partialPlanConfig = Mappend [extraConfig]
+              }
+          }
+    -- hmm maybe I should provide lenses
+    let combinedResources = initialPlan <> customPlan
+        combinedPlan = partialResourcesPlan combinedResources
+        combinedCreateDbOptions = Mappend $ pure $ initialCreateDbOptions
+            { partialProcessOptionsCmdLine = Mappend
+                ["--user", "user-name"
+                , expectedDbName
+                ]
+            , partialProcessOptionsEnvVars = Mappend
+                [ ("PGPASSWORD", "password")
+                ]
+            }
+        finalCombinedResources = combinedResources
+          { partialResourcesPlan = combinedPlan
+              { partialPlanCreateDb = combinedCreateDbOptions
+              }
+          }
+    DB {..} <- action finalCombinedResources
+    let Resources {..} = dbResources
+        Plan {..} = resourcesPlan
+    let actualOptions = postgresPlanClientOptions planPostgres
+        actualConfig = planConfig
     PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
+    PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
     PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
-    lines actualConfig `shouldContain` extraConfig:defaultConfig
--}
-{-
+    lines actualConfig `shouldContain` defaultConfig <> [extraConfig]
+
 throwsIfCreateDbIsNotOnThePath :: IO a -> Spec
 throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the path" $
   withSystemTempDirectory "createdb-not-on-path-test" $ \dir -> do
@@ -114,15 +128,14 @@ throwsIfCreateDbIsNotOnThePath action = it "throws if createdb is not on the pat
     path <-  getEnv "PATH"
 
     bracket (setEnv "PATH" dir) (const $ setEnv "PATH" path) $ \_ ->
-      action `shouldThrow` (==CreateDbNotFound)
+      action `shouldThrow` isDoesNotExistError
 
 throwsIfInitDbIsNotOnThePath :: IO a -> Spec
 throwsIfInitDbIsNotOnThePath action = it "throws if initdb is not on the path" $ do
   path <-  getEnv "PATH"
 
   bracket (setEnv "PATH" "/foo") (const $ setEnv "PATH" path) $ \_ ->
-    action `shouldThrow` (==InitDbNotFound)
--}
+    action `shouldThrow` isDoesNotExistError
 
 withAnyPlan :: SpecWith Runner
 withAnyPlan = do
@@ -163,25 +176,25 @@ createDbThrowsIfTheDbExists _dbName = describe "createdb" $
 
 spec :: Spec
 spec = do
-{-
+
   describe "start" $ do
     let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
-    -- throwsIfInitDbIsNotOnThePath startAction
-    -- throwsIfCreateDbIsNotOnThePath startAction
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop $ \db -> pure db
-    -- throwsIfInitDbIsNotOnThePath $ startAction mempty
-    -- throwsIfCreateDbIsNotOnThePath $ startAction mempty
-    -- customOptionsWork startAction
+    throwsIfInitDbIsNotOnThePath $ startAction =<< defaultPartialResources
+    throwsIfCreateDbIsNotOnThePath $ startAction =<< defaultPartialResources
+    customOptionsWork startAction
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
-    -- throwsIfInitDbIsNotOnThePath startAction
-    -- throwsIfCreateDbIsNotOnThePath startAction
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
   describe "withPlan" $ do
-    let startAction = either throwIO pure =<< withPlan mempty (const $ pure ())
-    -- throwsIfInitDbIsNotOnThePath startAction
-    -- throwsIfCreateDbIsNotOnThePath startAction
--}
+    let startAction = either throwIO pure =<< flip withPlan (const $ pure ())
+          =<< defaultPartialResources
+    throwsIfInitDbIsNotOnThePath startAction
+    throwsIfCreateDbIsNotOnThePath startAction
 
   describe "start/stop" $
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do

@@ -17,8 +17,7 @@ import System.Directory
 import Data.Either.Validation
 
 -- TODO
--- It is listening on Ip4 and Ip6 when listening on the unix socket
-
+-- Need to add more path info to the error messages
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
@@ -236,8 +235,6 @@ data PartialResources = PartialResources
   deriving Semigroup via GenericSemigroup PartialResources
   deriving Monoid    via GenericMonoid PartialResources
 
--- TODO create db needs to use the entire partial connection
--- options
 toPlan :: Int -> SocketClass -> FilePath -> PartialPlan
 toPlan port socketClass dataDirectory = mempty
   { partialPlanConfig = Mappend $ socketClassToConfig socketClass
@@ -276,7 +273,7 @@ startPartialResources PartialResources {..} = do
   resourcesDataDir     <- startDirectoryType "tmp-postgres-data" partialResourcesDataDir
   let hostAndDirPartial = toPlan port resourcesSocket $ toFilePath resourcesDataDir
   resourcesPlan <- either (throwIO . CompletePlanFailed) pure $
-    completePlan $ partialResourcesPlan <> hostAndDirPartial
+    completePlan $  hostAndDirPartial <> partialResourcesPlan
   pure Resources {..}
 
 stopResources :: Resources -> IO ()
@@ -284,106 +281,7 @@ stopResources Resources {..} = do
   stopSocketOptions resourcesSocket
   stopDirectoryType resourcesDataDir
 
-
 -- TODO make functions for creating plans from PartialProcessOptions from PartialClientOptions
-
--- This might go in the other file
--- this is basically startWith
--- startPlanWithResources :: PartialResources -> IO (Resources, PostgresProcess)
--- startPlanWithResources = startPartialResources $ startPlan . resourcesPlan
-
--- I'm not sure but the partial conn options should probably come but the
--- the start should have a partial options but they should be generated from the function
-{-
-
-throwMaybe :: Exception e => e -> Maybe a -> IO a
-throwMaybe e = \case
-  Nothing -> throwIO e
-  Just  x -> pure x
-
--------------------------------------------------------------------------------
--- CommonOptions life cycle
--------------------------------------------------------------------------------
-startPartialCommonOptions
-  :: PartialCommonOptions -> (CommonOptions -> IO a) -> IO a
-startPartialCommonOptions PartialCommonOptions {..} f = do
-  port <- maybe getFreePort pure $ getLast $
-    Client.port partialCommonOptionsClientOptions
-
-  let dbName = fromMaybe "test" $ getLast $
-        Client.dbname partialCommonOptionsClientOptions
-
-      commonOptionsLogger        = fromMaybe mempty partialCommonOptionsLogger
-
-      initCommon = initializeDirectoryType "tmp-postgres-data"
-        partialCommonOptionsDataDir
-
-  bracketOnError initCommon cleanupDirectoryType $ \commonOptionsDataDir ->
-      startPartialSocketClass partialCommonOptionsSocketClass $
-        \commonOptionsSocketClass -> do
-          let host = socketClassToHost commonOptionsSocketClass
-              defaultClientOptions = mempty
-                { Client.port = pure port
-                , Client.dbname = pure dbName
-                , Client.host = pure host
-                }
-          commonOptionsClientOptions <- throwMaybe ClientCompleteOptions .
-              either (const Nothing) Just $
-                Client.completeOptions $
-                  partialCommonOptionsClientOptions <> defaultClientOptions
-          f CommonOptions {..}
-
-stopCommonOptions :: CommonOptions -> IO ()
-stopCommonOptions CommonOptions {..} = do
-  stopSocketOptions commonOptionsSocketClass
-  cleanupDirectoryType commonOptionsDataDir
+-- in the next version
 
 
--------------------------------------------------------------------------------
--- PartialPostgresPlan
--------------------------------------------------------------------------------
-data PartialPostgresPlan = PartialPostgresPlan
-  { partialPostgresPlanConfig  :: Lastoid [String]
-  , partialPostgresPlanOptions :: PartialProcessOptions
-  } deriving stock (Generic)
-    deriving Semigroup via GenericSemigroup PartialPostgresPlan
-    deriving Monoid    via GenericMonoid PartialPostgresPlan
-
-defaultConfig :: [String]
-defaultConfig =
-  [ "shared_buffers = 12MB"
-  , "fsync = off"
-  , "synchronous_commit = off"
-  , "full_page_writes = off"
-  , "log_min_duration_statement = 0"
-  , "log_connections = on"
-  , "log_disconnections = on"
-  , "client_min_messages = ERROR"
-  ]
-
-defaultPostgresPlan :: CommonOptions -> IO PartialPostgresPlan
-defaultPostgresPlan CommonOptions {..} = do
-  processOptions <- standardProcessOptions
-  pure $ PartialPostgresPlan
-    { partialPostgresPlanConfig  = Replace $
-        defaultConfig <> listenAddressConfig commonOptionsSocketClass
-    , partialPostgresPlanOptions = processOptions
-        { partialProcessOptionsName = pure "postgres"
-        , partialProcessOptionsCmdLine = Replace
-            [ "-D" <> toFilePath commonOptionsDataDir
-            , "-p" <> show (fromJust $ PostgresClient.oPort commonOptionsClientOptions)
-            ]
-        }
-    }
-
-
-completePostgresPlan :: PartialPostgresPlan -> Maybe PostgresPlan
-completePostgresPlan PartialPostgresPlan {..} = do
-  postgresPlanConfig <- case partialPostgresPlanConfig of
-    Mappend _ -> Nothing
-    Replace x -> Just $ unlines x
-
-  postgresPlanOptions <- completeProcessOptions partialPostgresPlanOptions
-
-  pure PostgresPlan {..}
--}
