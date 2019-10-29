@@ -304,42 +304,6 @@ countPostgresProcesses = do
 
   unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
 
-  pure $ length $ lines xs
-    it "dies promptly when a bad setting is passed" $ \mainFilePath -> do
-      theStdOut <- mkDevNull
-      theStdErr <- mkDevNull
-      r <- timeout 5000000 $ startWithLogger (const $ pure ()) Unix
-            defaultOptions { tmpCmdLineOptions =  [ ("log_directory", "/this/does/not/exist")
-            , ("logging_collector", "true")
-            ] } mainFilePath theStdOut theStdErr
-      case r of
-        Nothing ->
-          -- bad test, shouldSatisfy is difficult because it wants Show on DB.
-          -- anyway, point of this is to fail if we timed out.
-          1 `shouldBe` (2 :: Int)
-        Just (Right x) ->
-          -- this would be very surprising but if it somehow manages to do something useful despite
-          -- bad config ... ok i guess? regardless, should clean up.
-          void $ stop x
-        Just (Left _) -> do
-          -- if it fails here that's fine & expected.
-          pure ()
-
-    it "terminateConnections" $ \mainFilePath -> do
-      theStdOut <- mkDevNull
-      theStdErr <- mkDevNull
-      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix defaultOptions mainFilePath theStdOut theStdErr) stop $ \db -> do
-        bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \_ ->
-          bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn2 -> do
-            query_ conn2 "SELECT COUNT(*) FROM pg_stat_activity where backend_type='client backend'" `shouldReturn` [Only (2 :: Int)]
-
-            terminateConnections db
-
-            bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn3 ->
-              query_ conn3 "SELECT COUNT(*) FROM  pg_stat_activity where backend_type='client backend'" `shouldReturn` [Only (1 :: Int)]
-
-    -- The point of stopPostgres and startPostgres is to test recovery so
-    -- let's make sure that works
     it "stopPostgres/startPostgres works" $ \mainFilePath -> do
       let extraOpts = defaultOptions { tmpCmdLineOptions =
             [ ("wal_level", "replica")
