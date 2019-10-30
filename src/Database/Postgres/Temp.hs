@@ -28,15 +28,14 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 
 module Database.Postgres.Temp
   ( -- * Types
-    DB
-  , StartError (..)
+
+    StartError (..)
   -- * Starting @postgres@
   -- $options
   , start
   , startWith
   , stop
-  , PartialResources (..)
-  , defaultPartialResources
+  , defaultConfig
   , withPlan
   , with
   -- * Starting and Stopping postgres without removing the temporary directory
@@ -45,11 +44,26 @@ module Database.Postgres.Temp
   , withRestart
   -- * Reloading the config
   , reloadConfig
+  -- * DB manipulation
+  , toConnectionString
+  -- * Configuration
+  , Lastoid (..)
   , SocketClass (..)
+  , PartialSocketClass (..)
+  , PartialDirectoryType (..)
+  , PartialProcessConfig (..)
+  , ProcessConfig (..)
+  , PartialPlan (..)
+  , Plan (..)
+  , PartialPostgresPlan (..)
+  , PostgresPlan (..)
+  , PostgresProcess (..)
+  , Config (..)
+  , DB
   ) where
 import Database.Postgres.Temp.Internal
-import Database.Postgres.Temp.Core
-import Database.Postgres.Temp.Partial
+import Database.Postgres.Temp.Internal.Core
+import Database.Postgres.Temp.Internal.Partial
 
 
 {- $options

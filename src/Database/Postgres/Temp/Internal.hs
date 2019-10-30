@@ -1,6 +1,6 @@
 module Database.Postgres.Temp.Internal where
-import Database.Postgres.Temp.Core
-import Database.Postgres.Temp.Partial
+import Database.Postgres.Temp.Internal.Core
+import Database.Postgres.Temp.Internal.Partial
 import Control.Exception
 import Control.Monad (void)
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
@@ -23,14 +23,14 @@ data DB = DB
 toConnectionString :: DB -> ByteString
 toConnectionString
   = PostgresClient.toConnectionString
-  . postgresProcessClientOptions
+  . postgresProcessClientConfig
   . dbPostgresProcess
 --------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
 -- Default postgres options
-defaultConfig :: [String]
-defaultConfig =
+defaultPostgresConfig :: [String]
+defaultPostgresConfig =
   [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
@@ -41,36 +41,36 @@ defaultConfig =
   , "client_min_messages = ERROR"
   ]
 
-defaultPartialResources :: IO PartialResources
-defaultPartialResources = do
-  theStandardProcessOptions <- standardProcessOptions
+defaultConfig :: IO Config
+defaultConfig = do
+  theStandardProcessConfig <- standardProcessConfig
   pure mempty
-    { partialResourcesPlan = mempty
+    { optionsPlan = mempty
       { partialPlanLogger = pure print
-      , partialPlanConfig = Mappend defaultConfig
-      , partialPlanCreateDb = Mappend $ Just $ theStandardProcessOptions
-          { partialProcessOptionsCmdLine = Mappend ["test"]
+      , partialPlanConfig = Mappend defaultPostgresConfig
+      , partialPlanCreateDb = Mappend $ Just $ theStandardProcessConfig
+          { partialProcessConfigCmdLine = Mappend ["test"]
           }
-      , partialPlanInitDb = Mappend $ Just $ theStandardProcessOptions
-        { partialProcessOptionsCmdLine = Mappend ["--no-sync"]
+      , partialPlanInitDb = Mappend $ Just $ theStandardProcessConfig
+        { partialProcessConfigCmdLine = Mappend ["--no-sync"]
         }
       , partialPlanPostgres = mempty
-          { partialPostgresPlanProcessOptions = theStandardProcessOptions
-          , partialPostgresPlanClientOptions = mempty
+          { partialPostgresPlanProcessConfig = theStandardProcessConfig
+          , partialPostgresPlanClientConfig = mempty
             { Client.dbname = pure "test"
             }
           }
       }
     }
 
-startWith :: PartialResources -> IO (Either StartError DB)
+startWith :: Config -> IO (Either StartError DB)
 startWith x = try $ evalContT $ do
-  dbResources@Resources {..} <- ContT $ bracketOnError (startPartialResources x) stopResources
+  dbResources@Resources {..} <- ContT $ bracketOnError (startConfig x) stopResources
   dbPostgresProcess <- ContT $ bracketOnError (startPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
 
 start :: IO (Either StartError DB)
-start = startWith =<< defaultPartialResources
+start = startWith =<< defaultConfig
 -------------------------------------------------------------------------------
 -- Stopping
 -------------------------------------------------------------------------------
@@ -101,13 +101,13 @@ reloadConfig db =
 -------------------------------------------------------------------------------
 -- Exception safe interface
 -------------------------------------------------------------------------------
-withPlan :: PartialResources -> (DB -> IO a) -> IO (Either StartError a)
+withPlan :: Config -> (DB -> IO a) -> IO (Either StartError a)
 withPlan plan f = bracket (startWith plan) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
 with :: (DB -> IO a) -> IO (Either StartError a)
 with f = do
-  initialPlan <- defaultPartialResources
+  initialPlan <- defaultConfig
   withPlan initialPlan f
 
 withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)

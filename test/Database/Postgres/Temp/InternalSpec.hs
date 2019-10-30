@@ -1,7 +1,7 @@
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
-import Database.Postgres.Temp.Core
-import Database.Postgres.Temp.Partial
+import Database.Postgres.Temp.Internal.Core
+import Database.Postgres.Temp.Internal.Partial
 import Database.Postgres.Temp.Internal
 import Control.Exception
 import System.IO.Error
@@ -30,37 +30,37 @@ newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
 withRunner g (Runner f) = f g
 
-updateCreateDb :: PartialResources -> Lastoid (Maybe PartialProcessOptions) -> PartialResources
-updateCreateDb partialResources partialProcessOptions =
-  let originalPlan = partialResourcesPlan partialResources
+updateCreateDb :: Config -> Lastoid (Maybe PartialProcessConfig) -> Config
+updateCreateDb options partialProcessConfig =
+  let originalPlan = optionsPlan options
       newPlan = originalPlan
-        { partialPlanCreateDb = partialProcessOptions
+        { partialPlanCreateDb = partialProcessConfig
         }
-  in partialResources
-      { partialResourcesPlan = newPlan
+  in options
+      { optionsPlan = newPlan
       }
 
-defaultOptionsShouldMatchDefaultPlan :: SpecWith Runner
-defaultOptionsShouldMatchDefaultPlan =
+defaultConfigShouldMatchDefaultPlan :: SpecWith Runner
+defaultConfigShouldMatchDefaultPlan =
   it "default options should match default plan" $ withRunner $ \DB{..} -> do
     let Resources {..} = dbResources
         Plan {..} = resourcesPlan
         PostgresPlan {..} = planPostgres
-    PostgresClient.oDbname postgresPlanClientOptions `shouldBe` "test"
+    PostgresClient.oDbname postgresPlanClientConfig `shouldBe` "test"
     let Temporary tmpDataDir = resourcesDataDir
     tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
-    let Just port = PostgresClient.oPort postgresPlanClientOptions
+    let Just port = PostgresClient.oPort postgresPlanClientConfig
     port `shouldSatisfy` (>32768)
     let UnixSocket (Temporary unixSocket) = resourcesSocket
     unixSocket `shouldStartWith` "/tmp/tmp-postgres-socket"
-    postgresPlanClientOptions `shouldBe`
-      ((PostgresClient.defaultOptions (PostgresClient.oDbname postgresPlanClientOptions))
-        { PostgresClient.oPort = PostgresClient.oPort postgresPlanClientOptions
-        , PostgresClient.oHost = PostgresClient.oHost postgresPlanClientOptions
+    postgresPlanClientConfig `shouldBe`
+      ((PostgresClient.defaultOptions (PostgresClient.oDbname postgresPlanClientConfig))
+        { PostgresClient.oPort = PostgresClient.oPort postgresPlanClientConfig
+        , PostgresClient.oHost = PostgresClient.oHost postgresPlanClientConfig
         })
 
-customOptionsWork :: (PartialResources -> (DB -> IO ()) -> IO ()) -> Spec
-customOptionsWork action = do
+customConfigWork :: (Config -> (DB -> IO ()) -> IO ()) -> Spec
+customConfigWork action = do
   let expectedDbName = "thedb"
       expectedPassword = "password"
       expectedUser = "user-name"
@@ -68,22 +68,22 @@ customOptionsWork action = do
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
 
   it "returns the right client options for the plan" $ do
-    initialPlan <- defaultPartialResources
-    initialCreateDbOptions <- standardProcessOptions
+    initialPlan <- defaultConfig
+    initialCreateDbConfig <- standardProcessConfig
     let customPlan = mempty
-          { partialResourcesPlan = mempty
+          { optionsPlan = mempty
               { partialPlanPostgres = mempty
-                  { partialPostgresPlanClientOptions = mempty
+                  { partialPostgresPlanClientConfig = mempty
                       { Client.user     = pure expectedUser
                       , Client.password = pure expectedPassword
                       , Client.dbname   = pure expectedDbName
                       }
                   }
               , partialPlanInitDb = Mappend $ pure $ mempty
-                  { partialProcessOptionsCmdLine = Mappend
+                  { partialProcessConfigCmdLine = Mappend
                       ["--user", "user-name"
                       ]
-                  , partialProcessOptionsEnvVars = Mappend
+                  , partialProcessConfigEnvVars = Mappend
                       [ ("PGPASSWORD", "password")
                       ]
                   }
@@ -92,12 +92,12 @@ customOptionsWork action = do
           }
     -- hmm maybe I should provide lenses
     let combinedResources = initialPlan <> customPlan
-        finalCombinedResources = updateCreateDb combinedResources $ Mappend $ pure $ initialCreateDbOptions
-          { partialProcessOptionsCmdLine = Mappend
+        finalCombinedResources = updateCreateDb combinedResources $ Mappend $ pure $ initialCreateDbConfig
+          { partialProcessConfigCmdLine = Mappend
               ["--user", "user-name"
               , expectedDbName
               ]
-          , partialProcessOptionsEnvVars = Mappend
+          , partialProcessConfigEnvVars = Mappend
               [ ("PGPASSWORD", "password")
               ]
           }
@@ -109,18 +109,18 @@ customOptionsWork action = do
 
       let Resources {..} = dbResources
           Plan {..} = resourcesPlan
-          actualOptions = postgresPlanClientOptions planPostgres
-          actualConfig = planConfig
+          actualOptions = postgresPlanClientConfig planPostgres
+          actualPostgresConfig = planConfig
       PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
       PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
       PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
-      lines actualConfig `shouldContain` defaultConfig <> [extraConfig]
+      lines actualPostgresConfig `shouldContain` defaultPostgresConfig <> [extraConfig]
 
-invalidOptionsFailsQuickly :: (PartialResources -> IO ()) -> Spec
-invalidOptionsFailsQuickly action = it "quickly fails with an invalid option" $ do
-  initialPlan <- defaultPartialResources
+invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
+invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ do
+  initialPlan <- defaultConfig
   let customPlan = mempty
-        { partialResourcesPlan = mempty
+        { optionsPlan = mempty
             { partialPlanConfig = Mappend
                 [ "log_directory = /this/does/not/exist"
                 , "logging_collector = true"
@@ -196,15 +196,15 @@ createDbThrowsIfTheDbExists = describe "createdb" $
 
 spec :: Spec
 spec = do
-  theDefaultResources <- runIO defaultPartialResources
-  theStandardProcessOptions <- runIO standardProcessOptions
+  theDefaultResources <- runIO defaultConfig
+  theStandardProcessConfig <- runIO standardProcessConfig
 
   let defaultIpPlan = theDefaultResources
-        { partialResourcesSocket = PIpSocket Nothing
+        { optionsSocket = PIpSocket Nothing
         }
 
       specificHostIpPlan = theDefaultResources
-        { partialResourcesSocket = PIpSocket $ Just $ "localhost"
+        { optionsSocket = PIpSocket $ Just $ "localhost"
         }
 
   describe "start" $ do
@@ -215,8 +215,8 @@ spec = do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
     throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
-    invalidOptionsFailsQuickly $ void . startAction
-    customOptionsWork $ \plan f ->
+    invalidConfigFailsQuickly $ void . startAction
+    customConfigWork $ \plan f ->
       bracket (either throwIO pure =<< startWith plan) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
@@ -228,8 +228,8 @@ spec = do
 
     throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
     throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
-    invalidOptionsFailsQuickly $ void . startAction
-    customOptionsWork $ \plan f -> either throwIO pure =<<
+    invalidConfigFailsQuickly $ void . startAction
+    customConfigWork $ \plan f -> either throwIO pure =<<
       withPlan plan f
 
   let someStandardTests dbName= do
@@ -245,19 +245,19 @@ spec = do
             =<< start) stop f
     before (pure $ Runner startAction) $ do
       someStandardTests "test"
-      defaultOptionsShouldMatchDefaultPlan
+      defaultConfigShouldMatchDefaultPlan
 
   describe "withRestart" $ do
     let startAction f = bracket (either throwIO pure =<< start) stop $ \db ->
           either throwIO pure =<< withRestart db f
     before (pure $ Runner startAction) $ do
       someStandardTests "test"
-      defaultOptionsShouldMatchDefaultPlan
+      defaultConfigShouldMatchDefaultPlan
 
   describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       someStandardTests "test"
-      defaultOptionsShouldMatchDefaultPlan
+      defaultConfigShouldMatchDefaultPlan
       it "stopPostgres cannot be connected to" $ withRunner $ \db -> do
         stopPostgres db `shouldReturn` ExitSuccess
         PG.connectPostgreSQL (toConnectionString db) `shouldThrow`
@@ -276,17 +276,17 @@ spec = do
           actualDuration `shouldBe` expectedDuration
 
     let invalidCreateDbPlan = updateCreateDb theDefaultResources $
-          Mappend $ pure $ theStandardProcessOptions
-            { partialProcessOptionsCmdLine = Mappend ["template1"]
+          Mappend $ pure $ theStandardProcessConfig
+            { partialProcessConfigCmdLine = Mappend ["template1"]
             }
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
 
     let noCreateTemplate1 = mempty
-          { partialResourcesPlan = mempty
+          { optionsPlan = mempty
               { partialPlanCreateDb = Replace Nothing
               , partialPlanPostgres = mempty
-                  { partialPostgresPlanClientOptions = mempty
+                  { partialPostgresPlanClientConfig = mempty
                     { Client.dbname = pure "template1"
                     }
                   }
@@ -306,7 +306,7 @@ spec = do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
         let nonEmptyFolderPlan = theDefaultResources
-              { partialResourcesDataDir = Perm dirPath
+              { optionsDataDir = Perm dirPath
               }
             startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
 
@@ -315,8 +315,8 @@ spec = do
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)
         let nonEmptyFolderPlan = theDefaultResources
-              { partialResourcesDataDir = Perm dirPath
-              , partialResourcesPlan = (partialResourcesPlan theDefaultResources)
+              { optionsDataDir = Perm dirPath
+              , optionsPlan = (optionsPlan theDefaultResources)
                   { partialPlanInitDb = Replace Nothing
                   }
               }
@@ -328,7 +328,7 @@ spec = do
           one `shouldBe` (1 :: Int)
 
     let justBackupResources = mempty
-          { partialResourcesPlan = mempty
+          { optionsPlan = mempty
               { partialPlanConfig = Mappend
                   [ "wal_level=replica"
                   , "archive_mode=on"
@@ -354,8 +354,8 @@ spec = do
 
           reloadConfig db
 
-          let Just port = PostgresClient.oPort $ postgresProcessClientOptions dbPostgresProcess
-              Just host = PostgresClient.oHost $ postgresProcessClientOptions dbPostgresProcess
+          let Just port = PostgresClient.oPort $ postgresProcessClientConfig dbPostgresProcess
+              Just host = PostgresClient.oHost $ postgresProcessClientConfig dbPostgresProcess
               backupCommand = "pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p"
                 ++ show port ++ " -h" ++ host
           putStrLn backupCommand
