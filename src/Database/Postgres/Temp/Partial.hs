@@ -21,7 +21,6 @@ import Control.Applicative
 
 -- TODO make functions for creating plans from PartialProcessOptions from PartialClientOptions
 -- in the next version
--- Consider redoing so we can listen on Ipv4, Ipv6 and sockets
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
