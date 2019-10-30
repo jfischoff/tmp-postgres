@@ -22,10 +22,9 @@ import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import Data.String
 import System.Timeout(timeout)
-import Control.Monad (void)
--- import Data.Either
--- import Data.Function (fix)
--- import Control.Concurrent
+import Control.Monad (void, (<=<))
+import Data.Function (fix)
+import Control.Concurrent
 
 -- What are the properties of startWith/stop?
 
@@ -289,81 +288,69 @@ spec = do
 
           one `shouldBe` (1 :: Int)
 
-
-
-
-{-
-data Except = Except
-  deriving (Show, Eq, Typeable)
-
-instance Exception Except
-
-countPostgresProcesses :: IO Int
-countPostgresProcesses = do
-  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" ["postgres"] []
-
-  unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
-
-    it "stopPostgres/startPostgres works" $ \mainFilePath -> do
-      let extraOpts = defaultOptions { tmpCmdLineOptions =
-            [ ("wal_level", "replica")
-            , ("archive_mode", "on")
-            , ("max_wal_senders", "2")
-            , ("fsync", "on")
-            , ("synchronous_commit", "on")
-            ]
-            }
-
-      theStdOut <- mkDevNull
-      theStdErr <- mkDevNull
-
-      bracket (fromRight (error "failed to start db") <$> startWithLogger (\_ -> return ()) Unix extraOpts mainFilePath theStdOut theStdErr) stop $ \db -> do
-        bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn -> do
-          let dataDir = mainFilePath ++ "/data"
-              walArchiveDir = mainFilePath ++ "/archive"
-              baseBackupFile = mainFilePath ++ "/backup"
-
-          appendFile (dataDir ++ "/pg_hba.conf") $ "local replication all trust"
-          let archiveLine = "archive_command = " ++
+    let justBackupResources = mempty
+          { partialResourcesPlan = mempty
+              { partialPlanConfig = Mappend
+                  [ "wal_level=replica"
+                  , "archive_mode=on"
+                  , "max_wal_senders=2"
+                  , "fsync=on"
+                  , "synchronous_commit=on"
+                  ]
+              }
+          }
+        backupResources = theDefaultResources <> justBackupResources
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith backupResources) stop f) $
+      it "can support backup and restore" $ withRunner $ \db@DB {..} -> do
+        let dataDir = toFilePath (resourcesDataDir dbResources)
+        appendFile (dataDir ++ "/pg_hba.conf") $ "local replication all trust"
+        withTempDirectory "/tmp" "tmp-postgres-backup" $ \tempDir -> do
+          let walArchiveDir = tempDir ++ "/archive"
+              baseBackupFile = tempDir ++ "/backup"
+              archiveLine = "archive_command = " ++
                 "'test ! -f " ++ walArchiveDir ++ "/%f && cp %p " ++ walArchiveDir ++ "/%f'\n"
-
           appendFile (dataDir ++ "/postgresql.conf") $ archiveLine
 
           createDirectory walArchiveDir
 
           reloadConfig db
 
-          res <- system ("pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p" ++ show (port db) ++ " -h" ++ mainFilePath)
-          res `shouldBe` ExitSuccess
+          let Just port = PostgresClient.oPort $ postgresProcessClientOptions dbPostgresProcess
+              Just host = PostgresClient.oHost $ postgresProcessClientOptions dbPostgresProcess
+              backupCommand = "pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p"
+                ++ show port ++ " -h" ++ host
+          putStrLn backupCommand
+          system backupCommand `shouldReturn` ExitSuccess
 
-          _ <- execute_ conn "CREATE TABLE foo(id int PRIMARY KEY);"
-          _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (1); COMMIT"
-          _ :: [Only String] <- query_ conn "SELECT pg_walfile_name(pg_switch_wal())"
-          _ :: [Only String] <- query_ conn "SELECT pg_walfile_name(pg_create_restore_point('pitr'))"
-          _ <- execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (2); COMMIT"
+          bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $ \conn -> do
+            _ <- PG.execute_ conn "CREATE TABLE foo(id int PRIMARY KEY);"
+            _ <- PG.execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (1); COMMIT"
+            _ :: [PG.Only String] <- PG.query_ conn "SELECT pg_walfile_name(pg_switch_wal())"
+            _ :: [PG.Only String] <- PG.query_ conn "SELECT pg_walfile_name(pg_create_restore_point('pitr'))"
+            _ <- PG.execute_ conn "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE; INSERT INTO foo (id) VALUES (2); COMMIT"
 
-          query_ conn "SELECT id FROM foo ORDER BY id ASC"
-            `shouldReturn` [Only (1 :: Int), Only 2]
+            PG.query_ conn "SELECT id FROM foo ORDER BY id ASC"
+              `shouldReturn` [PG.Only (1 :: Int), PG.Only 2]
 
-          close conn
-
-          stopPostgres db `shouldReturn` Just ExitSuccess
+          stopPostgres db `shouldReturn` ExitSuccess
 
           removeDirectoryRecursive dataDir
           createDirectory dataDir
+
           let untarCommand = "tar -C" ++ dataDir ++ " -xf " ++ baseBackupFile ++ "/base.tar"
           system untarCommand `shouldReturn` ExitSuccess
+
           system ("chmod -R 700 " ++ dataDir) `shouldReturn` ExitSuccess
+
           writeFile (dataDir ++ "/recovery.conf") $ "recovery_target_name='pitr'\nrecovery_target_action='promote'\nrecovery_target_inclusive=true\nrestore_command='"
              ++ "cp " ++ walArchiveDir ++ "/%f %p'"
 
-          startPostgres db
-          bracket (connectPostgreSQL $ BSC.pack $ connectionString db) close $ \conn1 -> do
-            fix $ \next -> do
-              fmap (fromOnly . head) (query_ conn1 "SELECT pg_is_in_recovery()") >>= \case
-                True -> threadDelay 100000 >> next
-                False -> pure ()
+          either throwIO pure <=< withRestart db $ \newDb -> do
+            bracket (PG.connectPostgreSQL $ toConnectionString newDb) PG.close $ \conn -> do
+              fix $ \next -> do
+                fmap (PG.fromOnly . head) (PG.query_ conn "SELECT pg_is_in_recovery()") >>= \case
+                  True -> threadDelay 100000 >> next
+                  False -> pure ()
 
-            query_ conn1 "SELECT id FROM foo ORDER BY id ASC"
-              `shouldReturn` [Only (1 :: Int)]
--}
+              PG.query_ conn "SELECT id FROM foo ORDER BY id ASC"
+                `shouldReturn` [PG.Only (1 :: Int)]

@@ -121,8 +121,8 @@ stopPostgresProcess PostgresProcess{..} = do
   exitCode <- waitForProcess postgresProcessHandle
   pure exitCode
 
-startPostgres :: Logger -> PostgresPlan -> IO PostgresProcess
-startPostgres logger PostgresPlan {..} = do
+startPostgresProcess :: Logger -> PostgresPlan -> IO PostgresProcess
+startPostgresProcess logger PostgresPlan {..} = do
   logger StartPostgres
   -- Start postgres and stop if a exception occurs when
   -- trying to connection
@@ -171,7 +171,7 @@ startPlan Plan {..} = do
 
   writeFile (planDataDirectory <> "/postgresql.conf") planConfig
 
-  bracketOnError (startPostgres planLogger planPostgres) stopPostgresProcess $ \result -> do
+  bracketOnError (startPostgresProcess planLogger planPostgres) stopPostgresProcess $ \result -> do
     for_ planCreateDb $  executeProcess "createdb" >=>
       throwIfNotSuccess CreateDbFailed
 

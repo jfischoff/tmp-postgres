@@ -8,6 +8,7 @@ import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import System.Exit (ExitCode(..))
 import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
+import qualified Database.PostgreSQL.Simple as PG
 -- TODO return stderr if there is an exception
 
 data DB = DB
@@ -78,16 +79,25 @@ stop DB {..} = do
 -------------------------------------------------------------------------------
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
+
+startPostgres :: DB -> IO (Either StartError DB)
+startPostgres db@DB{..} = try $ do
+  let plan = resourcesPlan dbResources
+  bracketOnError (startPostgresProcess (planLogger plan) $ planPostgres plan)
+    stopPostgresProcess $ \result ->
+      pure $ db { dbPostgresProcess = result }
 -------------------------------------------------------------------------------
 -- restart
 -------------------------------------------------------------------------------
 restartPostgres :: DB -> IO (Either StartError DB)
-restartPostgres db@DB{..} = try $ do
+restartPostgres db = do
   void $ stopPostgres db
-  let plan = resourcesPlan dbResources
-  bracketOnError (startPostgres (planLogger plan) $ planPostgres plan)
-    stopPostgresProcess $ \result ->
-      pure $ db { dbPostgresProcess = result }
+  startPostgres db
+
+reloadConfig :: DB -> IO ()
+reloadConfig db =
+  bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
+    (void :: IO [PG.Only Bool] -> IO ()) $ PG.query_ conn "SELECT pg_reload_conf()"
 -------------------------------------------------------------------------------
 -- Exception safe interface
 -------------------------------------------------------------------------------
