@@ -69,17 +69,30 @@ defaultConfig = do
       }
     }
 
-startWith :: Config -> IO (Either StartError DB)
+-- | Create temporary resources and use them to make a 'Config'.
+--   The generated 'Config' is combined with the passed in @extraConfiguration@
+--   to create a 'Plan' that is used to create a database.
+--   The output 'DB' includes references to the temporary resources for
+--   cleanup and the final plan that was used to generate the database and
+--   processes
+startWith :: Config
+          -- ^ @extraConfiguration@ that is mappend to the generated `Config`.
+          -- The extra config is 'mappend'ed second, e.g.
+          -- @ generatedConfig <> extraConfiguration
+          -> IO (Either StartError DB)
 startWith x = try $ evalContT $ do
   dbResources@Resources {..} <- ContT $ bracketOnError (startConfig x) stopResources
   dbPostgresProcess <- ContT $ bracketOnError (startPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
+
 
 start :: IO (Either StartError DB)
 start = startWith =<< defaultConfig
 -------------------------------------------------------------------------------
 -- Stopping
 -------------------------------------------------------------------------------
+-- | Stop the @postgres@ process and cleanup any temporary directories that
+--   might have been created.
 stop :: DB -> IO ()
 stop DB {..} = do
   void $ stopPostgresProcess dbPostgresProcess
