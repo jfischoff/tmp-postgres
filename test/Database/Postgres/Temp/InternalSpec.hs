@@ -21,11 +21,9 @@ import Data.Function (fix)
 import Control.Concurrent
 
 -- check coverage
--- Test using IP
 -- Test using an existing domain socket
 
 -- Cleanup
--- make sure I have covered all the plan cases
 
 newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 
@@ -328,8 +326,6 @@ spec = do
               \conn -> PG.query_ conn "SELECT 1"
 
           one `shouldBe` (1 :: Int)
-
-
 
     let justBackupResources = mempty
           { partialResourcesPlan = mempty

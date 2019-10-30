@@ -25,36 +25,32 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 
 
 -}
-{-
+
 module Database.Postgres.Temp
   ( -- * Types
-    DB (..)
+    DB
   , StartError (..)
   -- * Starting @postgres@
   -- $options
   , start
-  , startLocalhost
-  , startAndLogToTmp
-  , startWithHandles
-  , Options(..)
-  , defaultOptions
-  , InitDbOptions(..)
-  , defaultInitDbOptions
+  , startWith
+  , stop
+  , PartialResources (..)
+  , defaultPartialResources
+  , withPlan
+  , with
   -- * Stopping @postgres@
   , stop
   -- * Starting and Stopping postgres without removing the temporary directory
-  , startPostgres
+  , restartPostgres
   , stopPostgres
+  , withRestart
   -- * Reloading the config
   , reloadConfig
   , SocketClass (..)
   ) where
 import Database.Postgres.Temp.Internal
--}
-module Database.Postgres.Temp
-  ( module Database.Postgres.Temp.Internal
-  ) where
-import Database.Postgres.Temp.Internal
+
 
 {- $options
 'startWithHandles' is the most general way to start postgres. It allows the user to

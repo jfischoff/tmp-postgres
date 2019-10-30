@@ -155,13 +155,6 @@ instance Semigroup PartialSocketClass where
 instance Monoid PartialSocketClass where
  mempty = PUnixSocket mempty
 
-isTempSocket :: PartialSocketClass -> Bool
-isTempSocket = \case
-  PUnixSocket mFilePath -> case mFilePath of
-    Temp -> True
-    _ -> False
-  _ -> False
-
 -- Not sure what the continuation passes style buys us
 startPartialSocketClass :: PartialSocketClass -> IO SocketClass
 startPartialSocketClass theClass = case theClass of
