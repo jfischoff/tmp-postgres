@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, DeriveDataTypeable, QuasiQuotes, ScopedTypeVariables, LambdaCase, RankNTypes #-}
 module Database.Postgres.Temp.InternalSpec where
 import Test.Hspec
 import Database.Postgres.Temp.Core
