@@ -259,6 +259,9 @@ spec = do
             expectedDuration = "100ms"
             extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
         appendFile (dataDir ++ "/postgresql.conf") $ extraConfig
+
+        reloadConfig db
+
         bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
           [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
           actualDuration `shouldBe` expectedDuration
