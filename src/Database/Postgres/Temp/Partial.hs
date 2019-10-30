@@ -17,10 +17,11 @@ import System.Directory
 import Data.Either.Validation
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
+import Control.Applicative
 
 -- TODO make functions for creating plans from PartialProcessOptions from PartialClientOptions
 -- in the next version
-
+-- Consider redoing so we can listen on Ipv4, Ipv6 and sockets
 -------------------------------------------------------------------------------
 -- A useful type of options
 -------------------------------------------------------------------------------
@@ -147,7 +148,7 @@ data PartialSocketClass =
 
 instance Semigroup PartialSocketClass where
   x <> y = case (x, y) of
-    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <> b
+    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <|> b
     (a@(PIpSocket _), PUnixSocket _) -> a
     (PUnixSocket _, a@(PIpSocket _)) -> a
     (PUnixSocket a, PUnixSocket b) -> PUnixSocket $ a <> b
@@ -283,7 +284,3 @@ stopResources :: Resources -> IO ()
 stopResources Resources {..} = do
   stopSocketOptions resourcesSocket
   stopDirectoryType resourcesDataDir
-
-
-
-

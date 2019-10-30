@@ -21,6 +21,9 @@ import Data.Function (fix)
 import Control.Concurrent
 
 -- check coverage
+-- Test using IP
+-- Test using an existing domain socket
+
 -- Cleanup
 -- make sure I have covered all the plan cases
 
@@ -197,6 +200,15 @@ spec :: Spec
 spec = do
   theDefaultResources <- runIO defaultPartialResources
   theStandardProcessOptions <- runIO standardProcessOptions
+
+  let defaultIpPlan = theDefaultResources
+        { partialResourcesSocket = PIpSocket Nothing
+        }
+
+      specificHostIpPlan = theDefaultResources
+        { partialResourcesSocket = PIpSocket $ Just $ "localhost"
+        }
+
   describe "start" $ do
     let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
@@ -285,6 +297,12 @@ spec = do
         noCreateDbPlan = theDefaultResources <> noCreateTemplate1
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith noCreateDbPlan) stop f) $
       someStandardTests "template1"
+
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith defaultIpPlan) stop f) $
+      someStandardTests "test"
+
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith specificHostIpPlan) stop f) $
+      someStandardTests "test"
 
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
