@@ -39,8 +39,6 @@ module Database.Postgres.Temp
   , defaultPartialResources
   , withPlan
   , with
-  -- * Stopping @postgres@
-  , stop
   -- * Starting and Stopping postgres without removing the temporary directory
   , restartPostgres
   , stopPostgres
@@ -50,6 +48,8 @@ module Database.Postgres.Temp
   , SocketClass (..)
   ) where
 import Database.Postgres.Temp.Internal
+import Database.Postgres.Temp.Core
+import Database.Postgres.Temp.Partial
 
 
 {- $options
