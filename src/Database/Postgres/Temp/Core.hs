@@ -15,7 +15,7 @@ import Data.Typeable
 import System.IO
 import System.Process
 -- TODO use pg_ctr if the exe's are not found but pg_ctr is
--- TOOD move the wait for postgres connection in here
+-- TODO return stderr if there is an exception
 data Event
   = StartPostgres
   | WaitForDB

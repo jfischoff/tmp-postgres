@@ -4,14 +4,9 @@ import Test.Hspec
 import Database.Postgres.Temp.Core
 import Database.Postgres.Temp.Partial
 import Database.Postgres.Temp.Internal
--- import Data.Typeable
 import Control.Exception
 import System.IO.Error
--- import System.Directory
--- import Control.Monad
 import System.Process
--- import Database.PostgreSQL.Simple
--- import qualified Data.ByteString.Char8 as BSC
 import System.Exit
 import qualified Database.PostgreSQL.Simple as PG
 import System.Environment
@@ -26,12 +21,7 @@ import Control.Monad (void, (<=<))
 import Data.Function (fix)
 import Control.Concurrent
 
--- What are the properties of startWith/stop?
-
--- everything should be exceptions safe
-
--- Some usage tests
--- backup stuff works
+-- test restart/startPostgres/stopPostgres
 
 newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 
