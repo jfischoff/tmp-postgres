@@ -21,7 +21,9 @@ import Control.Monad (void, (<=<))
 import Data.Function (fix)
 import Control.Concurrent
 
--- test restart/startPostgres/stopPostgres
+-- check coverage
+-- Cleanup
+-- make sure I have covered all the plan cases
 
 newtype Runner =  Runner { unRunner :: forall a. (DB -> IO a) -> IO a }
 
@@ -226,10 +228,40 @@ spec = do
         withInitDbEmptyInitially
         createDbCreatesTheDb dbName
 
+  describe "restart" $ do
+    let startAction f =
+          bracket (either throwIO pure
+            =<< restartPostgres
+            =<< either throwIO pure
+            =<< start) stop f
+    before (pure $ Runner startAction) $ do
+      someStandardTests "test"
+      defaultOptionsShouldMatchDefaultPlan
+
+  describe "withRestart" $ do
+    let startAction f = bracket (either throwIO pure =<< start) stop $ \db ->
+          either throwIO pure =<< withRestart db f
+    before (pure $ Runner startAction) $ do
+      someStandardTests "test"
+      defaultOptionsShouldMatchDefaultPlan
+
   describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       someStandardTests "test"
       defaultOptionsShouldMatchDefaultPlan
+      it "stopPostgres cannot be connected to" $ withRunner $ \db -> do
+        stopPostgres db `shouldReturn` ExitSuccess
+        PG.connectPostgreSQL (toConnectionString db) `shouldThrow`
+          (\(_ :: IOError) -> True)
+
+      it "reloadConfig works" $ withRunner $ \db@DB{..} -> do
+        let dataDir = toFilePath (resourcesDataDir dbResources)
+            expectedDuration = "100ms"
+            extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
+        appendFile (dataDir ++ "/postgresql.conf") $ extraConfig
+        bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
+          [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
+          actualDuration `shouldBe` expectedDuration
 
     let invalidCreateDbPlan = updateCreateDb theDefaultResources $
           Mappend $ pure $ theStandardProcessOptions
@@ -237,7 +269,6 @@ spec = do
             }
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
-
 
     let noCreateTemplate1 = mempty
           { partialResourcesPlan = mempty
@@ -277,6 +308,8 @@ spec = do
               \conn -> PG.query_ conn "SELECT 1"
 
           one `shouldBe` (1 :: Int)
+
+
 
     let justBackupResources = mempty
           { partialResourcesPlan = mempty

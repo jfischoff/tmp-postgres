@@ -12,7 +12,7 @@ import qualified Database.PostgreSQL.Simple as PG
 
 -- Need to add helper accessors for the DB to get the nested stuff out
 -- General formatting cleanup
-
+-- Fixup main module
 
 data DB = DB
   { dbResources :: Resources
@@ -82,20 +82,16 @@ stop DB {..} = do
 -------------------------------------------------------------------------------
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
-
-startPostgres :: DB -> IO (Either StartError DB)
-startPostgres db@DB{..} = try $ do
-  let plan = resourcesPlan dbResources
-  bracketOnError (startPostgresProcess (planLogger plan) $ planPostgres plan)
-    stopPostgresProcess $ \result ->
-      pure $ db { dbPostgresProcess = result }
 -------------------------------------------------------------------------------
 -- restart
 -------------------------------------------------------------------------------
 restartPostgres :: DB -> IO (Either StartError DB)
-restartPostgres db = do
+restartPostgres db@DB{..} = try $ do
   void $ stopPostgres db
-  startPostgres db
+  let plan = resourcesPlan dbResources
+  bracketOnError (startPostgresProcess (planLogger plan) $ planPostgres plan)
+    stopPostgresProcess $ \result ->
+      pure $ db { dbPostgresProcess = result }
 
 reloadConfig :: DB -> IO ()
 reloadConfig db =
