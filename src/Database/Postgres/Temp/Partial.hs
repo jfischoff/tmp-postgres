@@ -34,7 +34,6 @@ instance Semigroup a => Semigroup (Lastoid a) where
 
 instance Monoid a => Monoid (Lastoid a) where
   mempty = Mappend mempty
-  mappend = (<>)
 
 getLastoid :: Lastoid a -> a
 getLastoid = \case

@@ -13,6 +13,7 @@ import qualified Database.PostgreSQL.Simple as PG
 -- Need to add helper accessors for the DB to get the nested stuff out
 -- General formatting cleanup
 -- Fixup main module
+-- Add plan pretty printing functions
 
 data DB = DB
   { dbResources :: Resources
