@@ -41,7 +41,8 @@ library
   hs-source-dirs:      src
   exposed-modules: Database.Postgres.Temp
                  , Database.Postgres.Temp.Internal
-                 , Database.Postgres.Temp.Etc
+                 , Database.Postgres.Temp.Core
+                 , Database.Postgres.Temp.Partial
   default-extensions: LambdaCase
     , DerivingStrategies
     , DerivingVia
