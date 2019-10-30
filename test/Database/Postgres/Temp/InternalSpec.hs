@@ -32,12 +32,12 @@ withRunner g (Runner f) = f g
 
 updateCreateDb :: Config -> Lastoid (Maybe PartialProcessConfig) -> Config
 updateCreateDb options partialProcessConfig =
-  let originalPlan = optionsPlan options
+  let originalPlan = configPlan options
       newPlan = originalPlan
         { partialPlanCreateDb = partialProcessConfig
         }
   in options
-      { optionsPlan = newPlan
+      { configPlan = newPlan
       }
 
 defaultConfigShouldMatchDefaultPlan :: SpecWith Runner
@@ -71,7 +71,7 @@ customConfigWork action = do
     initialPlan <- defaultConfig
     initialCreateDbConfig <- standardProcessConfig
     let customPlan = mempty
-          { optionsPlan = mempty
+          { configPlan = mempty
               { partialPlanPostgres = mempty
                   { partialPostgresPlanClientConfig = mempty
                       { Client.user     = pure expectedUser
@@ -120,7 +120,7 @@ invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
 invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ do
   initialPlan <- defaultConfig
   let customPlan = mempty
-        { optionsPlan = mempty
+        { configPlan = mempty
             { partialPlanConfig = Mappend
                 [ "log_directory = /this/does/not/exist"
                 , "logging_collector = true"
@@ -200,11 +200,11 @@ spec = do
   theStandardProcessConfig <- runIO standardProcessConfig
 
   let defaultIpPlan = theDefaultResources
-        { optionsSocket = PIpSocket Nothing
+        { configSocket = PIpSocket Nothing
         }
 
       specificHostIpPlan = theDefaultResources
-        { optionsSocket = PIpSocket $ Just $ "localhost"
+        { configSocket = PIpSocket $ Just $ "localhost"
         }
 
   describe "start" $ do
@@ -283,7 +283,7 @@ spec = do
       createDbThrowsIfTheDbExists
 
     let noCreateTemplate1 = mempty
-          { optionsPlan = mempty
+          { configPlan = mempty
               { partialPlanCreateDb = Replace Nothing
               , partialPlanPostgres = mempty
                   { partialPostgresPlanClientConfig = mempty
@@ -306,7 +306,7 @@ spec = do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
         let nonEmptyFolderPlan = theDefaultResources
-              { optionsDataDir = Perm dirPath
+              { configDataDir = Perm dirPath
               }
             startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
 
@@ -315,8 +315,8 @@ spec = do
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)
         let nonEmptyFolderPlan = theDefaultResources
-              { optionsDataDir = Perm dirPath
-              , optionsPlan = (optionsPlan theDefaultResources)
+              { configDataDir = Perm dirPath
+              , configPlan = (configPlan theDefaultResources)
                   { partialPlanInitDb = Replace Nothing
                   }
               }
@@ -328,7 +328,7 @@ spec = do
           one `shouldBe` (1 :: Int)
 
     let justBackupResources = mempty
-          { optionsPlan = mempty
+          { configPlan = mempty
               { partialPlanConfig = Mappend
                   [ "wal_level=replica"
                   , "archive_mode=on"

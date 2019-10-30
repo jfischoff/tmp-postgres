@@ -28,7 +28,7 @@ toConnectionString
 --------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
--- Default postgres options
+-- | Default postgres options
 defaultPostgresConfig :: [String]
 defaultPostgresConfig =
   [ "shared_buffers = 12MB"
@@ -41,11 +41,17 @@ defaultPostgresConfig =
   , "client_min_messages = ERROR"
   ]
 
+-- | The default configuration. This will create a database called \"test\"
+--   and create a temporary directory for the data and a temporary directory
+--   for a unix socket on a random port.
+--   If you would like to customize this behavior you can start with the
+--   'defaultConfig' and overwrite fields or combine the 'Config' with another
+--   config using '<>' ('mappend').
 defaultConfig :: IO Config
 defaultConfig = do
   theStandardProcessConfig <- standardProcessConfig
   pure mempty
-    { optionsPlan = mempty
+    { configPlan = mempty
       { partialPlanLogger = pure print
       , partialPlanConfig = Mappend defaultPostgresConfig
       , partialPlanCreateDb = Mappend $ Just $ theStandardProcessConfig

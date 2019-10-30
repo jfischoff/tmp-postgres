@@ -32,12 +32,14 @@ module Database.Postgres.Temp
     StartError (..)
   -- * Starting @postgres@
   -- $options
+  -- * Exception safe interface
+  , with
+  , withPlan
+  -- ** Separate start and stop interface.
   , start
   , startWith
   , stop
   , defaultConfig
-  , withPlan
-  , with
   -- * Starting and Stopping postgres without removing the temporary directory
   , restartPostgres
   , stopPostgres
@@ -48,18 +50,27 @@ module Database.Postgres.Temp
   , toConnectionString
   -- * Configuration
   , Lastoid (..)
+  -- **
+  , DirectoryType (..)
+  , PartialDirectoryType (..)
+  -- ** Listening socket configuration
   , SocketClass (..)
   , PartialSocketClass (..)
-  , PartialDirectoryType (..)
+  -- ** Process configuration
   , PartialProcessConfig (..)
   , ProcessConfig (..)
-  , PartialPlan (..)
-  , Plan (..)
+  -- ** @postgres@ process configuration
   , PartialPostgresPlan (..)
   , PostgresPlan (..)
+  -- *** @postgres@ process handle. Includes the client options for connecting
   , PostgresProcess (..)
+  -- ** Database plans. This is used to call @initdb@, @postgres@ and @createdb@
+  , PartialPlan (..)
+  , Plan (..)
+  -- ** Top level configuration
   , Config (..)
-  , DB
+  -- *** Main resource handle. Includes the actual plan used to start all services and the resources necessary for cleanup
+  , DB (..)
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
