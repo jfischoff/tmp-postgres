@@ -101,6 +101,9 @@ test-suite test
     , DeriveGeneric
     , OverloadedStrings
     , RecordWildCards
+    , DeriveDataTypeable
+    , QuasiQuotes
+    , RankNTypes
 
 
 source-repository head
