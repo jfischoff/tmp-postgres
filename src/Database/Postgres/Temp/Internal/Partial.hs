@@ -1,3 +1,17 @@
+{-| This module provides types and functions for combining partial
+    configs into a complete configs to ultimately make a 'Plan'.
+
+    This module has three classes of types. Types like 'Lastoid' that
+    are generic and could live in a module like 'base'.
+
+    Types like 'PartialProcessConfig' that could be used by any
+    library that  needs to combine process options.
+
+    Finally it has types and functions for creating 'Plan's that
+    use temporary resources. This is used to create the default
+    behavior of 'Database.Postgres.Temp.startWith' and related
+    functions.
+|-}
 module Database.Postgres.Temp.Internal.Partial where
 import Database.Postgres.Temp.Internal.Core
 import qualified Database.PostgreSQL.Simple.PartialOptions as Client
@@ -16,7 +30,7 @@ import System.Directory
 import Data.Either.Validation
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
-import Control.Applicative
+import System.IO.Error
 
 {- |
 'Lastoid' is helper for overriding configuration values.
@@ -56,10 +70,15 @@ getLastoid = \case
 --   defaults when creating a 'ProcessConfig'.
 data PartialProcessConfig = PartialProcessConfig
   { partialProcessConfigEnvVars :: Lastoid [(String, String)]
+  -- | A monoid for combine environment variables or replacing them
   , partialProcessConfigCmdLine :: Lastoid [String]
+  -- | A monoid for combine command line arguments or replacing them
   , partialProcessConfigStdIn   :: Last Handle
+  -- | A monoid for configuring the standard input 'Handle'
   , partialProcessConfigStdOut  :: Last Handle
+  -- | A monoid for configuring the standard output 'Handle'
   , partialProcessConfigStdErr  :: Last Handle
+-- | A monoid for configuring the standard error 'Handle'
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup PartialProcessConfig
@@ -88,6 +107,8 @@ getOption optionName = \case
     Last (Just x) -> pure x
     Last Nothing  -> Failure ["Missing " ++ optionName ++ " option"]
 
+-- | Turn a 'PartialProcessConfig' into a 'ProcessConfig'. Fails if
+--   any values are missing.
 completeProcessConfig :: PartialProcessConfig -> Either [String] ProcessConfig
 completeProcessConfig PartialProcessConfig {..} = validationToEither $ do
   let processConfigEnvVars = getLastoid partialProcessConfigEnvVars
@@ -105,6 +126,8 @@ completeProcessConfig PartialProcessConfig {..} = validationToEither $ do
 data DirectoryType = Permanent FilePath | Temporary FilePath
   deriving(Show, Eq, Ord)
 
+-- | Get the file path of a 'DirectoryType', regardless if it is a
+-- 'Permanent' or 'Temporary' type.
 toFilePath :: DirectoryType -> FilePath
 toFilePath = \case
   Permanent x -> x
@@ -128,15 +151,23 @@ instance Semigroup PartialDirectoryType where
 instance Monoid PartialDirectoryType where
   mempty = PTemporary
 
+-- | Either create a'Temporary' directory or do nothing to a 'Permanent'
+--   one.
 initDirectoryType :: String -> PartialDirectoryType -> IO DirectoryType
 initDirectoryType pattern = \case
   PTemporary -> Temporary <$> createTempDirectory "/tmp" pattern
   PPermanent x  -> pure $ Permanent x
 
+-- | Either create a temporary directory or do nothing
 rmDirIgnoreErrors :: FilePath -> IO ()
-rmDirIgnoreErrors mainDir =
-  removeDirectoryRecursive mainDir `catch` (\(_ :: IOException) -> return ())
+rmDirIgnoreErrors mainDir = do
+  let ignoreDirIsMissing e
+        | isDoesNotExistError e = return ()
+        | otherwise = throwIO e
+  removeDirectoryRecursive mainDir `catch` ignoreDirIsMissing
 
+-- | Either remove a 'Temporary' directory or do nothing to a 'Permanent'
+-- one.
 shutdownDirectoryType :: DirectoryType -> IO ()
 shutdownDirectoryType = \case
   Permanent _ -> pure ()
@@ -146,7 +177,12 @@ shutdownDirectoryType = \case
 --   @postgres@ can listen on several types of sockets simulatanously but we
 --   don't support that behavior. One can either listen on a IP based socket
 --   or a UNIX domain socket.
-data SocketClass = IpSocket String | UnixSocket DirectoryType
+data SocketClass
+  = IpSocket String
+  -- ^ IP socket type. The 'String' is either an IP address or
+  -- a host that will resolve to an IP address.
+  | UnixSocket DirectoryType
+  -- ^ UNIX domain socket
   deriving (Show, Eq, Ord, Generic, Typeable)
 
 -- | Create the extra config lines for listening based on the 'SocketClass'
@@ -163,6 +199,8 @@ socketClassToConfig = \case
 socketClassToHostFlag :: SocketClass -> [String]
 socketClassToHostFlag x = ["-h", socketClassToHost x]
 
+-- | Get the IP address, host name or UNIX domain socket directory
+--   as a 'String'
 socketClassToHost :: SocketClass -> String
 socketClassToHost = \case
   IpSocket ip    -> ip
@@ -170,15 +208,17 @@ socketClassToHost = \case
 
 -- | The monoidial version of 'SocketClass'. Used to combine overrides with
 --   defaults when creating a 'SocketClass'. The monoid instance treats
---   'PUnixSocket mempty' as 'mempty' and combines two 'PIpSocket' values
---   with '(<|>)'
-data PartialSocketClass =
-  PIpSocket (Maybe String) | PUnixSocket PartialDirectoryType
+--   'PUnixSocket mempty' as 'mempty' and combines the
+data PartialSocketClass
+  = PIpSocket (Last String)
+  -- ^ The monoid for combining IP address configuration
+  | PUnixSocket PartialDirectoryType
+  -- ^ The monoid for combining UNIX socket configuration
     deriving stock (Show, Eq, Ord, Generic, Typeable)
 
 instance Semigroup PartialSocketClass where
   x <> y = case (x, y) of
-    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <|> b
+    (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <> b
     (a@(PIpSocket _), PUnixSocket _) -> a
     (PUnixSocket _, a@(PIpSocket _)) -> a
     (PUnixSocket a, PUnixSocket b) -> PUnixSocket $ a <> b
@@ -189,7 +229,8 @@ instance Monoid PartialSocketClass where
 -- |
 initPartialSocketClass :: PartialSocketClass -> IO SocketClass
 initPartialSocketClass theClass = case theClass of
-  PIpSocket mIp -> pure $ IpSocket $ fromMaybe "127.0.0.1" mIp
+  PIpSocket mIp -> pure $ IpSocket $ fromMaybe "127.0.0.1" $
+    getLast mIp
   PUnixSocket mFilePath ->
     UnixSocket <$> initDirectoryType "tmp-postgres-socket" mFilePath
 
@@ -207,6 +248,8 @@ data PartialPostgresPlan = PartialPostgresPlan
   deriving Semigroup via GenericSemigroup PartialPostgresPlan
   deriving Monoid    via GenericMonoid PartialPostgresPlan
 
+-- | Turn a 'PartialPostgresPlan' into a 'PostgresPlan'. Fails if any
+--   values are missing.
 completePostgresPlan :: PartialPostgresPlan -> Either [String] PostgresPlan
 completePostgresPlan PartialPostgresPlan {..} = validationToEither $ do
   postgresPlanClientConfig <-
@@ -262,11 +305,19 @@ data Resources = Resources
   -- ^ The data directory. Used to track if a temporary directory was used.
   }
 
+-- | The high level options for overriding default behavior.
 data Config = Config
   { configPlan    :: PartialPlan
+  -- ^ Extend or replace any of the configuration used to create a final
+  --   'Plan'
   , configSocket  :: PartialSocketClass
+  -- ^ Override the default 'SocketClass' by setting this.
   , configDataDir :: PartialDirectoryType
+  -- ^ Override the default temporary data directory by passing in
+  -- 'Permanent DIRECTORY'
   , configPort    :: Last (Maybe Int)
+  -- ^ A monoid for using an existing port (via 'Just PORT_NUMBER') or
+  -- requesting a free port (via a 'Nothing')
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config

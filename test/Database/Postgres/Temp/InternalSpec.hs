@@ -19,6 +19,7 @@ import System.Timeout(timeout)
 import Control.Monad (void, (<=<))
 import Data.Function (fix)
 import Control.Concurrent
+import Data.Monoid
 
 -- check coverage
 -- Test using an existing domain socket
@@ -200,11 +201,11 @@ spec = do
   theStandardProcessConfig <- runIO standardProcessConfig
 
   let defaultIpPlan = theDefaultResources
-        { configSocket = PIpSocket Nothing
+        { configSocket = PIpSocket $ Last Nothing
         }
 
       specificHostIpPlan = theDefaultResources
-        { configSocket = PIpSocket $ Just $ "localhost"
+        { configSocket = PIpSocket $ pure "localhost"
         }
 
   describe "start" $ do

@@ -53,6 +53,7 @@ library
     , RecordWildCards
     , ApplicativeDo
     , DeriveFunctor
+    , ViewPatterns
   build-depends: base >= 4.6 && < 5
                , temporary
                , process >= 1.2.0.0
