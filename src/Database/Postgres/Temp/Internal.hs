@@ -2,7 +2,7 @@
 This module provides the high level functions that are re-exported
 by @Database.Postgres.Temp@. Additionally it includes some
 identifiers that are used for testing but are not exported.
-|-}
+-}
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Partial
@@ -21,7 +21,9 @@ import qualified Database.PostgreSQL.Simple as PG
 --   @postgres@.
 data DB = DB
   { dbResources :: Resources
+  -- ^ Temporary resources and the final 'Plan'.
   , dbPostgresProcess :: PostgresProcess
+  -- ^ @postgres@ process handle and the connection options.
   }
 
 -- | Convert a 'DB' to a connection string. Alternatively one can access the

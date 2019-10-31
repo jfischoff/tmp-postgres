@@ -2,7 +2,7 @@
 This module provides the low level functionality for running @initdb@, @postgres@ and @createdb@ to make a database.
 
 See 'initPlan' for more details.
-|-}
+-}
 module Database.Postgres.Temp.Internal.Core where
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import qualified Database.PostgreSQL.Simple as PG
