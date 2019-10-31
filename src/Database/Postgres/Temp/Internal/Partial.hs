@@ -226,7 +226,9 @@ instance Semigroup PartialSocketClass where
 instance Monoid PartialSocketClass where
  mempty = PUnixSocket mempty
 
--- |
+-- | Turn a 'PartialSocketClass' to a 'SocketClass'. If the 'PIpSocket' is
+--   'Nothing' default to \"127.0.0.1\". If the is a 'PUnixSocket'
+--    optionally create a temporary directory if configured to do so.
 initPartialSocketClass :: PartialSocketClass -> IO SocketClass
 initPartialSocketClass theClass = case theClass of
   PIpSocket mIp -> pure $ IpSocket $ fromMaybe "127.0.0.1" $
@@ -234,6 +236,7 @@ initPartialSocketClass theClass = case theClass of
   PUnixSocket mFilePath ->
     UnixSocket <$> initDirectoryType "tmp-postgres-socket" mFilePath
 
+-- | Cleanup the UNIX socket temporary directory if one was created.
 shutdownSocketConfig :: SocketClass -> IO ()
 shutdownSocketConfig = \case
   IpSocket   {}  -> pure ()
@@ -242,7 +245,9 @@ shutdownSocketConfig = \case
 -- | PartialPostgresPlan
 data PartialPostgresPlan = PartialPostgresPlan
   { partialPostgresPlanProcessConfig :: PartialProcessConfig
+  -- ^ Monoid for the @postgres@ ProcessConfig.
   , partialPostgresPlanClientConfig  :: Client.PartialOptions
+  -- ^ Monoid for the @postgres@ client connection options.
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup PartialPostgresPlan
