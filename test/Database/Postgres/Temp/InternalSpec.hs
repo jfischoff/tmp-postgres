@@ -240,7 +240,7 @@ spec = do
   describe "restart" $ do
     let startAction f =
           bracket (either throwIO pure
-            =<< restartPostgres
+            =<< restart
             =<< either throwIO pure
             =<< start) stop f
     before (pure $ Runner startAction) $ do
@@ -306,7 +306,7 @@ spec = do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
         let nonEmptyFolderPlan = theDefaultResources
-              { configDataDir = Perm dirPath
+              { configDataDir = PPermanent dirPath
               }
             startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
 
@@ -315,7 +315,7 @@ spec = do
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)
         let nonEmptyFolderPlan = theDefaultResources
-              { configDataDir = Perm dirPath
+              { configDataDir = PPermanent dirPath
               , configPlan = (configPlan theDefaultResources)
                   { partialPlanInitDb = Replace Nothing
                   }

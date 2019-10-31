@@ -41,7 +41,7 @@ module Database.Postgres.Temp
   , stop
   , defaultConfig
   -- * Starting and Stopping postgres without removing the temporary directory
-  , restartPostgres
+  , restart
   , stopPostgres
   , withRestart
   -- * Reloading the config
