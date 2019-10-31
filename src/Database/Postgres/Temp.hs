@@ -9,8 +9,8 @@ Here is an example:
  @
  import qualified Database.PostgreSQL.Simple as PG
 
- with $ \db -> bracket PG.connectPostgreSQL PG.close $ \conn ->
-  execute_ conn "CREATE TABLE foo (id int)"
+ 'with' $ \db -> 'Control.Exception.bracket' 'PG.connectPostgreSQL' 'PG.close' $ \conn ->
+  'PG.execute_' conn "CREATE TABLE foo (id int)"
  @
 
 To extend or override the defaults use `withPlan` (or `startWith`).
@@ -112,7 +112,7 @@ import Database.Postgres.Temp.Internal.Partial
 Additionally if an IP address is provide the following line is added:
 
  @
-   listen_addresses = 'IP_ADDRESS'
+   listen_addresses = \'IP_ADDRESS\'
  @
 
  If a UNIX domain socket is specified the following is added:
