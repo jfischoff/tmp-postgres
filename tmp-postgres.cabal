@@ -2,20 +2,16 @@ name:                tmp-postgres
 version:             1.0.0.0
 synopsis: Start and stop a temporary postgres
 description:
- This module provides functions creating a temporary postgres instance on a random port for testing.
+ @tmp-postgres@ provides functions creating a temporary @postgres@ instance.
  .
- > result <- start []
- > case result of
- >   Left err -> print err
- >   Right tempDB -> do
- >     -- Do stuff
- >     stop tempDB
+ By default it will create a temporary directory for the data,
+ a random port for listening and a temporary directory for a UNIX
+ domain socket.
  .
- The are few different methods for starting @postgres@ which provide different
- methods of dealing with @stdout@ and @stderr@.
+ Here is an example using the expection safe 'with' function:
  .
- The start methods use a config based on the one used by pg_tmp (http://ephemeralpg.org/), but can be overriden
- by different values to the first argument of the start functions.
+ >  with $ \db -> bracket (connectPostgreSQL (toConnectionString db)) close $ \conn ->
+ >   execute_ conn "CREATE TABLE foo (id int)"
  .
  MacOS and Linux are support. Windows is not.
  .
@@ -71,6 +67,7 @@ library
                , transformers
   ghc-options: -Wall
   default-language:    Haskell2010
+
 
 test-suite test
   type:                exitcode-stdio-1.0
