@@ -1,3 +1,8 @@
+{-|
+This module provides the high level functions that are re-exported
+by @Database.Postgres.Temp@. Additionally it includes some
+identifiers that are used for testing but are not exported.
+|-}
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Partial
