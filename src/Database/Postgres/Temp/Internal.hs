@@ -13,6 +13,7 @@ import qualified Database.PostgreSQL.Simple.PartialOptions as Client
 import System.Exit (ExitCode(..))
 import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
+import Control.Monad.Trans.Class
 import qualified Database.PostgreSQL.Simple as PG
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
@@ -59,24 +60,36 @@ defaultPostgresConfig =
 --   If you would like complete control over the behavior of @initdb@,
 --   @postgres@ and @createdb@ you can call the internal function 'initPlan'
 --   directly although this should not be necessary.
-defaultConfig :: IO Config
-defaultConfig = do
+defaultConfig :: Config
+defaultConfig = mempty
+  { configPlan = mempty
+    { partialPlanLogger = pure mempty
+    , partialPlanConfig = Mappend defaultPostgresConfig
+    , partialPlanCreateDb = Mappend $ pure mempty
+        { partialProcessConfigCmdLine = Mappend ["test"]
+        }
+    , partialPlanInitDb = Mappend $ pure mempty
+      { partialProcessConfigCmdLine = Mappend ["--no-sync"]
+      }
+    , partialPlanPostgres = mempty
+        { partialPostgresPlanClientConfig = mempty
+          { Client.dbname = pure "test"
+          }
+        }
+    }
+  }
+
+-- | 'standardConfig' makes a default config with 'standardProcessConfig'.
+--   It is used by default but can be overriden by the extra config.
+standardConfig :: IO Config
+standardConfig = do
   theStandardProcessConfig <- standardProcessConfig
   pure mempty
     { configPlan = mempty
-      { partialPlanLogger = pure print
-      , partialPlanConfig = Mappend defaultPostgresConfig
-      , partialPlanCreateDb = Mappend $ Just $ theStandardProcessConfig
-          { partialProcessConfigCmdLine = Mappend ["test"]
-          }
-      , partialPlanInitDb = Mappend $ Just $ theStandardProcessConfig
-        { partialProcessConfigCmdLine = Mappend ["--no-sync"]
-        }
+      { partialPlanCreateDb = Mappend $ pure theStandardProcessConfig
+      , partialPlanInitDb = Mappend $ pure theStandardProcessConfig
       , partialPlanPostgres = mempty
           { partialPostgresPlanProcessConfig = theStandardProcessConfig
-          , partialPostgresPlanClientConfig = mempty
-            { Client.dbname = pure "test"
-            }
           }
       }
     }
@@ -92,9 +105,11 @@ startWith :: Config
           -- The extra config is 'mappend'ed second, e.g.
           -- @generatedConfig <> extraConfiguration@
           -> IO (Either StartError DB)
-startWith x = try $ evalContT $ do
+startWith extra = try $ evalContT $ do
+  theStandards <- lift standardConfig
+  let finalExtra = theStandards <> extra
   dbResources@Resources {..} <-
-    ContT $ bracketOnError (initConfig x) shutdownResources
+    ContT $ bracketOnError (initConfig finalExtra) shutdownResources
   dbPostgresProcess <-
     ContT $ bracketOnError (initPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
@@ -102,7 +117,7 @@ startWith x = try $ evalContT $ do
 -- | Default start behavior. Equivalent to calling 'startWith' with the
 --   'defaultConfig'
 start :: IO (Either StartError DB)
-start = startWith =<< defaultConfig
+start = startWith defaultConfig
 
 -- | Stop the @postgres@ process and cleanup any temporary directories that
 --   might have been created.
@@ -156,9 +171,7 @@ withPlan plan f = bracket (startWith plan) (either mempty stop) $
 with :: (DB -> IO a)
      -- ^ @action@ continuation.
      -> IO (Either StartError a)
-with f = do
-  initialPlan <- defaultConfig
-  withPlan initialPlan f
+with = withPlan defaultConfig
 
 -- | Exception safe version of 'restart'
 withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)

@@ -69,7 +69,6 @@ customConfigWork action = do
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
 
   it "returns the right client options for the plan" $ do
-    initialPlan <- defaultConfig
     initialCreateDbConfig <- standardProcessConfig
     let customPlan = mempty
           { configPlan = mempty
@@ -92,7 +91,7 @@ customConfigWork action = do
               }
           }
     -- hmm maybe I should provide lenses
-    let combinedResources = initialPlan <> customPlan
+    let combinedResources = defaultConfig <> customPlan
         finalCombinedResources = updateCreateDb combinedResources $ Mappend $ pure $ initialCreateDbConfig
           { partialProcessConfigCmdLine = Mappend
               ["--user", "user-name"
@@ -119,7 +118,6 @@ customConfigWork action = do
 
 invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
 invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ do
-  initialPlan <- defaultConfig
   let customPlan = mempty
         { configPlan = mempty
             { partialPlanConfig = Mappend
@@ -128,7 +126,7 @@ invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ d
                 ]
             }
         }
-  timeout 5000000 (action $ initialPlan <> customPlan) `shouldThrow`
+  timeout 5000000 (action $ defaultConfig <> customPlan) `shouldThrow`
     (== StartPostgresFailed (ExitFailure 1))
 
 
@@ -197,14 +195,13 @@ createDbThrowsIfTheDbExists = describe "createdb" $
 
 spec :: Spec
 spec = do
-  theDefaultResources <- runIO defaultConfig
   theStandardProcessConfig <- runIO standardProcessConfig
 
-  let defaultIpPlan = theDefaultResources
+  let defaultIpPlan = defaultConfig
         { configSocket = PIpSocket $ Last Nothing
         }
 
-      specificHostIpPlan = theDefaultResources
+      specificHostIpPlan = defaultConfig
         { configSocket = PIpSocket $ pure "localhost"
         }
 
@@ -214,8 +211,8 @@ spec = do
     throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
-    throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
-    throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
+    throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
+    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f ->
       bracket (either throwIO pure =<< startWith plan) stop f
@@ -227,8 +224,8 @@ spec = do
     let startAction plan = either throwIO pure =<<
           withPlan plan pure
 
-    throwsIfInitDbIsNotOnThePath $ startAction theDefaultResources
-    throwsIfCreateDbIsNotOnThePath $ startAction theDefaultResources
+    throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
+    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f -> either throwIO pure =<<
       withPlan plan f
@@ -276,7 +273,7 @@ spec = do
           [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
           actualDuration `shouldBe` expectedDuration
 
-    let invalidCreateDbPlan = updateCreateDb theDefaultResources $
+    let invalidCreateDbPlan = updateCreateDb defaultConfig $
           Mappend $ pure $ theStandardProcessConfig
             { partialProcessConfigCmdLine = Mappend ["template1"]
             }
@@ -293,7 +290,7 @@ spec = do
                   }
               }
           }
-        noCreateDbPlan = theDefaultResources <> noCreateTemplate1
+        noCreateDbPlan = defaultConfig <> noCreateTemplate1
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith noCreateDbPlan) stop f) $
       someStandardTests "template1"
 
@@ -306,7 +303,7 @@ spec = do
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
-        let nonEmptyFolderPlan = theDefaultResources
+        let nonEmptyFolderPlan = defaultConfig
               { configDataDir = PPermanent dirPath
               }
             startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
@@ -315,9 +312,9 @@ spec = do
 
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)
-        let nonEmptyFolderPlan = theDefaultResources
+        let nonEmptyFolderPlan = defaultConfig
               { configDataDir = PPermanent dirPath
-              , configPlan = (configPlan theDefaultResources)
+              , configPlan = (configPlan defaultConfig)
                   { partialPlanInitDb = Replace Nothing
                   }
               }
@@ -339,7 +336,7 @@ spec = do
                   ]
               }
           }
-        backupResources = theDefaultResources <> justBackupResources
+        backupResources = defaultConfig <> justBackupResources
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith backupResources) stop f) $
       it "can support backup and restore" $ withRunner $ \db@DB {..} -> do
         let dataDir = toFilePath (resourcesDataDir dbResources)

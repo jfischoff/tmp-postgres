@@ -125,8 +125,7 @@ Additionally if an IP address is provide the following line is added:
 To add to \"postgresql.conf\" file create a custom 'Config' like the following:
 
  @
-  mempty
-    { configPlan = mempty
+  let custom = defaultConfig <> mempty { configPlan = mempty
         { partialPlanConfig = Mappend
             [ "wal_level=replica"
             , "archive_mode=on"
@@ -137,4 +136,11 @@ To add to \"postgresql.conf\" file create a custom 'Config' like the following:
         }
     }
  @
+
+ In general you'll want to 'mappend' a config to the 'defaultConfig'.
+ The 'defaultConfig' setups a database and connection options for
+ the created database. However if you want to extend the behavior
+ of @createdb@ you will probably have to create a 'Config' from
+ scratch to ensure the final parameter to @createdb@ is the
+ database name.
 -}
