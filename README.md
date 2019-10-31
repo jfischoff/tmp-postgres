@@ -23,12 +23,12 @@ extended or overrided.
 All `tmp-postgres` by default is most useful for creating tests by
 configuring "tmp-postgres" differently it can be used for other purposes.
 
-* By disabling @initdb@ and @createdb@ one could run a temporary
+* By disabling `initdb` and `createdb` one could run a temporary
 postgres on a base backup to test a migration.
-* By using the 'stopPostgres' and 'withRestart' functions one can test
+* By using the `stopPostgres` and `withRestart` functions one can test
 backup strategies.
 
-The level of custom configuration is extensive, but with great power comes
+The level of custom configuration is extensive but with great power comes
 ability to screw everything up. `tmp-postgres` doesn't validate any custom
 configuration and one can easily create a `Config` that would not allow
 postgres to start.

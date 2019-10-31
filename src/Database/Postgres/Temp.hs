@@ -26,7 +26,7 @@ postgres on a base backup to test a migration.
 * By using the 'stopPostgres' and 'withRestart' functions one can test
 backup strategies.
 
-The level of custom configuration is extensive, but with great power comes
+The level of custom configuration is extensive but with great power comes
 ability to screw everything up. `tmp-postgres` doesn't validate any custom
 configuration and one can easily create a `Config` that would not allow
 postgres to start.
