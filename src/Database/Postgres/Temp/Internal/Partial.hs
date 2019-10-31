@@ -18,16 +18,21 @@ import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import Control.Applicative
 
--- TODO make functions for creating plans from PartialProcessConfig from PartialClientConfig
--- in the next version
--------------------------------------------------------------------------------
--- A useful type of options
--------------------------------------------------------------------------------
--- | 'Lastoid' is helper for overriding configuration values.
---   It's 'Semigroup' instance let's one either combine the
---   'a' of two 'Lastoid's using '(<>)' via the 'Mappend' constructor
---   or one can wholly replace the value with the last value using the 'Replace'
---   constructor.
+{- |
+'Lastoid' is helper for overriding configuration values.
+It's 'Semigroup' instance let's one either combine the
+@a@ of two 'Lastoid's using '<>' via the 'Mappend' constructor
+or one can wholly replace the value with the last value using the 'Replace'
+constructor.
+Roughly
+
+ @
+   x <> Replace y = Replace y
+   Replace x <> Mappend y = Replace (x <> y)
+   Mappend x <> Mappend y = Mappend (x <> y)
+ @
+
+-}
 data Lastoid a = Replace a | Mappend a
   deriving (Show, Eq, Functor)
 
@@ -40,13 +45,13 @@ instance Semigroup a => Semigroup (Lastoid a) where
 instance Monoid a => Monoid (Lastoid a) where
   mempty = Mappend mempty
 
+-- | Get the value of a 'Lastoid' regardless if it is a 'Replace' or
+--   a 'Mappend'.
 getLastoid :: Lastoid a -> a
 getLastoid = \case
   Replace a -> a
   Mappend a -> a
--------------------------------------------------------------------------------
--- PartialProcessConfig
--------------------------------------------------------------------------------
+
 -- | The monoidial version of 'ProcessConfig'. Used to combine overrides with
 --   defaults when creating a 'ProcessConfig'.
 data PartialProcessConfig = PartialProcessConfig
@@ -73,9 +78,11 @@ standardProcessConfig = do
     , partialProcessConfigStdErr  = pure stderr
     }
 
+-- | A helper to add more info to all the error messages.
 addErrorContext :: String -> Either [String] a -> Either [String] a
 addErrorContext cxt = either (Left . map (cxt <>)) Right
 
+-- | A helper for creating an error if a 'Last' is not defined.
 getOption :: String -> Last a -> Validation [String] a
 getOption optionName = \case
     Last (Just x) -> pure x
@@ -85,14 +92,15 @@ completeProcessConfig :: PartialProcessConfig -> Either [String] ProcessConfig
 completeProcessConfig PartialProcessConfig {..} = validationToEither $ do
   let processConfigEnvVars = getLastoid partialProcessConfigEnvVars
       processConfigCmdLine = getLastoid partialProcessConfigCmdLine
-  processConfigStdIn  <- getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
-  processConfigStdOut <- getOption "partialProcessConfigStdOut" partialProcessConfigStdOut
-  processConfigStdErr <- getOption "partialProcessConfigStdErr" partialProcessConfigStdErr
+  processConfigStdIn  <-
+    getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
+  processConfigStdOut <-
+    getOption "partialProcessConfigStdOut" partialProcessConfigStdOut
+  processConfigStdErr <-
+    getOption "partialProcessConfigStdErr" partialProcessConfigStdErr
 
   pure ProcessConfig {..}
--------------------------------------------------------------------------------
--- DirectoryType
--------------------------------------------------------------------------------
+
 -- | A type to track whether a file is temporary and needs to be cleaned up.
 data DirectoryType = Permanent FilePath | Temporary FilePath
   deriving(Show, Eq, Ord)
@@ -101,18 +109,21 @@ toFilePath :: DirectoryType -> FilePath
 toFilePath = \case
   Permanent x -> x
   Temporary x -> x
--------------------------------------------------------------------------------
--- PartialDirectoryType
--------------------------------------------------------------------------------
+
 -- | The monoidial version of 'DirectoryType'. Used to combine overrides with
---   defaults when creating a 'DirectoryType'.
-data PartialDirectoryType = PPermanent FilePath | PTemporary
+--   defaults when creating a 'DirectoryType'. The monoid instance treats
+--   'PTemporary' as 'mempty' and takes the last 'PPermanent' value.
+data PartialDirectoryType
+  = PPermanent FilePath
+  -- ^ A permanent file that should not be generated.
+  | PTemporary
+  -- ^ A temporary file that needs to generated.
   deriving(Show, Eq, Ord)
 
 instance Semigroup PartialDirectoryType where
   x <> y = case (x, y) of
-    (PTemporary     , a   ) -> a
-    (a@PPermanent {}, _   ) -> a
+    (a, PTemporary     ) -> a
+    (_, a@PPermanent {}) -> a
 
 instance Monoid PartialDirectoryType where
   mempty = PTemporary
@@ -130,9 +141,7 @@ shutdownDirectoryType :: DirectoryType -> IO ()
 shutdownDirectoryType = \case
   Permanent _ -> pure ()
   Temporary filePath -> rmDirIgnoreErrors filePath
--------------------------------------------------------------------------------
--- SocketClass
--------------------------------------------------------------------------------
+
 -- | A type for configuring the listening address of the @postgres@ process.
 --   @postgres@ can listen on several types of sockets simulatanously but we
 --   don't support that behavior. One can either listen on a IP based socket
@@ -158,9 +167,11 @@ socketClassToHost :: SocketClass -> String
 socketClassToHost = \case
   IpSocket ip    -> ip
   UnixSocket dir -> toFilePath dir
--------------------------------------------------------------------------------
--- PartialSocketClass
--------------------------------------------------------------------------------
+
+-- | The monoidial version of 'SocketClass'. Used to combine overrides with
+--   defaults when creating a 'SocketClass'. The monoid instance treats
+--   'PUnixSocket mempty' as 'mempty' and combines two 'PIpSocket' values
+--   with '(<|>)'
 data PartialSocketClass =
   PIpSocket (Maybe String) | PUnixSocket PartialDirectoryType
     deriving stock (Show, Eq, Ord, Generic, Typeable)
@@ -175,6 +186,7 @@ instance Semigroup PartialSocketClass where
 instance Monoid PartialSocketClass where
  mempty = PUnixSocket mempty
 
+-- |
 initPartialSocketClass :: PartialSocketClass -> IO SocketClass
 initPartialSocketClass theClass = case theClass of
   PIpSocket mIp -> pure $ IpSocket $ fromMaybe "127.0.0.1" mIp
@@ -185,9 +197,8 @@ shutdownSocketConfig :: SocketClass -> IO ()
 shutdownSocketConfig = \case
   IpSocket   {}  -> pure ()
   UnixSocket dir -> shutdownDirectoryType dir
--------------------------------------------------------------------------------
--- PartialPostgresPlan
--------------------------------------------------------------------------------
+
+-- | PartialPostgresPlan
 data PartialPostgresPlan = PartialPostgresPlan
   { partialPostgresPlanProcessConfig :: PartialProcessConfig
   , partialPostgresPlanClientConfig  :: Client.PartialOptions
@@ -237,13 +248,18 @@ completePlan PartialPlan {..} = validationToEither $ do
     partialPlanDataDirectory
 
   pure Plan {..}
--------------------------------------------------------------------------------
--- Resources
--------------------------------------------------------------------------------
+
+-- | 'Resources' holds a description of the temporary folders (if there are any)
+--   and includes the final 'Plan' that can be used with 'initPlan'.
+--   See 'initConfig' for an example of how to create a 'Resources'.
 data Resources = Resources
   { resourcesPlan    :: Plan
+  -- ^ Final 'Plan'. See 'initPlan' for information on 'Plan's
   , resourcesSocket  :: SocketClass
+  -- ^ The 'SocketClass'. Used to track if a temporary directory was made
+  --   as the socket location.
   , resourcesDataDir :: DirectoryType
+  -- ^ The data directory. Used to track if a temporary directory was used.
   }
 
 data Config = Config

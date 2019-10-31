@@ -1,3 +1,8 @@
+{-|
+This module provides the low level functionality for running @initdb@, @postgres@ and @createdb@ to make a database.
+
+See 'initPlan' for more details.
+|-}
 module Database.Postgres.Temp.Internal.Core where
 import qualified Database.PostgreSQL.Simple.Options as PostgresClient
 import qualified Database.PostgreSQL.Simple as PG
@@ -35,7 +40,7 @@ data StartError
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
   | CompletePlanFailed [String]
-  -- ^ The 'PartialPlan' was missing info and a complete 'Plan' could
+  -- ^ The 'Database.Postgres.Temp.Partial.PartialPlan' was missing info and a complete 'Plan' could
   --   not be created.
   deriving (Show, Eq, Ord, Typeable)
 
@@ -55,9 +60,7 @@ waitForDB options = do
   try (bracket startAction PG.close mempty) >>= \case
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
     Right () -> return ()
--------------------------------------------------------------------------------
--- ProcessConfig
--------------------------------------------------------------------------------
+
 -- | 'ProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
 data ProcessConfig = ProcessConfig
@@ -72,9 +75,7 @@ data ProcessConfig = ProcessConfig
   , processConfigStdErr  :: Handle
   -- ^ The 'Handle' for standard error
   }
--------------------------------------------------------------------------------
--- Starting Processes
--------------------------------------------------------------------------------
+
 -- | Start a process interactively and return the 'ProcessHandle'
 startProcess
   :: String
@@ -99,17 +100,17 @@ executeProcess
   -> IO ExitCode
 executeProcess name = startProcess name >=> waitForProcess
 -------------------------------------------------------------------------------
--- PostgresPlan
+-- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
+-- | PostgresPlan is used be 'startPostgresProcess' to start the @postgres@
+--   and then attempt to connect to it.
 data PostgresPlan = PostgresPlan
   { postgresPlanProcessConfig :: ProcessConfig
   -- ^ The process config for @postgres@
   , postgresPlanClientConfig  :: PostgresClient.Options
   -- ^ Connection options. Used to verify that @postgres@ is ready.
   }
--------------------------------------------------------------------------------
--- PostgresProcess
--------------------------------------------------------------------------------
+
 -- | The output of calling 'startPostgresProcess'.
 data PostgresProcess = PostgresProcess
   { postgresProcessClientConfig :: PostgresClient.Options
@@ -117,9 +118,7 @@ data PostgresProcess = PostgresProcess
   , postgresProcessHandle :: ProcessHandle
   -- ^ @postgres@ process handle
   }
--------------------------------------------------------------------------------
--- PostgresProcess Life cycle management
--------------------------------------------------------------------------------
+
 -- | Force all connections to the database to close. Can be useful in some
 --   testing situations.
 --   Called during shutdown as well.
@@ -204,6 +203,7 @@ data Plan = Plan
   , planDataDirectory :: FilePath
   }
 
+-- | A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
 throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
 throwIfNotSuccess f = \case
   ExitSuccess -> pure ()
@@ -212,7 +212,8 @@ throwIfNotSuccess f = \case
 -- | 'initPlan' optionally calls @initdb@, optionally calls @createdb@ and
 --   unconditionally calls @postgres@.
 --   Additionally it writes a \"postgresql.conf\" and does not return until
---   the @postgres@ process is ready.
+--   the @postgres@ process is ready. See 'startPostgresProcess' for more
+--   details.
 initPlan :: Plan -> IO PostgresProcess
 initPlan Plan {..} = do
   for_ planInitDb  $ executeProcess "initdb" >=>
