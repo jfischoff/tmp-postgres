@@ -2,7 +2,7 @@
     configs into a complete configs to ultimately make a 'Plan'.
 
     This module has three classes of types. Types like 'Lastoid' that
-    are generic and could live in a module like 'base'.
+    are generic and could live in a module like "base".
 
     Types like 'PartialProcessConfig' that could be used by any
     library that  needs to combine process options.
@@ -70,15 +70,15 @@ getLastoid = \case
 --   defaults when creating a 'ProcessConfig'.
 data PartialProcessConfig = PartialProcessConfig
   { partialProcessConfigEnvVars :: Lastoid [(String, String)]
-  -- | A monoid for combine environment variables or replacing them
+  -- ^ A monoid for combine environment variables or replacing them
   , partialProcessConfigCmdLine :: Lastoid [String]
-  -- | A monoid for combine command line arguments or replacing them
+  -- ^ A monoid for combine command line arguments or replacing them
   , partialProcessConfigStdIn   :: Last Handle
-  -- | A monoid for configuring the standard input 'Handle'
+  -- ^ A monoid for configuring the standard input 'Handle'
   , partialProcessConfigStdOut  :: Last Handle
-  -- | A monoid for configuring the standard output 'Handle'
+  -- ^ A monoid for configuring the standard output 'Handle'
   , partialProcessConfigStdErr  :: Last Handle
--- | A monoid for configuring the standard error 'Handle'
+  -- ^ A monoid for configuring the standard error 'Handle'
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup PartialProcessConfig
@@ -282,6 +282,7 @@ data PartialPlan = PartialPlan
   deriving Semigroup via GenericSemigroup PartialPlan
   deriving Monoid    via GenericMonoid PartialPlan
 
+-- | Turn a 'PartialPlan' into a 'Plan'. Fails if any values are missing.
 completePlan :: PartialPlan -> Either [String] Plan
 completePlan PartialPlan {..} = validationToEither $ do
   planLogger   <- getOption "partialPlanLogger" partialPlanLogger
