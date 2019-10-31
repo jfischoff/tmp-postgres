@@ -10,10 +10,10 @@ import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
 import qualified Database.PostgreSQL.Simple as PG
 
---
--- General formatting cleanup
--- Fixup main module
--- Add plan pretty printing functions
+-- | Handle for holding temporary resources, the @postgres@ process handle
+--   and postgres connection information. The 'DB' also includes the
+--   final 'Plan' that was used to start @initdb@, @createdb@ and
+--   @postgres@.
 data DB = DB
   { dbResources :: Resources
   , dbPostgresProcess :: PostgresProcess
@@ -96,23 +96,22 @@ startWith x = try $ evalContT $ do
 --   'defaultConfig'
 start :: IO (Either StartError DB)
 start = startWith =<< defaultConfig
--------------------------------------------------------------------------------
--- Stopping
--------------------------------------------------------------------------------
+
 -- | Stop the @postgres@ process and cleanup any temporary directories that
 --   might have been created.
 stop :: DB -> IO ()
 stop DB {..} = do
   void $ stopPostgresProcess dbPostgresProcess
   shutdownResources dbResources
--------------------------------------------------------------------------------
--- stopPostgres
--------------------------------------------------------------------------------
+
+-- | Only stop the @postgres@ process but leave any temporary resources.
+--   Useful for testing backup strategies when used in conjunction with
+--   'restart' or 'withRestart'.
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
--------------------------------------------------------------------------------
--- restart
--------------------------------------------------------------------------------
+
+-- | Restart the @postgres@ using the 'Plan' from the 'DB'
+--  (e.g. @resourcesPlan . dbResources@)
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
@@ -120,9 +119,9 @@ restart db@DB{..} = try $ do
   bracketOnError (startPostgresProcess (planLogger plan) $ planPostgres plan)
     stopPostgresProcess $ \result ->
       pure $ db { dbPostgresProcess = result }
--------------------------------------------------------------------------------
--- reload
--------------------------------------------------------------------------------
+
+-- | Reload the configuration file without shutting down. Calls
+--   @pg_reload_conf()@.
 reloadConfig :: DB -> IO ()
 reloadConfig db =
   bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
