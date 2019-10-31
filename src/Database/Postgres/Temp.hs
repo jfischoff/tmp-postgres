@@ -4,12 +4,10 @@ By default it will create a temporary directory for the data,
 a random port for listening and a temporary directory for a UNIX
 domain socket.
 
-Here is an example:
+Here is an example using the expection safe 'with' function:
 
  @
- import qualified Database.PostgreSQL.Simple as PG
-
- 'with' $ \db -> 'Control.Exception.bracket' 'PG.connectPostgreSQL' 'PG.close' $ \conn ->
+ 'with' $ \\db -> 'Control.Exception.bracket' ('PG.connectPostgreSQL' ('toConnectionString' db)) 'PG.close' $ \\conn ->
   'PG.execute_' conn "CREATE TABLE foo (id int)"
  @
 
@@ -42,15 +40,14 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 -}
 
 module Database.Postgres.Temp
-  ( -- * Types
-
-    StartError (..)
-  -- * Starting @postgres@
-  -- $options
+  (
+  -- * Main resource handle
+    DB (..)
   -- * Exception safe interface
+  -- $options
   , with
   , withPlan
-  -- ** Separate start and stop interface.
+  -- * Separate start and stop interface.
   , start
   , startWith
   , stop
@@ -63,9 +60,13 @@ module Database.Postgres.Temp
   , reloadConfig
   -- * DB manipulation
   , toConnectionString
-  -- * Configuration
+  -- * Errors
+  , StartError (..)
+  -- * Configuration Types
+  , Config (..)
+  -- ** General extend or override monoid
   , Lastoid (..)
-  -- **
+  -- ** Directory configuration
   , DirectoryType (..)
   , PartialDirectoryType (..)
   -- ** Listening socket configuration
@@ -83,9 +84,6 @@ module Database.Postgres.Temp
   , PartialPlan (..)
   , Plan (..)
   -- ** Top level configuration
-  , Config (..)
-  -- *** Main resource handle. Includes the actual plan used to start all services and the resources necessary for cleanup
-  , DB (..)
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
