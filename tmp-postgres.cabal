@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.0.0.0
+version:             1.0.0.1
 synopsis: Start and stop a temporary postgres
 description:
  @tmp-postgres@ provides functions creating a temporary @postgres@ instance.
@@ -63,7 +63,7 @@ library
                , port-utils
                , async
                , generic-monoid
-               , postgresql-simple-opts
+               , postgresql-simple-opts >= 0.5.0.1
                , either
                , transformers
   ghc-options: -Wall
