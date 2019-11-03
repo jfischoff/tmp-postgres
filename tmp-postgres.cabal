@@ -73,12 +73,10 @@ test-suite test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  other-modules: Database.Postgres.Temp.InternalSpec
   build-depends:       base
                      , postgresql-libpq
                      , tmp-postgres
                      , hspec
-                     , hspec-discover
                      , temporary
                      , directory
                      , process
