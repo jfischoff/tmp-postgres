@@ -8,8 +8,7 @@ import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Partial
 import Control.Exception
 import Control.Monad (void)
-import qualified Database.PostgreSQL.Simple.Options as PostgresClient
-import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import qualified Database.PostgreSQL.Simple.Options as Client
 import System.Exit (ExitCode(..))
 import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
@@ -28,11 +27,11 @@ data DB = DB
   }
 
 -- | Convert a 'DB' to a connection string. Alternatively one can access the
---   'PostgresClient.Options' using
+--   'Client.Options' using
 --    @postgresProcessClientConfig . dbPostgresProcess@
 toConnectionString :: DB -> ByteString
 toConnectionString
-  = PostgresClient.toConnectionString
+  = Client.toConnectionString
   . postgresProcessClientConfig
   . dbPostgresProcess
 -------------------------------------------------------------------------------

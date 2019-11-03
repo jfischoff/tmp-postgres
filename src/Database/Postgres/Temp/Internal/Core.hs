@@ -19,6 +19,7 @@ import Control.Concurrent (threadDelay)
 import Data.Typeable
 import System.IO
 import System.Process
+import Data.Monoid
 
 -- | Internal events for debugging
 data Event
@@ -132,7 +133,7 @@ terminateConnections options = do
         ]
   e <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $
     \conn -> PG.execute conn terminationQuery
-      [PostgresClient.oDbname options]
+      [getLast $ PostgresClient.dbname options]
   case e of
     Left (_ :: IOError) -> pure ()
     Right _ -> pure ()
@@ -176,7 +177,7 @@ startPostgresProcess logger PostgresPlan {..} = do
       -- We assume that 'template1' exist and make connection
       -- options to test if postgres is ready.
       let options = postgresPlanClientConfig
-            { PostgresClient.oDbname = "template1"
+            { PostgresClient.dbname = pure "template1"
             }
 
       -- Block until a connection succeeds or postgres crashes

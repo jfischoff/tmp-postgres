@@ -14,7 +14,7 @@
 |-}
 module Database.Postgres.Temp.Internal.Partial where
 import Database.Postgres.Temp.Internal.Core
-import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import qualified Database.PostgreSQL.Simple.Options as Client
 import GHC.Generics (Generic)
 import Data.Monoid.Generic
 import Data.Monoid
@@ -246,7 +246,7 @@ shutdownSocketConfig = \case
 data PartialPostgresPlan = PartialPostgresPlan
   { partialPostgresPlanProcessConfig :: PartialProcessConfig
   -- ^ Monoid for the @postgres@ ProcessConfig.
-  , partialPostgresPlanClientConfig  :: Client.PartialOptions
+  , partialPostgresPlanClientConfig  :: Client.Options
   -- ^ Monoid for the @postgres@ client connection options.
   }
   deriving stock (Generic)
@@ -257,9 +257,7 @@ data PartialPostgresPlan = PartialPostgresPlan
 --   values are missing.
 completePostgresPlan :: PartialPostgresPlan -> Either [String] PostgresPlan
 completePostgresPlan PartialPostgresPlan {..} = validationToEither $ do
-  postgresPlanClientConfig <-
-    eitherToValidation $ addErrorContext "partialPostgresPlanClientConfig: " $
-      Client.completeOptions partialPostgresPlanClientConfig
+  let postgresPlanClientConfig = partialPostgresPlanClientConfig
   postgresPlanProcessConfig <-
     eitherToValidation $ addErrorContext "partialPostgresPlanProcessConfig: " $
       completeProcessConfig partialPostgresPlanProcessConfig

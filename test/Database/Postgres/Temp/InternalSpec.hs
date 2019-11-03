@@ -12,8 +12,7 @@ import System.Environment
 import System.Posix.Files
 import System.IO.Temp
 import System.Directory
-import qualified Database.PostgreSQL.Simple.Options as PostgresClient
-import qualified Database.PostgreSQL.Simple.PartialOptions as Client
+import qualified Database.PostgreSQL.Simple.Options as Client
 import Data.String
 import System.Timeout(timeout)
 import Control.Monad (void, (<=<))
@@ -47,18 +46,20 @@ defaultConfigShouldMatchDefaultPlan =
     let Resources {..} = dbResources
         Plan {..} = resourcesPlan
         PostgresPlan {..} = planPostgres
-    PostgresClient.oDbname postgresPlanClientConfig `shouldBe` "test"
+    Client.dbname postgresPlanClientConfig `shouldBe` pure "test"
     let Temporary tmpDataDir = resourcesDataDir
     tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
-    let Just port = PostgresClient.oPort postgresPlanClientConfig
+    let Just port = getLast $ Client.port postgresPlanClientConfig
     port `shouldSatisfy` (>32768)
     let UnixSocket (Temporary unixSocket) = resourcesSocket
     unixSocket `shouldStartWith` "/tmp/tmp-postgres-socket"
     postgresPlanClientConfig `shouldBe`
-      ((PostgresClient.defaultOptions (PostgresClient.oDbname postgresPlanClientConfig))
-        { PostgresClient.oPort = PostgresClient.oPort postgresPlanClientConfig
-        , PostgresClient.oHost = PostgresClient.oHost postgresPlanClientConfig
-        })
+      (mempty
+        { Client.port = Client.port postgresPlanClientConfig
+        , Client.host = Client.host postgresPlanClientConfig
+        , Client.dbname = Client.dbname postgresPlanClientConfig
+        }
+      )
 
 customConfigWork :: (Config -> (DB -> IO ()) -> IO ()) -> Spec
 customConfigWork action = do
@@ -111,9 +112,9 @@ customConfigWork action = do
           Plan {..} = resourcesPlan
           actualOptions = postgresPlanClientConfig planPostgres
           actualPostgresConfig = planConfig
-      PostgresClient.oUser actualOptions `shouldBe` Just expectedUser
-      PostgresClient.oDbname actualOptions `shouldBe` expectedDbName
-      PostgresClient.oPassword actualOptions `shouldBe` Just expectedPassword
+      Client.user actualOptions `shouldBe` pure expectedUser
+      Client.dbname actualOptions `shouldBe` pure expectedDbName
+      Client.password actualOptions `shouldBe` pure expectedPassword
       lines actualPostgresConfig `shouldContain` defaultPostgresConfig <> [extraConfig]
 
 invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
@@ -352,8 +353,8 @@ spec = do
 
           reloadConfig db
 
-          let Just port = PostgresClient.oPort $ postgresProcessClientConfig dbPostgresProcess
-              Just host = PostgresClient.oHost $ postgresProcessClientConfig dbPostgresProcess
+          let Just port = getLast $ Client.port $ postgresProcessClientConfig dbPostgresProcess
+              Just host = getLast $ Client.host $ postgresProcessClientConfig dbPostgresProcess
               backupCommand = "pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p"
                 ++ show port ++ " -h" ++ host
           putStrLn backupCommand
