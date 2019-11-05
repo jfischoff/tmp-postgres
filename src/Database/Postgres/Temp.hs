@@ -83,7 +83,8 @@ module Database.Postgres.Temp
   -- ** Database plans. This is used to call @initdb@, @postgres@ and @createdb@
   , PartialPlan (..)
   , Plan (..)
-  -- ** Top level configuration
+  -- ** Custom Config builder helpers
+  , optionsToDefaultConfig
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core

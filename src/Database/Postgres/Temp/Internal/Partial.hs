@@ -109,7 +109,8 @@ getOption optionName = \case
 
 -- | Turn a 'PartialProcessConfig' into a 'ProcessConfig'. Fails if
 --   any values are missing.
-completeProcessConfig :: PartialProcessConfig -> Either [String] ProcessConfig
+completeProcessConfig
+  :: PartialProcessConfig -> Either [String] ProcessConfig
 completeProcessConfig PartialProcessConfig {..} = validationToEither $ do
   let processConfigEnvVars = getLastoid partialProcessConfigEnvVars
       processConfigCmdLine = getLastoid partialProcessConfigCmdLine
@@ -364,17 +365,20 @@ toPlan port socketClass dataDirectory = mempty
   }
 
 
--- | Create all the temporary resources from a 'Config'. This also combines the 'PartialPlan' from
---   'toPlan' with the @extraConfig@ passed in.
+-- | Create all the temporary resources from a 'Config'. This also combines the
+-- 'PartialPlan' from 'toPlan' with the @extraConfig@ passed in.
 initConfig
   :: Config
   -- ^ @extraConfig@ to 'mappend' after the default config
   -> IO Resources
 initConfig Config {..} = evalContT $ do
   port <- lift $ maybe getFreePort pure $ join $ getLast configPort
-  resourcesSocket <- ContT $ bracketOnError (initPartialSocketClass configSocket) shutdownSocketConfig
-  resourcesDataDir <- ContT $ bracketOnError (initDirectoryType "tmp-postgres-data" configDataDir) shutdownDirectoryType
-  let hostAndDirPartial = toPlan port resourcesSocket $ toFilePath resourcesDataDir
+  resourcesSocket <- ContT $ bracketOnError
+    (initPartialSocketClass configSocket) shutdownSocketConfig
+  resourcesDataDir <- ContT $ bracketOnError
+    (initDirectoryType "tmp-postgres-data" configDataDir) shutdownDirectoryType
+  let hostAndDirPartial = toPlan port resourcesSocket $
+        toFilePath resourcesDataDir
   resourcesPlan <- lift $ either (throwIO . CompletePlanFailed) pure $
     completePlan $ hostAndDirPartial <> configPlan
   pure Resources {..}
@@ -384,3 +388,59 @@ shutdownResources :: Resources -> IO ()
 shutdownResources Resources {..} = do
   shutdownSocketConfig resourcesSocket
   shutdownDirectoryType resourcesDataDir
+-------------------------------------------------------------------------------
+-- Config Generation
+-------------------------------------------------------------------------------
+-- | Attempt to create a config from a 'Client.Options'. This is useful if
+--   want to create a database owned by a specific user you will also log in as
+--   among other use cases. It is possible some 'Client.Options' are not
+--   supported so don't hesitate to open an issue on github if you find one.
+optionsToConfig :: Client.Options -> Config
+optionsToConfig opts@Client.Options {..}
+  =  ( mempty
+       { configPlan = optionsToPlan opts
+       , configPort = maybe (Last Nothing) (pure . pure) $ getLast port
+       , configSocket = hostToSocketClass $ getLast host
+       }
+     )
+  <> ( mempty
+       { configPlan = mempty
+         { partialPlanPostgres = mempty
+           { partialPostgresPlanClientConfig = opts
+           }
+         }
+       }
+     )
+
+optionsToPlan :: Client.Options -> PartialPlan
+optionsToPlan Client.Options {..}
+  =  dbnameToPlan (getLast dbname)
+  <> userToPlan (getLast user)
+
+userToPlan :: Maybe String -> PartialPlan
+userToPlan = \case
+  Nothing -> mempty
+  Just user -> mempty
+    { partialPlanCreateDb = Mappend $ Just $ mempty
+      { partialProcessConfigCmdLine = Mappend ["--username=" <> user]
+      }
+    , partialPlanInitDb = Mappend $ Just $ mempty
+      { partialProcessConfigCmdLine = Mappend ["--username=" <> user]
+      }
+    }
+
+dbnameToPlan :: Maybe String -> PartialPlan
+dbnameToPlan = \case
+  Nothing -> mempty
+  Just dbName -> mempty
+    { partialPlanCreateDb = Mappend $ Just $ mempty
+      { partialProcessConfigCmdLine = Mappend [dbName]
+      }
+    }
+
+hostToSocketClass :: Maybe String -> PartialSocketClass
+hostToSocketClass = \case
+  Nothing -> mempty
+  Just hostOrSocketPath -> case hostOrSocketPath of
+    '/' : _ -> PUnixSocket $ PPermanent hostOrSocketPath
+    _ -> PIpSocket $ pure hostOrSocketPath

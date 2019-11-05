@@ -18,6 +18,7 @@ import Control.Monad (void, (<=<))
 import Data.Function (fix)
 import Control.Concurrent
 import Data.Monoid
+import Network.Socket.Free (getFreePort)
 
 main :: IO ()
 main = hspec spec
@@ -302,6 +303,16 @@ spec = do
 
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith specificHostIpPlan) stop f) $
       someStandardTests "test"
+
+    thePort <- runIO getFreePort
+    let planFromCustomUserDbConnection = optionsToDefaultConfig mempty
+          { Client.dbname = pure "fancy"
+          , Client.user   = pure "some_user"
+          , Client.port   = pure thePort
+          }
+
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith planFromCustomUserDbConnection) stop f) $
+      someStandardTests "fancy"
 
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
