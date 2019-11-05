@@ -1,7 +1,7 @@
 [![Travis CI Status](https://travis-ci.org/jfischoff/tmp-postgres.svg?branch=master)](http://travis-ci.org/jfischoff/tmp-postgres)
 # tmp-postgres
 
-`tmp-postgres` provides functions creating a temporary @postgres@ instance.
+`tmp-postgres` provides functions creating a temporary `postgres` instance.
 By default it will create a temporary directory for the data,
 a random port for listening and a temporary directory for a UNIX
 domain socket.
