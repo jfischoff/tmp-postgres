@@ -264,15 +264,92 @@ completePostgresPlan PartialPostgresPlan {..} = validationToEither $ do
       completeProcessConfig partialPostgresPlanProcessConfig
 
   pure PostgresPlan {..}
--------------------------------------------------------------------------------
--- PartialPlan
--------------------------------------------------------------------------------
+
+-- | A type for holding either a database name or
+--   a database name and a description comment.
+data DbNameDescription
+  = DbNameOnly String
+  | DbNameAndDescription String String
+  deriving stock (Eq, Show, Generic)
+
+-- | A @createdb@ options type. The connection options are not
+--   included since they are generated from the
+--   'partialPostgresPlanClientConfig'.
+--   See <https://www.postgresql.org/docs/current/app-createdb.html>
+--   for more info on what each option means
+data CreateDbConfig = CreateDbConfig
+  { createDbConfigDbNameDesc  :: Last DbNameDescription
+  , createDbConfigTablespace  :: Last String
+  , createDbConfigEcho        :: Last Bool
+  , createDbConfigEncoding    :: Last String
+  , createDbConfigLocale      :: Last String
+  , createDbConfigLcCollate   :: Last String
+  , createDbConfigLcCtype     :: Last String
+  , createDbConfigOwner       :: Last String
+  , createDbConfigTemplate    :: Last String
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving Semigroup via GenericSemigroup CreateDbConfig
+  deriving Monoid    via GenericMonoid CreateDbConfig
+
+-- | Convert a 'CreateDbConfig' to @createdb@ command line
+--   arguments.
+createDbConfigToCmdLineArgs :: CreateDbConfig -> [String]
+createDbConfigToCmdLineArgs CreateDbConfig {..}
+  = mapMaybe (\(arg, value) -> mappend arg <$> getLast value)
+     [ ("--tablespace=", createDbConfigTablespace)
+     , ("--encoding="  , createDbConfigEncoding)
+     , ("--locale="    , createDbConfigLocale)
+     , ("--lc-collate=", createDbConfigLcCollate)
+     , ("--lc-ctype="  , createDbConfigLcCtype)
+     , ("--owner="     , createDbConfigOwner)
+     , ("--template="  , createDbConfigTemplate)
+     ]
+  <> if fromMaybe False (getLast createDbConfigEcho) then ["--echo"] else []
+  <> case getLast createDbConfigDbNameDesc of
+       Nothing -> []
+       Just dbNameDesc -> case dbNameDesc of
+         DbNameOnly x -> [x]
+         DbNameAndDescription x y -> [x, y]
+
+-- | Convert the 'Client.Options' to @createdb@ connection command
+--   line arguments. Creates the @--host@, @--port@ and @--username@
+--   options if they are specified.
+clientOptionsToCreateDbCmdLineArgs :: Client.Options -> [String]
+clientOptionsToCreateDbCmdLineArgs Client.Options {..}
+  = mapMaybe (\(arg, value) -> mappend arg <$> getLast value)
+  [ ("--host="    , host)
+  , ("--port="    , port)
+  , ("--username=", user)
+  ]
+
+-- | Convert a 'Client.Options' to @createdb@ connection environment
+--   variables. Creates the @PGPASSWORD@ environment variable if
+--   a 'Client.password' is specified.
+clientOptionsToCreateDbEnvVars :: Client.Options -> [(String, String)]
+clientOptionsToCreateDbEnvVars Client.Options {..}
+  == mapMaybe (\(name, value) -> (name,) <$> getLast value)
+  [ ("PGPASSWORD", password)
+  ]
+
+-- | Create a 'PartialProcessOptions' for @createdb@ from 'Client.Options' and
+--   a 'CreateDbConfig'
+makeCreateDbProcessConfig
+  :: Client.Options -> CreateDbConfig -> PartialProcessOptions
+makeCreateDbProcessConfig options createDbConfig = mempty
+  { partialProcessConfigCmdLine = Mappend
+      $  clientOptionsToCreateDbCmdLineArgs options
+      <> createDbConfigToCmdLineArgs createDbConfig
+  , partialProcessConfigEnvVars = Mappend $
+      clientOptionsToCreateDbEnvVars options
+  }
+
 -- | The monoidial version of 'Plan'. Used to combine overrides with defaults
 --   when creating a plan.
 data PartialPlan = PartialPlan
   { partialPlanLogger        :: Last Logger
   , partialPlanInitDb        :: Lastoid (Maybe PartialProcessConfig)
-  , partialPlanCreateDb      :: Lastoid (Maybe PartialProcessConfig)
+  , partialPlanCreateDb      :: Lastoid (Maybe CreateDbConfig)
   , partialPlanPostgres      :: PartialPostgresPlan
   , partialPlanConfig        :: Lastoid [String]
   , partialPlanDataDirectory :: Last String
@@ -287,10 +364,12 @@ completePlan PartialPlan {..} = validationToEither $ do
   planLogger   <- getOption "partialPlanLogger" partialPlanLogger
   planInitDb   <- eitherToValidation $ addErrorContext "partialPlanInitDb: " $
     traverse completeProcessConfig $ getLastoid partialPlanInitDb
-  planCreateDb <- eitherToValidation $ addErrorContext "partialPlanCreateDb: " $
-    traverse completeProcessConfig $ getLastoid partialPlanCreateDb
   planPostgres <- eitherToValidation $ addErrorContext "partialPlanPostgres: " $
     completePostgresPlan partialPlanPostgres
+-- HMM this is no longer an applicative ...
+  let planCreateDb
+    traverse  $ getLastoid partialPlanCreateDb
+
   let planConfig = unlines $ getLastoid partialPlanConfig
   planDataDirectory <- getOption "partialPlanDataDirectory"
     partialPlanDataDirectory
