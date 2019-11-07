@@ -410,8 +410,9 @@ toPlan port socketClass dataDirectory = mempty
               }
           }
       , partialPostgresPlanClientConfig = mempty
-          { Client.host = pure $ socketClassToHost socketClass
-          , Client.port = pure port
+          { Client.host   = pure $ socketClassToHost socketClass
+          , Client.port   = pure port
+          , Client.dbname = pure "postgres"
           }
       }
   , partialPlanCreateDb = Mappend $ Just $ mempty

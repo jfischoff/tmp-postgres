@@ -19,7 +19,8 @@ import qualified Data.Map.Strict as Map
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the
 --   final 'Plan' that was used to start @initdb@, @createdb@ and
---   @postgres@.
+--   @postgres@. See 'toConnectionString' for converting a 'DB' to
+--   postgresql connection string.
 data DB = DB
   { dbResources :: Resources
   -- ^ Temporary resources and the final 'Plan'.
@@ -51,31 +52,45 @@ defaultPostgresConfig =
   , "client_min_messages = ERROR"
   ]
 
--- | The default configuration. This will create a database called \"test\"
---   and create a temporary directory for the data and a temporary directory
---   for a unix socket on a random port.
---   If you would like to customize this behavior you can start with the
---   'defaultConfig' and overwrite fields or combine the 'Config' with another
---   config using '<>' ('mappend').
---   If you would like complete control over the behavior of @initdb@,
---   @postgres@ and @createdb@ you can call the internal function 'initPlan'
---   directly although this should not be necessary.
+{-|
+The default configuration. This will create a database called \"postgres\"
+   via @initdb@ (it's default behavior).
+   It will create a temporary directory for the data and a temporary directory
+ for a unix socket on a random port.
+ Additionally it will use append the following onto the \"postgresql.conf\"
+
+ @
+   shared_buffers = 12MB
+   fsync = off
+   synchronous_commit = off
+   full_page_writes = off
+   log_min_duration_statement = 0
+   log_connections = on
+   log_disconnections = on
+   unix_socket_directories = {DATA_DIRECTORY}
+   client_min_messages = ERROR
+@
+
+'defaultConfig' also passes the @--no-sync@ flag to @initdb@.
+
+If you would like to customize this behavior you can start with the
+'defaultConfig' and overwrite fields or combine a 'defaultConfig' with another 'Config'
+ using '<>' ('mappend').
+
+ Alternatively you can eschew 'defaultConfig' altogether, however
+ your @postgres@ might start and run faster if you use
+ 'defaultConfig'.
+-}
 defaultConfig :: Config
 defaultConfig = mempty
   { configPlan = mempty
     { partialPlanLogger = pure mempty
     , partialPlanConfig = Mappend defaultPostgresConfig
-    , partialPlanCreateDb = Mappend Nothing
     , partialPlanInitDb = Mappend $ pure mempty
       { partialProcessConfigCmdLine = Mappend $ mempty
           { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
           }
       }
-    , partialPlanPostgres = mempty
-        { partialPostgresPlanClientConfig = mempty
-          { Client.dbname = pure "postgres"
-          }
-        }
     }
   }
 
@@ -93,6 +108,24 @@ standardConfig = do
           }
       }
     }
+
+{-|
+'mappend' the 'defaultConfig' with a config that provides additional
+   \"postgresql.conf\" lines. Equivalent to
+@
+defaultPostgresConf extra = defaultConfig <> mempty
+  { configPlan = mempty
+    { partialPlanConfig = Mappend extra
+    }
+  }
+@
+-}
+defaultPostgresConf :: [String] -> Config
+defaultPostgresConf extra = defaultConfig <> mempty
+  { configPlan = mempty
+    { partialPlanConfig = Mappend extra
+    }
+  }
 
 -- | Create temporary resources and use them to make a 'Config'.
 --   The generated 'Config' is combined with the passed in @extraConfiguration@
