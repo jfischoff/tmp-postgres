@@ -75,9 +75,11 @@ data PartialCommandLineArgs = PartialCommandLineArgs
   --   The key is `mappend`ed with value so the key should include
   --   the space or equals (as shown in the first two examples
   --   respectively).
+  --   The 'Dual' monoid is used so the last key wins.
   , partialCommandLineArgsIndexBased :: Map Int String
   -- ^ Arguments that appear at the end of the key based
   --   arguments.
+  --   The 'Dual' monoid is used so the last key wins.
   }
   deriving stock (Generic, Show, Eq)
   deriving Monoid via GenericMonoid PartialCommandLineArgs
@@ -111,7 +113,8 @@ completeCommandLineArgs PartialCommandLineArgs {..}
 --   defaults when creating a 'ProcessConfig'.
 data PartialProcessConfig = PartialProcessConfig
   { partialProcessConfigEnvVars :: Lastoid (Map String String)
-  -- ^ A monoid for combine environment variables or replacing them
+  -- ^ A monoid for combine environment variables or replacing them.
+  --   for the maps the 'Dual' monoid is used. So the last key wins.
   , partialProcessConfigCmdLine :: Lastoid PartialCommandLineArgs
   -- ^ A monoid for combine command line arguments or replacing them
   , partialProcessConfigStdIn   :: Last Handle
@@ -463,53 +466,55 @@ optionsToConfig opts@Client.Options {..}
   =  ( mempty
        { configPlan = optionsToPlan opts
        , configPort = maybe (Last Nothing) (pure . pure) $ getLast port
-       , configSocket = hostToSocketClass $ getLast host
+       , configSocket = maybe mempty hostToSocketClass $ getLast host
        }
      )
-  <> ( mempty
-       { configPlan = mempty
-         { partialPlanPostgres = mempty
-           { partialPostgresPlanClientConfig = opts
-           }
-         }
-       }
-     )
-
+-- | Convert the 'Client.Options' to a 'PartialPlan' that can
+--   be connected to with the 'Client.Options'.
 optionsToPlan :: Client.Options -> PartialPlan
-optionsToPlan Client.Options {..}
-  =  dbnameToPlan (getLast dbname)
-  <> userToPlan (getLast user)
+optionsToPlan opts@Client.Options {..}
+  =  maybe mempty dbnameToPlan (getLast dbname)
+  <> maybe mempty userToPlan (getLast user)
+  <> clientOptionsToPlan opts
 
-userToPlan :: Maybe String -> PartialPlan
-userToPlan = \case
-  Nothing -> mempty
-  Just user -> mempty
-    { partialPlanCreateDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend $ mempty
-          { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
-          }
-      }
-    , partialPlanInitDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine =  Mappend $ mempty
-          { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
-          }
-      }
+-- | Wrap the 'Client.Options' in an appropiate
+--   'PartialPostgresPlan'
+clientOptionsToPlan :: Client.Options -> PartialPlan
+clientOptionsToPlan opts = mempty
+  { partialPlanPostgres = mempty
+    { partialPostgresPlanClientConfig = opts
     }
+  }
 
-dbnameToPlan :: Maybe String -> PartialPlan
-dbnameToPlan = \case
-  Nothing -> mempty
-  Just dbName -> mempty
-    { partialPlanCreateDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend $ mempty
-        { partialCommandLineArgsIndexBased = Map.singleton 0 dbName
+-- | Create a 'PartialPlan' given a user
+userToPlan :: String -> PartialPlan
+userToPlan user = mempty
+  { partialPlanCreateDb = Mappend $ Just $ mempty
+    { partialProcessConfigCmdLine = Mappend $ mempty
+        { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
         }
+    }
+  , partialPlanInitDb = Mappend $ Just $ mempty
+    { partialProcessConfigCmdLine =  Mappend $ mempty
+        { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
+        }
+    }
+  }
+
+-- | Adds a @createdb@ PartialProcessPlan with the argument
+--   as the database name.
+dbnameToPlan :: String -> PartialPlan
+dbnameToPlan dbName = mempty
+  { partialPlanCreateDb = Mappend $ Just $ mempty
+    { partialProcessConfigCmdLine = Mappend $ mempty
+      { partialCommandLineArgsIndexBased = Map.singleton 0 dbName
       }
     }
+  }
 
-hostToSocketClass :: Maybe String -> PartialSocketClass
-hostToSocketClass = \case
-  Nothing -> mempty
-  Just hostOrSocketPath -> case hostOrSocketPath of
-    '/' : _ -> PUnixSocket $ PPermanent hostOrSocketPath
-    _ -> PIpSocket $ pure hostOrSocketPath
+-- | Parse a host string as either an UNIX domain socket directory
+--   or a domain or IP.
+hostToSocketClass :: String -> PartialSocketClass
+hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
+  '/' : _ -> PUnixSocket $ PPermanent hostOrSocketPath
+  _ -> PIpSocket $ pure hostOrSocketPath

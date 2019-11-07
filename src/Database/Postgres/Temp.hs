@@ -118,22 +118,23 @@ Additionally if an IP address is provide the following line is added:
 
  @
    listen_addresses = ''
-   unix_socket_directories = {DATA_DIRECTORY}
+   unix_socket_directories = SOCKET_DIRECTORY
  @
 
 To add to \"postgresql.conf\" file create a custom 'Config' like the following:
 
  @
-  let custom = defaultConfig <> mempty { configPlan = mempty
-        { partialPlanConfig = Mappend
-            [ "wal_level=replica"
-            , "archive_mode=on"
-            , "max_wal_senders=2"
-            , "fsync=on"
-            , "synchronous_commit=on"
-            ]
+  let custom = defaultConfig <> mempty
+        { configPlan = mempty
+          { partialPlanConfig = Mappend
+              [ "wal_level=replica"
+              , "archive_mode=on"
+              , "max_wal_senders=2"
+              , "fsync=on"
+              , "synchronous_commit=on"
+              ]
+          }
         }
-    }
  @
 
  In general you'll want to 'mappend' a config to the 'defaultConfig'.
