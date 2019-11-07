@@ -40,7 +40,7 @@ data StartError
   | CreateDbFailed ExitCode
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
-  | CompletePlanFailed [String]
+  | CompletePlanFailed String [String]
   -- ^ The 'Database.Postgres.Temp.Partial.PartialPlan' was missing info and a complete 'Plan' could
   --   not be created.
   deriving (Show, Eq, Ord, Typeable)

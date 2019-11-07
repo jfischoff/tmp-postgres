@@ -84,6 +84,9 @@ data PartialCommandLineArgs = PartialCommandLineArgs
   deriving stock (Generic, Show, Eq)
   deriving Monoid via GenericMonoid PartialCommandLineArgs
 
+instance (Show a, Show b) => Pretty (Map a b)
+instance Pretty PartialCommandLineArgs
+
 instance Semigroup PartialCommandLineArgs where
   x <> y = PartialCommandLineArgs
     { partialCommandLineArgsKeyBased   =
@@ -313,6 +316,16 @@ data PartialPostgresPlan = PartialPostgresPlan
   deriving Semigroup via GenericSemigroup PartialPostgresPlan
   deriving Monoid    via GenericMonoid PartialPostgresPlan
 
+instance Pretty Client.Options
+instance Pretty Char
+instance Show a => Pretty (Last a)
+
+instance Pretty PartialPostgresPlan where
+  pretty PartialPostgresPlan {..} = unlines
+    [ "partialPostgresPlanProcessConfig: " <> pretty partialPostgresPlanProcessConfig
+    , "partialPostgresPlanClientConfig: " <> pretty partialPostgresPlanClientConfig
+    ]
+
 -- | Turn a 'PartialPostgresPlan' into a 'PostgresPlan'. Fails if any
 --   values are missing.
 completePostgresPlan :: PartialPostgresPlan -> Either [String] PostgresPlan
@@ -340,6 +353,40 @@ data PartialPlan = PartialPlan
   deriving Semigroup via GenericSemigroup PartialPlan
   deriving Monoid    via GenericMonoid PartialPlan
 
+class Pretty a where
+  pretty :: a -> String
+
+  default pretty :: Show a => a -> String
+  pretty = show
+
+instance Pretty a => Pretty (Maybe a) where
+  pretty = maybe "" pretty
+
+instance Pretty a => Pretty [a] where
+  pretty = unlines . map pretty
+
+instance Pretty a => Pretty (Lastoid a) where
+  pretty = \case
+    Replace x -> "Replace: " <> pretty x
+    Mappend x -> "Mappend: " <> pretty x
+
+instance Pretty PartialProcessConfig where
+  pretty PartialProcessConfig {..} = unlines
+    [ "partialProcessConfigEnvVars: " <> pretty partialProcessConfigEnvVars
+    , "partialProcessConfigCmdLine: " <> pretty partialProcessConfigCmdLine
+    ]
+
+instance Pretty PartialPlan where
+  pretty PartialPlan {..} = unlines
+    [ "partialPlanInitDb: " <> pretty partialPlanInitDb
+    , "partialPlanCreateDb: " <> pretty partialPlanCreateDb
+    , "partialPlanPostgres: " <> pretty partialPlanPostgres
+    , "partialPlanConfig: " <> pretty partialPlanConfig
+    , "partialPlanDataDirectory: " <> pretty partialPlanDataDirectory
+    ]
+
+
+-- TODO treat Mappend in the initdb and createdb as a Nothing
 -- | Turn a 'PartialPlan' into a 'Plan'. Fails if any values are missing.
 completePlan :: PartialPlan -> Either [String] Plan
 completePlan PartialPlan {..} = validationToEither $ do
@@ -387,6 +434,10 @@ data Config = Config
   deriving Semigroup via GenericSemigroup Config
   deriving Monoid    via GenericMonoid Config
 
+-- Instead of interpreting the Replace and Mappend different
+--  I can use a different Monoid for Maybe that annilates with
+--  Nothing. The I can control create db runs or nothing by
+--  combine until it is disabled.
 -- | Create a 'PartialPlan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@) using a
 toPlan
@@ -446,8 +497,9 @@ initConfig Config {..} = evalContT $ do
     (initDirectoryType "tmp-postgres-data" configDataDir) shutdownDirectoryType
   let hostAndDirPartial = toPlan port resourcesSocket $
         toFilePath resourcesDataDir
-  resourcesPlan <- lift $ either (throwIO . CompletePlanFailed) pure $
-    completePlan $ hostAndDirPartial <> configPlan
+      combinedPlan = hostAndDirPartial <> configPlan
+  resourcesPlan <- lift $ either (throwIO . CompletePlanFailed (pretty combinedPlan)) pure $
+    completePlan combinedPlan
   pure Resources {..}
 
 -- | Free the temporary resources created by 'initConfig'

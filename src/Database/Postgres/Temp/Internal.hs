@@ -84,8 +84,9 @@ defaultConfig :: Config
 defaultConfig = mempty
   { configPlan = mempty
     { partialPlanLogger = pure mempty
-    , partialPlanConfig = Mappend defaultPostgresConfig
-    , partialPlanInitDb = Mappend $ pure mempty
+    , partialPlanConfig   = Mappend defaultPostgresConfig
+    , partialPlanCreateDb = Replace mempty
+    , partialPlanInitDb   = Mappend $ pure mempty
       { partialProcessConfigCmdLine = Mappend $ mempty
           { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
           }

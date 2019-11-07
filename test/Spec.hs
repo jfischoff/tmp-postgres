@@ -211,27 +211,30 @@ spec = do
         { configSocket = PIpSocket $ pure "localhost"
         }
 
+      specificDbPlan = defaultConfig <> mempty
+        { configPlan = mempty
+          { partialPlanCreateDb = Replace $ Just mempty
+          }
+        }
+
   describe "start" $ do
     let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
-    throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
-    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f ->
       bracket (either throwIO pure =<< startWith plan) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
-    throwsIfCreateDbIsNotOnThePath startAction
   describe "withPlan" $ do
     let startAction plan = either throwIO pure =<<
           withPlan plan pure
 
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
-    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
+    throwsIfCreateDbIsNotOnThePath $ startAction specificDbPlan
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f -> either throwIO pure =<<
       withPlan plan f
@@ -316,7 +319,7 @@ spec = do
           , Client.port   = pure thePort
           }
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith planFromCustomUserDbConnection) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith planFromCustomUserDbConnection) stop f) $ do
       someStandardTests "fancy"
 
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
