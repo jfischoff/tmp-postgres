@@ -109,7 +109,7 @@ standardConfig = do
     }
 
 {-|
-'mappend' the 'defaultConfig' with a config that provides additional
+'mappend' the 'defaultConfig' with a 'Config' that provides additional
    \"postgresql.conf\" lines. Equivalent to
 
 @
