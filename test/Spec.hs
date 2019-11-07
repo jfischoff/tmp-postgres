@@ -50,7 +50,7 @@ defaultConfigShouldMatchDefaultPlan =
     let Resources {..} = dbResources
         Plan {..} = resourcesPlan
         PostgresPlan {..} = planPostgres
-    Client.dbname postgresPlanClientConfig `shouldBe` pure "test"
+    Client.dbname postgresPlanClientConfig `shouldBe` pure "postgres"
     let Temporary tmpDataDir = resourcesDataDir
     tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
     let Just port = getLast $ Client.port postgresPlanClientConfig
@@ -248,19 +248,19 @@ spec = do
             =<< either throwIO pure
             =<< start) stop f
     before (pure $ Runner startAction) $ do
-      someStandardTests "test"
+      someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
 
   describe "withRestart" $ do
     let startAction f = bracket (either throwIO pure =<< start) stop $ \db ->
           either throwIO pure =<< withRestart db f
     before (pure $ Runner startAction) $ do
-      someStandardTests "test"
+      someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
 
   describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
-      someStandardTests "test"
+      someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
       it "stopPostgres cannot be connected to" $ withRunner $ \db -> do
         stopPostgres db `shouldReturn` ExitSuccess
@@ -304,10 +304,10 @@ spec = do
       someStandardTests "template1"
 
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith defaultIpPlan) stop f) $
-      someStandardTests "test"
+      someStandardTests "postgres"
 
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith specificHostIpPlan) stop f) $
-      someStandardTests "test"
+      someStandardTests "postgres"
 
     thePort <- runIO getFreePort
     let planFromCustomUserDbConnection = optionsToDefaultConfig mempty

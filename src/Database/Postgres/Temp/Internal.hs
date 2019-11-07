@@ -65,11 +65,7 @@ defaultConfig = mempty
   { configPlan = mempty
     { partialPlanLogger = pure mempty
     , partialPlanConfig = Mappend defaultPostgresConfig
-    , partialPlanCreateDb = Mappend $ pure mempty
-        { partialProcessConfigCmdLine = Mappend $ mempty
-            { partialCommandLineArgsIndexBased = Map.singleton 0 "test"
-            }
-        }
+    , partialPlanCreateDb = Mappend Nothing
     , partialPlanInitDb = Mappend $ pure mempty
       { partialProcessConfigCmdLine = Mappend $ mempty
           { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
@@ -77,7 +73,7 @@ defaultConfig = mempty
       }
     , partialPlanPostgres = mempty
         { partialPostgresPlanClientConfig = mempty
-          { Client.dbname = pure "test"
+          { Client.dbname = pure "postgres"
           }
         }
     }
