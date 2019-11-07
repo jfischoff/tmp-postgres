@@ -64,6 +64,7 @@ library
                , generic-monoid
                , either
                , transformers
+               , containers
   ghc-options: -Wall
   default-language:    Haskell2010
 
@@ -88,6 +89,7 @@ test-suite test
                      , transformers
                      , postgres-options
                      , port-utils
+
   ghc-options:        -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
   default-extensions: LambdaCase

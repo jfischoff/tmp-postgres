@@ -14,6 +14,7 @@ import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import qualified Database.PostgreSQL.Simple as PG
+import qualified Data.Map.Strict as Map
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the
@@ -65,10 +66,14 @@ defaultConfig = mempty
     { partialPlanLogger = pure mempty
     , partialPlanConfig = Mappend defaultPostgresConfig
     , partialPlanCreateDb = Mappend $ pure mempty
-        { partialProcessConfigCmdLine = Mappend ["test"]
+        { partialProcessConfigCmdLine = Mappend $ mempty
+            { partialCommandLineArgsIndexBased = Map.singleton 0 "test"
+            }
         }
     , partialPlanInitDb = Mappend $ pure mempty
-      { partialProcessConfigCmdLine = Mappend ["--no-sync"]
+      { partialProcessConfigCmdLine = Mappend $ mempty
+          { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
+          }
       }
     , partialPlanPostgres = mempty
         { partialPostgresPlanClientConfig = mempty

@@ -31,6 +31,8 @@ import Data.Either.Validation
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import System.IO.Error
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 
 {- |
 'Lastoid' is helper for overriding configuration values.
@@ -66,12 +68,44 @@ getLastoid = \case
   Replace a -> a
   Mappend a -> a
 
+-- | A type to help combine command line arguments.
+data PartialCommandLineArgs = PartialCommandLineArgs
+  { partialCommandLineArgsKeyBased   :: Map String (Maybe String)
+  -- ^ Arguments of the form @-h foo@, @--host=foo@ and @--switch@.
+  --   The key is `mappend`ed with value so the key should include
+  --   the space or equals (as shown in the first two examples
+  --   respectively).
+  , partialCommandLineArgsIndexBased :: Map Int String
+  -- ^ Arguments that appear at the end of the key based
+  --   arguments.
+  }
+  deriving stock (Generic)
+  deriving Semigroup via GenericSemigroup PartialCommandLineArgs
+  deriving Monoid    via GenericMonoid PartialCommandLineArgs
+
+-- | Take values as long as the index is the successor of the
+--   last index.
+takeWhileInSequence :: [(Int, a)] -> [a]
+takeWhileInSequence ((0, x):xs) = x : go 0 xs where
+  go _ [] = []
+  go prev ((next, a):rest)
+    | prev + 1 == next = a : go next rest
+    | otherwise = []
+takeWhileInSequence _ = []
+
+-- | This convert the 'PartialCommandLineArgs' to '
+completeCommandLineArgs :: PartialCommandLineArgs -> [String]
+completeCommandLineArgs PartialCommandLineArgs {..}
+  =  map (\(name, mvalue) -> maybe name (name <>) mvalue)
+       (Map.toList partialCommandLineArgsKeyBased)
+  <> takeWhileInSequence (Map.toList partialCommandLineArgsIndexBased)
+
 -- | The monoidial version of 'ProcessConfig'. Used to combine overrides with
 --   defaults when creating a 'ProcessConfig'.
 data PartialProcessConfig = PartialProcessConfig
-  { partialProcessConfigEnvVars :: Lastoid [(String, String)]
+  { partialProcessConfigEnvVars :: Lastoid (Map String String)
   -- ^ A monoid for combine environment variables or replacing them
-  , partialProcessConfigCmdLine :: Lastoid [String]
+  , partialProcessConfigCmdLine :: Lastoid PartialCommandLineArgs
   -- ^ A monoid for combine command line arguments or replacing them
   , partialProcessConfigStdIn   :: Last Handle
   -- ^ A monoid for configuring the standard input 'Handle'
@@ -91,7 +125,7 @@ standardProcessConfig :: IO PartialProcessConfig
 standardProcessConfig = do
   env <- getEnvironment
   pure mempty
-    { partialProcessConfigEnvVars = Replace env
+    { partialProcessConfigEnvVars = Replace $ Map.fromList env
     , partialProcessConfigStdIn   = pure stdin
     , partialProcessConfigStdOut  = pure stdout
     , partialProcessConfigStdErr  = pure stderr
@@ -112,8 +146,9 @@ getOption optionName = \case
 completeProcessConfig
   :: PartialProcessConfig -> Either [String] ProcessConfig
 completeProcessConfig PartialProcessConfig {..} = validationToEither $ do
-  let processConfigEnvVars = getLastoid partialProcessConfigEnvVars
-      processConfigCmdLine = getLastoid partialProcessConfigCmdLine
+  let processConfigEnvVars = Map.toList $ getLastoid partialProcessConfigEnvVars
+      processConfigCmdLine = completeCommandLineArgs $
+        getLastoid partialProcessConfigCmdLine
   processConfigStdIn  <-
     getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
   processConfigStdOut <-
@@ -197,8 +232,8 @@ socketClassToConfig = \case
 
 -- | Many processes require a \"host\" flag. We can generate one from the
 --   'SocketClass'.
-socketClassToHostFlag :: SocketClass -> [String]
-socketClassToHostFlag x = ["-h", socketClassToHost x]
+socketClassToHostFlag :: SocketClass -> [(String, Maybe String)]
+socketClassToHostFlag x = [("-h", Just (socketClassToHost x))]
 
 -- | Get the IP address, host name or UNIX domain socket directory
 --   as a 'String'
@@ -343,10 +378,12 @@ toPlan port socketClass dataDirectory = mempty
   , partialPlanDataDirectory = pure dataDirectory
   , partialPlanPostgres = mempty
       { partialPostgresPlanProcessConfig = mempty
-          { partialProcessConfigCmdLine = Mappend
-              [ "-p", show port
-              , "-D", dataDirectory
-              ]
+          { partialProcessConfigCmdLine = Mappend $ mempty
+              { partialCommandLineArgsKeyBased = Map.fromList
+                  [ ("-p", Just $ show port)
+                  , ("-D", Just dataDirectory)
+                  ]
+              }
           }
       , partialPostgresPlanClientConfig = mempty
           { Client.host = pure $ socketClassToHost socketClass
@@ -354,13 +391,18 @@ toPlan port socketClass dataDirectory = mempty
           }
       }
   , partialPlanCreateDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend $
-          socketClassToHostFlag socketClass <>
-          ["-p", show port]
+      { partialProcessConfigCmdLine = Mappend $ mempty
+          { partialCommandLineArgsKeyBased = Map.fromList $
+              socketClassToHostFlag socketClass <>
+              [("-p", Just $ show port)]
+          }
       }
   , partialPlanInitDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend $
-          ["--pgdata=" <> dataDirectory]
+      { partialProcessConfigCmdLine = Mappend $ mempty
+          { partialCommandLineArgsKeyBased = Map.fromList $
+              [("--pgdata=", Just dataDirectory)]
+          }
+
       }
   }
 
@@ -422,10 +464,14 @@ userToPlan = \case
   Nothing -> mempty
   Just user -> mempty
     { partialPlanCreateDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend ["--username=" <> user]
+      { partialProcessConfigCmdLine = Mappend $ mempty
+          { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
+          }
       }
     , partialPlanInitDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend ["--username=" <> user]
+      { partialProcessConfigCmdLine =  Mappend $ mempty
+          { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
+          }
       }
     }
 
@@ -434,7 +480,9 @@ dbnameToPlan = \case
   Nothing -> mempty
   Just dbName -> mempty
     { partialPlanCreateDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend [dbName]
+      { partialProcessConfigCmdLine = Mappend $ mempty
+        { partialCommandLineArgsIndexBased = Map.singleton 0 dbName
+        }
       }
     }
 

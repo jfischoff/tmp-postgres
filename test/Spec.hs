@@ -19,6 +19,7 @@ import Data.Function (fix)
 import Control.Concurrent
 import Data.Monoid
 import Network.Socket.Free (getFreePort)
+import qualified Data.Map.Strict as Map
 
 main :: IO ()
 main = hspec spec
@@ -84,12 +85,12 @@ customConfigWork action = do
                       }
                   }
               , partialPlanInitDb = Mappend $ pure $ mempty
-                  { partialProcessConfigCmdLine = Mappend
-                      ["--user", "user-name"
-                      ]
-                  , partialProcessConfigEnvVars = Mappend
-                      [ ("PGPASSWORD", "password")
-                      ]
+                  { partialProcessConfigCmdLine = Mappend $ mempty
+                      { partialCommandLineArgsKeyBased =
+                          Map.singleton "--username=" $ Just "user-name"
+                      }
+                  , partialProcessConfigEnvVars = Mappend $
+                      Map.singleton "PGPASSWORD" "password"
                   }
               , partialPlanConfig = Mappend [extraConfig]
               }
@@ -97,13 +98,14 @@ customConfigWork action = do
     -- hmm maybe I should provide lenses
     let combinedResources = defaultConfig <> customPlan
         finalCombinedResources = updateCreateDb combinedResources $ Mappend $ pure $ initialCreateDbConfig
-          { partialProcessConfigCmdLine = Mappend
-              ["--user", "user-name"
-              , expectedDbName
-              ]
-          , partialProcessConfigEnvVars = Mappend
-              [ ("PGPASSWORD", "password")
-              ]
+          { partialProcessConfigCmdLine = Mappend $ mempty
+          { partialCommandLineArgsKeyBased =
+              Map.singleton "--username=" $ Just "user-name"
+          , partialCommandLineArgsIndexBased =
+              Map.singleton 0 expectedDbName
+          }
+          , partialProcessConfigEnvVars = Mappend $
+              Map.singleton "PGPASSWORD" "password"
           }
 
     action finalCombinedResources $ \db@DB {..} -> do
@@ -279,7 +281,10 @@ spec = do
 
     let invalidCreateDbPlan = updateCreateDb defaultConfig $
           Mappend $ pure $ theStandardProcessConfig
-            { partialProcessConfigCmdLine = Mappend ["template1"]
+            { partialProcessConfigCmdLine = Mappend $ mempty
+              { partialCommandLineArgsIndexBased =
+                  Map.singleton 0 "template1"
+              }
             }
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
