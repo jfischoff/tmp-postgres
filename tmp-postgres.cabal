@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.0.1.0
+version:             1.2.0.0
 synopsis: Start and stop a temporary postgres
 description:
  @tmp-postgres@ provides functions creating a temporary @postgres@ instance.
@@ -74,6 +74,7 @@ test-suite test
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:       base
+                     , containers
                      , postgresql-libpq
                      , tmp-postgres
                      , hspec
