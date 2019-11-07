@@ -67,7 +67,6 @@ The default configuration. This will create a database called \"postgres\"
    log_min_duration_statement = 0
    log_connections = on
    log_disconnections = on
-   unix_socket_directories = {DATA_DIRECTORY}
    client_min_messages = ERROR
 @
 
@@ -112,6 +111,7 @@ standardConfig = do
 {-|
 'mappend' the 'defaultConfig' with a config that provides additional
    \"postgresql.conf\" lines. Equivalent to
+
 @
 defaultPostgresConf extra = defaultConfig <> mempty
   { configPlan = mempty
@@ -119,6 +119,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 @
+
 -}
 defaultPostgresConf :: [String] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
