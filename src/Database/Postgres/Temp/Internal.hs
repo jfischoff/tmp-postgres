@@ -186,16 +186,6 @@ withRestart db f = bracket (restart db) (either mempty stop) $
 --   want to create a database owned by a specific user you will also log in as
 --   among other use cases. It is possible some 'Client.Options' are not
 --   supported so don't hesitate to open an issue on github if you find one.
---   This function works around a difficulty with appending options to
---   the 'createdb' plan by mappending to 'defaultConfig' and
---   optionally replacing the database name.
 optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
-  let thePartialPlan = configPlan defaultConfig
-      noDbDefault    = defaultConfig
-        { configPlan = thePartialPlan
-            { partialPlanCreateDb = mempty
-            }
-        }
-      generateConfig = optionsToConfig opts
-  in noDbDefault <> generateConfig
+  defaultConfig <> optionsToConfig opts

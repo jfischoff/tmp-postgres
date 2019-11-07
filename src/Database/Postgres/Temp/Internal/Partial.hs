@@ -79,9 +79,16 @@ data PartialCommandLineArgs = PartialCommandLineArgs
   -- ^ Arguments that appear at the end of the key based
   --   arguments.
   }
-  deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup PartialCommandLineArgs
-  deriving Monoid    via GenericMonoid PartialCommandLineArgs
+  deriving stock (Generic, Show, Eq)
+  deriving Monoid via GenericMonoid PartialCommandLineArgs
+
+instance Semigroup PartialCommandLineArgs where
+  x <> y = PartialCommandLineArgs
+    { partialCommandLineArgsKeyBased   =
+        partialCommandLineArgsKeyBased y <> partialCommandLineArgsKeyBased x
+    , partialCommandLineArgsIndexBased =
+        partialCommandLineArgsIndexBased y <> partialCommandLineArgsIndexBased x
+    }
 
 -- | Take values as long as the index is the successor of the
 --   last index.
@@ -115,8 +122,22 @@ data PartialProcessConfig = PartialProcessConfig
   -- ^ A monoid for configuring the standard error 'Handle'
   }
   deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup PartialProcessConfig
   deriving Monoid    via GenericMonoid PartialProcessConfig
+
+instance Semigroup PartialProcessConfig where
+  x <> y = PartialProcessConfig
+    { partialProcessConfigEnvVars = fmap getDual $
+        fmap Dual (partialProcessConfigEnvVars x) <>
+          fmap Dual (partialProcessConfigEnvVars y)
+    , partialProcessConfigCmdLine =
+        partialProcessConfigCmdLine x <> partialProcessConfigCmdLine y
+    , partialProcessConfigStdIn   =
+        partialProcessConfigStdIn x <> partialProcessConfigStdIn y
+    , partialProcessConfigStdOut  =
+        partialProcessConfigStdOut x <> partialProcessConfigStdOut y
+    , partialProcessConfigStdErr  =
+        partialProcessConfigStdErr x <> partialProcessConfigStdErr y
+    }
 
 -- | The 'standardProcessConfig' sets the handles to 'stdin', 'stdout' and
 --   'stderr' and inherits the environment variables from the calling
@@ -394,7 +415,7 @@ toPlan port socketClass dataDirectory = mempty
       { partialProcessConfigCmdLine = Mappend $ mempty
           { partialCommandLineArgsKeyBased = Map.fromList $
               socketClassToHostFlag socketClass <>
-              [("-p", Just $ show port)]
+              [("-p ", Just $ show port)]
           }
       }
   , partialPlanInitDb = Mappend $ Just $ mempty
