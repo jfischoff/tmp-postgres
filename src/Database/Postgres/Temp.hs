@@ -60,6 +60,8 @@ module Database.Postgres.Temp
   , defaultConfig
   , defaultPostgresConf
   , standardProcessConfig
+  -- ** Custom Config builder helpers
+  , optionsToDefaultConfig
   -- * Starting and Stopping postgres without removing the temporary directory
   , restart
   , stopPostgres
@@ -78,6 +80,10 @@ module Database.Postgres.Temp
   -- ** Listening socket configuration
   , SocketClass (..)
   , PartialSocketClass (..)
+  -- ** An environment variables monoid
+  , PartialEnvVars (..)
+  -- ** An command line monoid
+  , PartialCommandLineArgs (..)
   -- ** Process configuration
   , PartialProcessConfig (..)
   , ProcessConfig (..)
@@ -89,8 +95,6 @@ module Database.Postgres.Temp
   -- ** Database plans. This is used to call @initdb@, @postgres@ and @createdb@
   , PartialPlan (..)
   , Plan (..)
-  -- ** Custom Config builder helpers
-  , optionsToDefaultConfig
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core

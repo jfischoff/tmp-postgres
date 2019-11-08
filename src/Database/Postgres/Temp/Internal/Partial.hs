@@ -1,8 +1,7 @@
 {-| This module provides types and functions for combining partial
     configs into a complete configs to ultimately make a 'Plan'.
 
-    This module has three classes of types. Types like 'Accum' that
-    are generic and could live in a module like "base".
+    This module has two classes of types.
 
     Types like 'PartialProcessConfig' that could be used by any
     library that  needs to combine process options.
@@ -33,20 +32,6 @@ import Control.Monad.Trans.Class
 import System.IO.Error
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-
--- | Another 'Maybe' 'Monoid' newtype. This one combines 'Just's
---   monoidially, with @Just mempty@ as @mempty@ and 'Nothing'
---   annihilates.
-newtype Accum a = Accum { getAccum :: Maybe a }
-  deriving (Show, Eq, Ord, Functor, Applicative)
-
-instance Semigroup a => Semigroup (Accum a) where
-  Accum x <> Accum y = Accum $ case (x, y) of
-    (Just a, Just b) -> Just $ a <> b
-    _ -> Nothing
-
-instance Monoid a => Monoid (Accum a) where
-  mempty = Accum $ Just $ mempty
 
 -- | The environment variables can be declared to
 --   inherit from the running process or they
@@ -325,8 +310,8 @@ completePostgresPlan envs PartialPostgresPlan {..} = validationToEither $ do
 --   when creating a plan.
 data PartialPlan = PartialPlan
   { partialPlanLogger        :: Last Logger
-  , partialPlanInitDb        :: Accum PartialProcessConfig
-  , partialPlanCreateDb      :: Accum PartialProcessConfig
+  , partialPlanInitDb        :: Maybe PartialProcessConfig
+  , partialPlanCreateDb      :: Maybe PartialProcessConfig
   , partialPlanPostgres      :: PartialPostgresPlan
   , partialPlanConfig        :: [String]
   , partialPlanDataDirectory :: Last String
@@ -340,9 +325,9 @@ completePlan :: [(String, String)] -> PartialPlan -> Either [String] Plan
 completePlan envs PartialPlan {..} = validationToEither $ do
   planLogger   <- getOption "partialPlanLogger" partialPlanLogger
   planInitDb   <- eitherToValidation $ addErrorContext "partialPlanInitDb: " $
-    traverse (completeProcessConfig envs) (getAccum partialPlanInitDb)
+    traverse (completeProcessConfig envs) partialPlanInitDb
   planCreateDb <- eitherToValidation $ addErrorContext "partialPlanCreateDb: " $
-    traverse (completeProcessConfig envs) (getAccum partialPlanCreateDb)
+    traverse (completeProcessConfig envs) partialPlanCreateDb
   planPostgres <- eitherToValidation $ addErrorContext "partialPlanPostgres: " $
     completePostgresPlan envs partialPlanPostgres
   let planConfig = unlines partialPlanConfig
@@ -350,6 +335,16 @@ completePlan envs PartialPlan {..} = validationToEither $ do
     partialPlanDataDirectory
 
   pure Plan {..}
+
+-- | Returns 'True' if the 'PartialPlan' has a
+--   'Just' 'partialPlanInitDb'
+hasInitDb :: PartialPlan -> Bool
+hasInitDb PartialPlan {..} = isJust partialPlanInitDb
+
+-- | Returns 'True' if the 'PartialPlan' has a
+--   'Just' 'partialPlanCreateDb'
+hasCreateDb :: PartialPlan -> Bool
+hasCreateDb PartialPlan {..} = isJust partialPlanCreateDb
 
 -- | 'Resources' holds a description of the temporary folders (if there are any)
 --   and includes the final 'Plan' that can be used with 'initPlan'.
@@ -385,14 +380,18 @@ data Config = Config
 -- | Create a 'PartialPlan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@) using a
 toPlan
-  :: Int
+  :: Bool
+  -- ^ Make @initdb@ options
+  -> Bool
+  -- ^ Make @createdb@ options
+  -> Int
   -- ^ port
   -> SocketClass
   -- ^ Whether to listen on a IP address or UNIX domain socket
   -> FilePath
   -- ^ The @postgres@ data directory
   -> PartialPlan
-toPlan port socketClass dataDirectory = mempty
+toPlan makeInitDb makeCreateDb port socketClass dataDirectory = mempty
   { partialPlanConfig = socketClassToConfig socketClass
   , partialPlanDataDirectory = pure dataDirectory
   , partialPlanPostgres = mempty
@@ -410,20 +409,24 @@ toPlan port socketClass dataDirectory = mempty
           , Client.dbname = pure "postgres"
           }
       }
-  , partialPlanCreateDb = pure $ mempty
-      { partialProcessConfigCmdLine = mempty
-          { partialCommandLineArgsKeyBased = Map.fromList $
-              socketClassToHostFlag socketClass <>
-              [("-p ", Just $ show port)]
-          }
-      }
-  , partialPlanInitDb = pure $ mempty
-      { partialProcessConfigCmdLine = mempty
-          { partialCommandLineArgsKeyBased = Map.fromList $
-              [("--pgdata=", Just dataDirectory)]
-          }
+  , partialPlanCreateDb = if makeCreateDb
+      then pure $ mempty
+        { partialProcessConfigCmdLine = mempty
+            { partialCommandLineArgsKeyBased = Map.fromList $
+                socketClassToHostFlag socketClass <>
+                [("-p ", Just $ show port)]
+            }
+        }
+      else Nothing
+  , partialPlanInitDb = if makeInitDb
+      then pure $ mempty
+        { partialProcessConfigCmdLine = mempty
+            { partialCommandLineArgsKeyBased = Map.fromList $
+                [("--pgdata=", Just dataDirectory)]
+            }
 
-      }
+        }
+      else Nothing
   }
 
 
@@ -440,10 +443,15 @@ initConfig Config {..} = evalContT $ do
     (initPartialSocketClass configSocket) shutdownSocketConfig
   resourcesDataDir <- ContT $ bracketOnError
     (initDirectoryType "tmp-postgres-data" configDataDir) shutdownDirectoryType
-  let hostAndDirPartial = toPlan port resourcesSocket $
-        toFilePath resourcesDataDir
+  let hostAndDirPartial = toPlan
+          (hasInitDb configPlan)
+          (hasCreateDb configPlan)
+          port
+          resourcesSocket
+          (toFilePath resourcesDataDir)
+      finalPlan = hostAndDirPartial <> configPlan
   resourcesPlan <- lift $ either (throwIO . CompletePlanFailed) pure $
-    completePlan envs $ hostAndDirPartial <> configPlan
+    completePlan envs finalPlan
   pure Resources {..}
 
 -- | Free the temporary resources created by 'initConfig'

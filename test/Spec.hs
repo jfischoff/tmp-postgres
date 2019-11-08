@@ -29,6 +29,13 @@ main = hspec spec
 
 -- Cleanup
 
+fromCreateDb :: Maybe PartialProcessConfig -> Config
+fromCreateDb createDb = mempty
+  { configPlan = mempty
+      { partialPlanCreateDb = createDb
+      }
+  }
+
 newtype Runner =  Runner (forall a. (DB -> IO a) -> IO a)
 
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
@@ -83,24 +90,24 @@ customConfigWork action = do
                       , partialEnvVarsInherit = pure True
                       }
                   }
+              , partialPlanCreateDb = pure standardProcessConfig
+                { partialProcessConfigCmdLine = mempty
+                  { partialCommandLineArgsKeyBased =
+                      Map.singleton "--username=" $ Just "user-name"
+                  , partialCommandLineArgsIndexBased =
+                      Map.singleton 0 expectedDbName
+                  }
+                , partialProcessConfigEnvVars =
+                    mempty
+                      { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password"
+                      , partialEnvVarsInherit = pure True
+                      }
+                }
               , partialPlanConfig = [extraConfig]
               }
           }
     -- hmm maybe I should provide lenses
-    let createDb = pure standardProcessConfig
-          { partialProcessConfigCmdLine = mempty
-            { partialCommandLineArgsKeyBased =
-                Map.singleton "--username=" $ Just "user-name"
-            , partialCommandLineArgsIndexBased =
-                Map.singleton 0 expectedDbName
-            }
-          , partialProcessConfigEnvVars =
-              mempty
-                { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password"
-                , partialEnvVarsInherit = pure True
-                }
-          }
-        combinedResources = setCreateDb defaultConfig createDb <> customPlan
+    let combinedResources = defaultConfig <> customPlan
 
     action combinedResources $ \db@DB {..} -> do
       bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
@@ -268,19 +275,20 @@ spec = do
           [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
           actualDuration `shouldBe` expectedDuration
 
-    let invalidCreateDbPlan = setCreateDb defaultConfig $
-          pure $ standardProcessConfig
-            { partialProcessConfigCmdLine = mempty
-              { partialCommandLineArgsIndexBased =
-                  Map.singleton 0 "template1"
+    let invalidCreateDbPlan = defaultConfig <> fromCreateDb
+          ( pure $ standardProcessConfig
+              { partialProcessConfigCmdLine = mempty
+                { partialCommandLineArgsIndexBased =
+                    Map.singleton 0 "template1"
+                }
               }
-            }
+          )
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
 
     let noCreateTemplate1 = mempty
           { configPlan = mempty
-              { partialPlanCreateDb = Accum Nothing
+              { partialPlanCreateDb = Nothing
               , partialPlanPostgres = mempty
                   { partialPostgresPlanClientConfig = mempty
                     { Client.dbname = pure "template1"
@@ -323,7 +331,7 @@ spec = do
         let nonEmptyFolderPlan = defaultConfig
               { configDataDir = PPermanent dirPath
               , configPlan = (configPlan defaultConfig)
-                  { partialPlanInitDb = Accum Nothing
+                  { partialPlanInitDb = Nothing
                   }
               }
         bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ \db -> do

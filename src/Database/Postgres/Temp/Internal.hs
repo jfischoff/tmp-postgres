@@ -88,7 +88,7 @@ defaultConfig = mempty
   { configPlan = mempty
     { partialPlanLogger = pure mempty
     , partialPlanConfig = defaultPostgresConfig
-    , partialPlanCreateDb = Accum Nothing
+    , partialPlanCreateDb = Nothing
     , partialPlanInitDb = pure standardProcessConfig
       { partialProcessConfigCmdLine = mempty
           { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
@@ -211,21 +211,9 @@ optionsToDefaultConfig opts@Client.Options {..} =
       startingConfig =
         if partialPlanCreateDb (configPlan generated) == mempty
           then defaultConfig
-          else setCreateDb defaultConfig $ pure standardProcessConfig
+          else defaultConfig <> mempty
+            { configPlan = mempty
+              { partialPlanCreateDb = pure standardProcessConfig
+              }
+            }
   in startingConfig <> generated
-
--- | Set a 'Config's 'partialPlanCreateDb' value.
-setCreateDb :: Config -> Accum PartialProcessConfig -> Config
-setCreateDb config@Config {..} new = config
-  { configPlan = configPlan
-      { partialPlanCreateDb = new
-      }
-  }
-
--- | Set a 'Config's 'partialPlanInitDb' value.
-setInitDb :: Config -> Accum PartialProcessConfig -> Config
-setInitDb config@Config {..} new = config
-  { configPlan = configPlan
-      { partialPlanInitDb = new
-      }
-  }
