@@ -52,7 +52,7 @@ instance Monoid a => Monoid (Accum a) where
 --   inherit from the running process or they
 --   can be specifically added.
 data PartialEnvVars = PartialEnvVars
-  { partialEnvVarsInherit  :: Bool
+  { partialEnvVarsInherit  :: Last Bool
   , partialEnvVarsSpecific :: Map String String
   }
   deriving stock (Generic, Show, Eq)
@@ -60,21 +60,22 @@ data PartialEnvVars = PartialEnvVars
 instance Semigroup PartialEnvVars where
   x <> y = PartialEnvVars
     { partialEnvVarsInherit  =
-        partialEnvVarsInherit x || partialEnvVarsInherit y
+        partialEnvVarsInherit x <> partialEnvVarsInherit y
     , partialEnvVarsSpecific =
         partialEnvVarsSpecific y <> partialEnvVarsSpecific x
     }
 
 instance Monoid PartialEnvVars where
-  mempty = PartialEnvVars False mempty
+  mempty = PartialEnvVars mempty mempty
 
 -- | Combine the current environment
 --   (if indicated by 'partialEnvVarsInherit')
 --   with 'partialEnvVarsSpecific'
-completePartialEnvVars :: [(String, String)] -> PartialEnvVars -> [(String, String)]
-completePartialEnvVars envs PartialEnvVars {..}
-  =  if partialEnvVarsInherit then envs else []
-  <> Map.toList partialEnvVarsSpecific
+completePartialEnvVars :: [(String, String)] -> PartialEnvVars -> Either [String] [(String, String)]
+completePartialEnvVars envs PartialEnvVars {..} = case getLast partialEnvVarsInherit of
+  Nothing -> Left ["Inherit not specified"]
+  Just x -> Right $ (if x then envs else [])
+    <> Map.toList partialEnvVarsSpecific
 
 -- | A type to help combine command line arguments.
 data PartialCommandLineArgs = PartialCommandLineArgs
@@ -142,7 +143,7 @@ data PartialProcessConfig = PartialProcessConfig
 standardProcessConfig :: PartialProcessConfig
 standardProcessConfig = mempty
   { partialProcessConfigEnvVars = mempty
-      { partialEnvVarsInherit = True
+      { partialEnvVarsInherit = pure True
       }
   , partialProcessConfigStdIn  = pure stdin
   , partialProcessConfigStdOut = pure stdout
@@ -164,8 +165,9 @@ getOption optionName = \case
 completeProcessConfig
   :: [(String, String)] -> PartialProcessConfig -> Either [String] ProcessConfig
 completeProcessConfig envs PartialProcessConfig {..} = validationToEither $ do
-  let processConfigEnvVars = completePartialEnvVars envs partialProcessConfigEnvVars
-      processConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
+  let processConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
+  processConfigEnvVars <- eitherToValidation $
+    completePartialEnvVars envs partialProcessConfigEnvVars
   processConfigStdIn  <-
     getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
   processConfigStdOut <-

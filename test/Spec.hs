@@ -64,7 +64,6 @@ customConfigWork action = do
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
 
   it "returns the right client options for the plan" $ do
-    let initialCreateDbConfig = standardProcessConfig
     let customPlan = mempty
           { configPlan = mempty
               { partialPlanPostgres = mempty
@@ -74,31 +73,36 @@ customConfigWork action = do
                       , Client.dbname   = pure expectedDbName
                       }
                   }
-              , partialPlanInitDb = pure mempty
+              , partialPlanInitDb = pure standardProcessConfig
                   { partialProcessConfigCmdLine = mempty
                       { partialCommandLineArgsKeyBased =
                           Map.singleton "--username=" $ Just "user-name"
                       }
-                  , partialProcessConfigEnvVars =
-                      mempty { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password" }
+                  , partialProcessConfigEnvVars = mempty
+                      { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password"
+                      , partialEnvVarsInherit = pure True
+                      }
                   }
               , partialPlanConfig = [extraConfig]
               }
           }
     -- hmm maybe I should provide lenses
-    let combinedResources = defaultConfig <> customPlan
-        finalCombinedResources = setCreateDb combinedResources $ pure initialCreateDbConfig
+    let createDb = pure standardProcessConfig
           { partialProcessConfigCmdLine = mempty
-          { partialCommandLineArgsKeyBased =
-              Map.singleton "--username=" $ Just "user-name"
-          , partialCommandLineArgsIndexBased =
-              Map.singleton 0 expectedDbName
-          }
+            { partialCommandLineArgsKeyBased =
+                Map.singleton "--username=" $ Just "user-name"
+            , partialCommandLineArgsIndexBased =
+                Map.singleton 0 expectedDbName
+            }
           , partialProcessConfigEnvVars =
-              mempty { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password" }
+              mempty
+                { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password"
+                , partialEnvVarsInherit = pure True
+                }
           }
+        combinedResources = setCreateDb defaultConfig createDb <> customPlan
 
-    action finalCombinedResources $ \db@DB {..} -> do
+    action combinedResources $ \db@DB {..} -> do
       bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
         [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
         actualDuration `shouldBe` expectedDuration
@@ -206,7 +210,7 @@ spec = do
     let startAction plan = bracket (either throwIO pure =<< startConfig plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
-    customConfigWork $ \plan f ->
+    customConfigWork $ \plan@Config{..} f ->
       bracket (either throwIO pure =<< startConfig plan) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
@@ -360,7 +364,7 @@ spec = do
               Just host = getLast $ Client.host $ postgresProcessClientConfig dbPostgresProcess
               backupCommand = "pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p"
                 ++ show port ++ " -h" ++ host
-          putStrLn backupCommand
+
           system backupCommand `shouldReturn` ExitSuccess
 
           bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $ \conn -> do
