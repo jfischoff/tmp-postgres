@@ -1,7 +1,7 @@
 {-| This module provides types and functions for combining partial
     configs into a complete configs to ultimately make a 'Plan'.
 
-    This module has three classes of types. Types like 'Lastoid' that
+    This module has three classes of types. Types like 'Accum' that
     are generic and could live in a module like "base".
 
     Types like 'PartialProcessConfig' that could be used by any
@@ -34,6 +34,9 @@ import System.IO.Error
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
+-- | Another 'Maybe' 'Monoid' newtype. This one combines 'Just's
+--   monoidially, with @Just mempty@ as @mempty@ and 'Nothing'
+--   annihilates.
 newtype Accum a = Accum { getAccum :: Maybe a }
   deriving (Show, Eq, Ord, Functor, Applicative)
 
@@ -45,6 +48,9 @@ instance Semigroup a => Semigroup (Accum a) where
 instance Monoid a => Monoid (Accum a) where
   mempty = Accum $ Just $ mempty
 
+-- | The environment variables can be declared to
+--   inherit from the running process or they
+--   can be specifically added.
 data PartialEnvVars = PartialEnvVars
   { partialEnvVarsInherit  :: Bool
   , partialEnvVarsSpecific :: Map String String
@@ -61,6 +67,14 @@ instance Semigroup PartialEnvVars where
 
 instance Monoid PartialEnvVars where
   mempty = PartialEnvVars False mempty
+
+-- | Combine the current environment
+--   (if indicated by 'partialEnvVarsInherit')
+--   with 'partialEnvVarsSpecific'
+completePartialEnvVars :: [(String, String)] -> PartialEnvVars -> [(String, String)]
+completePartialEnvVars envs PartialEnvVars {..}
+  =  if partialEnvVarsInherit then envs else []
+  <> Map.toList partialEnvVarsSpecific
 
 -- | A type to help combine command line arguments.
 data PartialCommandLineArgs = PartialCommandLineArgs
@@ -122,6 +136,9 @@ data PartialProcessConfig = PartialProcessConfig
   deriving Semigroup via GenericSemigroup PartialProcessConfig
   deriving Monoid    via GenericMonoid PartialProcessConfig
 
+-- | The 'standardProcessConfig' sets the handles to 'stdin', 'stdout' and
+--   'stderr' and inherits the environment variables from the calling
+--   process.
 standardProcessConfig :: PartialProcessConfig
 standardProcessConfig = mempty
   { partialProcessConfigEnvVars = mempty
@@ -142,17 +159,12 @@ getOption optionName = \case
     Last (Just x) -> pure x
     Last Nothing  -> Failure ["Missing " ++ optionName ++ " option"]
 
-flattenEnvs :: [(String, String)] -> PartialEnvVars -> [(String, String)]
-flattenEnvs envs PartialEnvVars {..}
-  =  if partialEnvVarsInherit then envs else []
-  <> Map.toList partialEnvVarsSpecific
-
 -- | Turn a 'PartialProcessConfig' into a 'ProcessConfig'. Fails if
 --   any values are missing.
 completeProcessConfig
   :: [(String, String)] -> PartialProcessConfig -> Either [String] ProcessConfig
 completeProcessConfig envs PartialProcessConfig {..} = validationToEither $ do
-  let processConfigEnvVars = flattenEnvs envs partialProcessConfigEnvVars
+  let processConfigEnvVars = completePartialEnvVars envs partialProcessConfigEnvVars
       processConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
   processConfigStdIn  <-
     getOption "partialProcessConfigStdIn" partialProcessConfigStdIn

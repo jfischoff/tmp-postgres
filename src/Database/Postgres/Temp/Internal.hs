@@ -78,6 +78,10 @@ If you would like to customize this behavior you can start with the
  Alternatively you can eschew 'defaultConfig' altogether, however
  your @postgres@ might start and run faster if you use
  'defaultConfig'.
+
+ 'defaultConfig' also sets the 'partialPlanInitDb' to
+  'pure' 'standardProcessConfig' and
+  'partialPostgresPlanProcessConfig' to 'standardProcessConfig'.
 -}
 defaultConfig :: Config
 defaultConfig = mempty
@@ -103,7 +107,7 @@ defaultConfig = mempty
 @
 defaultPostgresConf extra = defaultConfig <> mempty
   { configPlan = mempty
-    { partialPlanConfig = Mappend extra
+    { partialPlanConfig = extra
     }
   }
 @
@@ -211,9 +215,18 @@ optionsToDefaultConfig opts@Client.Options {..} =
           else setCreateDb defaultConfig $ pure standardProcessConfig
   in startingConfig <> generated
 
+-- | Set a 'Config's 'partialPlanCreateDb' value.
 setCreateDb :: Config -> Accum PartialProcessConfig -> Config
 setCreateDb config@Config {..} new = config
   { configPlan = configPlan
       { partialPlanCreateDb = new
+      }
+  }
+
+-- | Set a 'Config's 'partialPlanInitDb' value.
+setInitDb :: Config -> Accum PartialProcessConfig -> Config
+setInitDb config@Config {..} new = config
+  { configPlan = configPlan
+      { partialPlanInitDb = new
       }
   }
