@@ -6,8 +6,10 @@ a temporary directory for a UNIX domain socket for @postgres@ to listen on.
 Here is an example using the expection safe 'with' function:
 
  @
- 'with' $ \\db -> 'Control.Exception.bracket' ('PG.connectPostgreSQL' ('toConnectionString' db)) 'PG.close' $ \\conn ->
-  'PG.execute_' conn "CREATE TABLE foo (id int)"
+ 'with' $ \\db -> 'Control.Exception.bracket'
+    ('PG.connectPostgreSQL' ('toConnectionString' db))
+    'PG.close' $
+    \\conn -> 'PG.execute_' conn "CREATE TABLE foo (id int)"
  @
 
 To extend or override the defaults use `withPlan` (or `startWith`).
