@@ -157,7 +157,7 @@ stopPostgresProcess PostgresProcess{..} = do
 
 -- | Start the @postgres@ process and block until a successful connection
 --   occurs. A separate thread we continously check to see if the @postgres@
---   process has
+--   process has crashed.
 startPostgresProcess :: Logger -> PostgresPlan -> IO PostgresProcess
 startPostgresProcess logger PostgresPlan {..} = do
   logger StartPostgres
