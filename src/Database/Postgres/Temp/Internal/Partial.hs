@@ -1,7 +1,7 @@
 {-| This module provides types and functions for combining partial
     configs into a complete configs to ultimately make a 'Plan'.
 
-    This module has three classes of types. Types like 'Lastoid' that
+    This module has three classes of types. Types like 'Accum' that
     are generic and could live in a module like "base".
 
     Types like 'PartialProcessConfig' that could be used by any
@@ -34,39 +34,47 @@ import System.IO.Error
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 
-{- |
-'Lastoid' is helper for overriding configuration values.
-It's 'Semigroup' instance let's one either combine the
-@a@ of two 'Lastoid's using '<>' via the 'Mappend' constructor
-or one can wholly replace the value with the last value using the 'Replace'
-constructor.
-Roughly
+-- | Another 'Maybe' 'Monoid' newtype. This one combines 'Just's
+--   monoidially, with @Just mempty@ as @mempty@ and 'Nothing'
+--   annihilates.
+newtype Accum a = Accum { getAccum :: Maybe a }
+  deriving (Show, Eq, Ord, Functor, Applicative)
 
- @
-   x <> Replace y = Replace y
-   Replace x <> Mappend y = Replace (x <> y)
-   Mappend x <> Mappend y = Mappend (x <> y)
- @
+instance Semigroup a => Semigroup (Accum a) where
+  Accum x <> Accum y = Accum $ case (x, y) of
+    (Just a, Just b) -> Just $ a <> b
+    _ -> Nothing
 
--}
-data Lastoid a = Replace a | Mappend a
-  deriving (Show, Eq, Functor)
+instance Monoid a => Monoid (Accum a) where
+  mempty = Accum $ Just $ mempty
 
-instance Semigroup a => Semigroup (Lastoid a) where
-  x <> y = case (x, y) of
-    (_        , r@Replace {}) -> r
-    (Replace a, Mappend   b ) -> Replace $ a <> b
-    (Mappend a, Mappend   b ) -> Mappend $ a <> b
+-- | The environment variables can be declared to
+--   inherit from the running process or they
+--   can be specifically added.
+data PartialEnvVars = PartialEnvVars
+  { partialEnvVarsInherit  :: Bool
+  , partialEnvVarsSpecific :: Map String String
+  }
+  deriving stock (Generic, Show, Eq)
 
-instance Monoid a => Monoid (Lastoid a) where
-  mempty = Mappend mempty
+instance Semigroup PartialEnvVars where
+  x <> y = PartialEnvVars
+    { partialEnvVarsInherit  =
+        partialEnvVarsInherit x || partialEnvVarsInherit y
+    , partialEnvVarsSpecific =
+        partialEnvVarsSpecific y <> partialEnvVarsSpecific x
+    }
 
--- | Get the value of a 'Lastoid' regardless if it is a 'Replace' or
---   a 'Mappend'.
-getLastoid :: Lastoid a -> a
-getLastoid = \case
-  Replace a -> a
-  Mappend a -> a
+instance Monoid PartialEnvVars where
+  mempty = PartialEnvVars False mempty
+
+-- | Combine the current environment
+--   (if indicated by 'partialEnvVarsInherit')
+--   with 'partialEnvVarsSpecific'
+completePartialEnvVars :: [(String, String)] -> PartialEnvVars -> [(String, String)]
+completePartialEnvVars envs PartialEnvVars {..}
+  =  if partialEnvVarsInherit then envs else []
+  <> Map.toList partialEnvVarsSpecific
 
 -- | A type to help combine command line arguments.
 data PartialCommandLineArgs = PartialCommandLineArgs
@@ -112,10 +120,10 @@ completeCommandLineArgs PartialCommandLineArgs {..}
 -- | The monoidial version of 'ProcessConfig'. Used to combine overrides with
 --   defaults when creating a 'ProcessConfig'.
 data PartialProcessConfig = PartialProcessConfig
-  { partialProcessConfigEnvVars :: Lastoid (Map String String)
+  { partialProcessConfigEnvVars :: PartialEnvVars
   -- ^ A monoid for combine environment variables or replacing them.
   --   for the maps the 'Dual' monoid is used. So the last key wins.
-  , partialProcessConfigCmdLine :: Lastoid PartialCommandLineArgs
+  , partialProcessConfigCmdLine :: PartialCommandLineArgs
   -- ^ A monoid for combine command line arguments or replacing them
   , partialProcessConfigStdIn   :: Last Handle
   -- ^ A monoid for configuring the standard input 'Handle'
@@ -124,36 +132,22 @@ data PartialProcessConfig = PartialProcessConfig
   , partialProcessConfigStdErr  :: Last Handle
   -- ^ A monoid for configuring the standard error 'Handle'
   }
-  deriving stock (Generic)
+  deriving stock (Generic, Eq, Show)
+  deriving Semigroup via GenericSemigroup PartialProcessConfig
   deriving Monoid    via GenericMonoid PartialProcessConfig
-
-instance Semigroup PartialProcessConfig where
-  x <> y = PartialProcessConfig
-    { partialProcessConfigEnvVars = fmap getDual $
-        fmap Dual (partialProcessConfigEnvVars x) <>
-          fmap Dual (partialProcessConfigEnvVars y)
-    , partialProcessConfigCmdLine =
-        partialProcessConfigCmdLine x <> partialProcessConfigCmdLine y
-    , partialProcessConfigStdIn   =
-        partialProcessConfigStdIn x <> partialProcessConfigStdIn y
-    , partialProcessConfigStdOut  =
-        partialProcessConfigStdOut x <> partialProcessConfigStdOut y
-    , partialProcessConfigStdErr  =
-        partialProcessConfigStdErr x <> partialProcessConfigStdErr y
-    }
 
 -- | The 'standardProcessConfig' sets the handles to 'stdin', 'stdout' and
 --   'stderr' and inherits the environment variables from the calling
 --   process.
-standardProcessConfig :: IO PartialProcessConfig
-standardProcessConfig = do
-  env <- getEnvironment
-  pure mempty
-    { partialProcessConfigEnvVars = Replace $ Map.fromList env
-    , partialProcessConfigStdIn   = pure stdin
-    , partialProcessConfigStdOut  = pure stdout
-    , partialProcessConfigStdErr  = pure stderr
-    }
+standardProcessConfig :: PartialProcessConfig
+standardProcessConfig = mempty
+  { partialProcessConfigEnvVars = mempty
+      { partialEnvVarsInherit = True
+      }
+  , partialProcessConfigStdIn  = pure stdin
+  , partialProcessConfigStdOut = pure stdout
+  , partialProcessConfigStdErr = pure stderr
+  }
 
 -- | A helper to add more info to all the error messages.
 addErrorContext :: String -> Either [String] a -> Either [String] a
@@ -168,11 +162,10 @@ getOption optionName = \case
 -- | Turn a 'PartialProcessConfig' into a 'ProcessConfig'. Fails if
 --   any values are missing.
 completeProcessConfig
-  :: PartialProcessConfig -> Either [String] ProcessConfig
-completeProcessConfig PartialProcessConfig {..} = validationToEither $ do
-  let processConfigEnvVars = Map.toList $ getLastoid partialProcessConfigEnvVars
-      processConfigCmdLine = completeCommandLineArgs $
-        getLastoid partialProcessConfigCmdLine
+  :: [(String, String)] -> PartialProcessConfig -> Either [String] ProcessConfig
+completeProcessConfig envs PartialProcessConfig {..} = validationToEither $ do
+  let processConfigEnvVars = completePartialEnvVars envs partialProcessConfigEnvVars
+      processConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
   processConfigStdIn  <-
     getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
   processConfigStdOut <-
@@ -315,12 +308,12 @@ data PartialPostgresPlan = PartialPostgresPlan
 
 -- | Turn a 'PartialPostgresPlan' into a 'PostgresPlan'. Fails if any
 --   values are missing.
-completePostgresPlan :: PartialPostgresPlan -> Either [String] PostgresPlan
-completePostgresPlan PartialPostgresPlan {..} = validationToEither $ do
+completePostgresPlan :: [(String, String)] -> PartialPostgresPlan -> Either [String] PostgresPlan
+completePostgresPlan envs PartialPostgresPlan {..} = validationToEither $ do
   let postgresPlanClientConfig = partialPostgresPlanClientConfig
   postgresPlanProcessConfig <-
     eitherToValidation $ addErrorContext "partialPostgresPlanProcessConfig: " $
-      completeProcessConfig partialPostgresPlanProcessConfig
+      completeProcessConfig envs partialPostgresPlanProcessConfig
 
   pure PostgresPlan {..}
 -------------------------------------------------------------------------------
@@ -330,10 +323,10 @@ completePostgresPlan PartialPostgresPlan {..} = validationToEither $ do
 --   when creating a plan.
 data PartialPlan = PartialPlan
   { partialPlanLogger        :: Last Logger
-  , partialPlanInitDb        :: Lastoid (Maybe PartialProcessConfig)
-  , partialPlanCreateDb      :: Lastoid (Maybe PartialProcessConfig)
+  , partialPlanInitDb        :: Accum PartialProcessConfig
+  , partialPlanCreateDb      :: Accum PartialProcessConfig
   , partialPlanPostgres      :: PartialPostgresPlan
-  , partialPlanConfig        :: Lastoid [String]
+  , partialPlanConfig        :: [String]
   , partialPlanDataDirectory :: Last String
   }
   deriving stock (Generic)
@@ -341,16 +334,16 @@ data PartialPlan = PartialPlan
   deriving Monoid    via GenericMonoid PartialPlan
 
 -- | Turn a 'PartialPlan' into a 'Plan'. Fails if any values are missing.
-completePlan :: PartialPlan -> Either [String] Plan
-completePlan PartialPlan {..} = validationToEither $ do
+completePlan :: [(String, String)] -> PartialPlan -> Either [String] Plan
+completePlan envs PartialPlan {..} = validationToEither $ do
   planLogger   <- getOption "partialPlanLogger" partialPlanLogger
   planInitDb   <- eitherToValidation $ addErrorContext "partialPlanInitDb: " $
-    traverse completeProcessConfig $ getLastoid partialPlanInitDb
+    traverse (completeProcessConfig envs) (getAccum partialPlanInitDb)
   planCreateDb <- eitherToValidation $ addErrorContext "partialPlanCreateDb: " $
-    traverse completeProcessConfig $ getLastoid partialPlanCreateDb
+    traverse (completeProcessConfig envs) (getAccum partialPlanCreateDb)
   planPostgres <- eitherToValidation $ addErrorContext "partialPlanPostgres: " $
-    completePostgresPlan partialPlanPostgres
-  let planConfig = unlines $ getLastoid partialPlanConfig
+    completePostgresPlan envs partialPlanPostgres
+  let planConfig = unlines partialPlanConfig
   planDataDirectory <- getOption "partialPlanDataDirectory"
     partialPlanDataDirectory
 
@@ -398,11 +391,11 @@ toPlan
   -- ^ The @postgres@ data directory
   -> PartialPlan
 toPlan port socketClass dataDirectory = mempty
-  { partialPlanConfig = Mappend $ socketClassToConfig socketClass
+  { partialPlanConfig = socketClassToConfig socketClass
   , partialPlanDataDirectory = pure dataDirectory
   , partialPlanPostgres = mempty
       { partialPostgresPlanProcessConfig = mempty
-          { partialProcessConfigCmdLine = Mappend $ mempty
+          { partialProcessConfigCmdLine = mempty
               { partialCommandLineArgsKeyBased = Map.fromList
                   [ ("-p", Just $ show port)
                   , ("-D", Just dataDirectory)
@@ -415,15 +408,15 @@ toPlan port socketClass dataDirectory = mempty
           , Client.dbname = pure "postgres"
           }
       }
-  , partialPlanCreateDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend $ mempty
+  , partialPlanCreateDb = pure $ mempty
+      { partialProcessConfigCmdLine = mempty
           { partialCommandLineArgsKeyBased = Map.fromList $
               socketClassToHostFlag socketClass <>
               [("-p ", Just $ show port)]
           }
       }
-  , partialPlanInitDb = Mappend $ Just $ mempty
-      { partialProcessConfigCmdLine = Mappend $ mempty
+  , partialPlanInitDb = pure $ mempty
+      { partialProcessConfigCmdLine = mempty
           { partialCommandLineArgsKeyBased = Map.fromList $
               [("--pgdata=", Just dataDirectory)]
           }
@@ -439,6 +432,7 @@ initConfig
   -- ^ @extraConfig@ to 'mappend' after the default config
   -> IO Resources
 initConfig Config {..} = evalContT $ do
+  envs <- lift getEnvironment
   port <- lift $ maybe getFreePort pure $ join $ getLast configPort
   resourcesSocket <- ContT $ bracketOnError
     (initPartialSocketClass configSocket) shutdownSocketConfig
@@ -447,7 +441,7 @@ initConfig Config {..} = evalContT $ do
   let hostAndDirPartial = toPlan port resourcesSocket $
         toFilePath resourcesDataDir
   resourcesPlan <- lift $ either (throwIO . CompletePlanFailed) pure $
-    completePlan $ hostAndDirPartial <> configPlan
+    completePlan envs $ hostAndDirPartial <> configPlan
   pure Resources {..}
 
 -- | Free the temporary resources created by 'initConfig'
@@ -490,13 +484,13 @@ clientOptionsToPlan opts = mempty
 -- | Create a 'PartialPlan' given a user
 userToPlan :: String -> PartialPlan
 userToPlan user = mempty
-  { partialPlanCreateDb = Mappend $ Just $ mempty
-    { partialProcessConfigCmdLine = Mappend $ mempty
+  { partialPlanCreateDb = pure $ mempty
+    { partialProcessConfigCmdLine = mempty
         { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
         }
     }
-  , partialPlanInitDb = Mappend $ Just $ mempty
-    { partialProcessConfigCmdLine =  Mappend $ mempty
+  , partialPlanInitDb = pure $ mempty
+    { partialProcessConfigCmdLine = mempty
         { partialCommandLineArgsKeyBased = Map.singleton "--username=" $ Just user
         }
     }
@@ -506,8 +500,8 @@ userToPlan user = mempty
 --   as the database name.
 dbnameToPlan :: String -> PartialPlan
 dbnameToPlan dbName = mempty
-  { partialPlanCreateDb = Mappend $ Just $ mempty
-    { partialProcessConfigCmdLine = Mappend $ mempty
+  { partialPlanCreateDb = pure $ mempty
+    { partialProcessConfigCmdLine = mempty
       { partialCommandLineArgsIndexBased = Map.singleton 0 dbName
       }
     }

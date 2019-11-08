@@ -58,6 +58,7 @@ module Database.Postgres.Temp
   , stop
   , defaultConfig
   , defaultPostgresConf
+  , standardProcessConfig
   -- * Starting and Stopping postgres without removing the temporary directory
   , restart
   , stopPostgres
@@ -70,8 +71,6 @@ module Database.Postgres.Temp
   , StartError (..)
   -- * Configuration Types
   , Config (..)
-  -- ** General extend or override monoid
-  , Lastoid (..)
   -- ** Directory configuration
   , DirectoryType (..)
   , PartialDirectoryType (..)
@@ -114,11 +113,6 @@ import Database.Postgres.Temp.Internal.Partial
 
  are added. This occurs as a side effect of calling 'withPlan'.
 
- The config can be either appended to replaced. If you replace it you will
- have to specify the listen_addresses (or rely on the default) yourself.
- Use 'Mappend' if you want to add to the config or the 'Replace'
- constructor if you want to replace the config entirely.
-
 'defaultConfig' appends the following config by default
 
  @
@@ -138,7 +132,7 @@ custom 'Config' like the following.
  @
   let custom = defaultConfig <> mempty
         { configPlan = mempty
-          { partialPlanConfig = Mappend
+          { partialPlanConfig =
               [ "wal_level=replica"
               , "archive_mode=on"
               , "max_wal_senders=2"
