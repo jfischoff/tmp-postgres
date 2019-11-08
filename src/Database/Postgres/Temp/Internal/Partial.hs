@@ -9,7 +9,7 @@
 
     Finally it has types and functions for creating 'Plan's that
     use temporary resources. This is used to create the default
-    behavior of 'Database.Postgres.Temp.startWith' and related
+    behavior of 'Database.Postgres.Temp.startConfig' and related
     functions.
 |-}
 module Database.Postgres.Temp.Internal.Partial where

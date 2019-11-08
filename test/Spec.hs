@@ -202,24 +202,24 @@ spec = do
   describe "start" $ do
     let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
-  describe "startWith" $ do
-    let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
+  describe "startConfig" $ do
+    let startAction plan = bracket (either throwIO pure =<< startConfig plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f ->
-      bracket (either throwIO pure =<< startWith plan) stop f
+      bracket (either throwIO pure =<< startConfig plan) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
-  describe "withPlan" $ do
+  describe "withConfig" $ do
     let startAction plan = either throwIO pure =<<
-          withPlan plan pure
+          withConfig plan pure
 
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
 --    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f -> either throwIO pure =<<
-      withPlan plan f
+      withConfig plan f
 
   let someStandardTests dbName= do
         withAnyPlan
@@ -271,7 +271,7 @@ spec = do
                   Map.singleton 0 "template1"
               }
             }
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith invalidCreateDbPlan) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig invalidCreateDbPlan) stop f) $
       createDbThrowsIfTheDbExists
 
     let noCreateTemplate1 = mempty
@@ -285,13 +285,13 @@ spec = do
               }
           }
         noCreateDbPlan = defaultConfig <> noCreateTemplate1
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith noCreateDbPlan) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig noCreateDbPlan) stop f) $
       someStandardTests "template1"
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith defaultIpPlan) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig defaultIpPlan) stop f) $
       someStandardTests "postgres"
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith specificHostIpPlan) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig specificHostIpPlan) stop f) $
       someStandardTests "postgres"
 
     thePort <- runIO getFreePort
@@ -301,7 +301,7 @@ spec = do
           , Client.port   = pure thePort
           }
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith planFromCustomUserDbConnection) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig planFromCustomUserDbConnection) stop f) $
       someStandardTests "fancy"
 
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
@@ -310,7 +310,7 @@ spec = do
         let nonEmptyFolderPlan = defaultConfig
               { configDataDir = PPermanent dirPath
               }
-            startAction = bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ const $ pure ()
+            startAction = bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ const $ pure ()
 
         startAction `shouldThrow` (== InitDbFailed (ExitFailure 1))
 
@@ -322,7 +322,7 @@ spec = do
                   { partialPlanInitDb = Accum Nothing
                   }
               }
-        bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ \db -> do
+        bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ \db -> do
           one <- fmap (PG.fromOnly . head) $
             bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
               \conn -> PG.query_ conn "SELECT 1"
@@ -341,7 +341,7 @@ spec = do
               }
           }
         backupResources = defaultConfig <> justBackupResources
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startWith backupResources) stop f) $
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig backupResources) stop f) $
       it "can support backup and restore" $ withRunner $ \db@DB {..} -> do
         let dataDir = toFilePath (resourcesDataDir dbResources)
         appendFile (dataDir ++ "/pg_hba.conf") $ "local replication all trust"

@@ -126,22 +126,22 @@ defaultPostgresConf extra = defaultConfig <> mempty
 --   The output 'DB' includes references to the temporary resources for
 --   cleanup and the final plan that was used to generate the database and
 --   processes
-startWith :: Config
+startConfig :: Config
           -- ^ @extraConfiguration@ that is 'mappend'ed to the generated `Config`.
           -- The extra config is 'mappend'ed second, e.g.
           -- @generatedConfig <> extraConfiguration@
           -> IO (Either StartError DB)
-startWith extra = try $ evalContT $ do
+startConfig extra = try $ evalContT $ do
   dbResources@Resources {..} <-
     ContT $ bracketOnError (initConfig extra) shutdownResources
   dbPostgresProcess <-
     ContT $ bracketOnError (initPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
 
--- | Default start behavior. Equivalent to calling 'startWith' with the
+-- | Default start behavior. Equivalent to calling 'startConfig' with the
 --   'defaultConfig'
 start :: IO (Either StartError DB)
-start = startWith defaultConfig
+start = startConfig defaultConfig
 
 -- | Stop the @postgres@ process and cleanup any temporary directories that
 --   might have been created.
@@ -181,21 +181,21 @@ reloadConfig db =
 --   to (see 'toConnectionString' or 'postgresProcessClientConfig').
 --   All of the database resources are automatically cleaned up on
 --   completion even in the face of exceptions.
-withPlan :: Config
+withConfig :: Config
          -- ^ @extraConfiguration@. Combined with the generated 'Config'. See
-         -- 'startWith' for more info
+         -- 'startConfig' for more info
          -> (DB -> IO a)
          -- ^ @action@ continuation
          -> IO (Either StartError a)
-withPlan plan f = bracket (startWith plan) (either mempty stop) $
+withConfig plan f = bracket (startConfig plan) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
--- | Default expectation safe interface. Equivalent to 'withPlan' the
+-- | Default expectation safe interface. Equivalent to 'withConfig' the
 --   'defaultConfig'
 with :: (DB -> IO a)
      -- ^ @action@ continuation.
      -> IO (Either StartError a)
-with = withPlan defaultConfig
+with = withConfig defaultConfig
 
 -- | Exception safe version of 'restart'
 withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)

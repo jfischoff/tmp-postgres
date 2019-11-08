@@ -13,7 +13,7 @@ Here is an example using the expection safe 'with' function:
   execute_ conn "CREATE TABLE foo (id int)"
 ```
 
-To extend or override the defaults use `withPlan` (or `startWith`).
+To extend or override the defaults use `withConfig` (or `startConfig`).
 
 `tmp-postgres` ultimately calls `initdb`, `postgres` and `createdb`.
 All of the command line, environment variables and configuration files

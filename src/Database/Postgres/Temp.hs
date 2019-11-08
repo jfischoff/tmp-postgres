@@ -12,7 +12,7 @@ Here is an example using the expection safe 'with' function:
     \\conn -> 'PG.execute_' conn "CREATE TABLE foo (id int)"
  @
 
-To extend or override the defaults use `withPlan` (or `startWith`).
+To extend or override the defaults use `withConfig` (or `startConfig`).
 
 @tmp-postgres@ ultimately calls (optionally) @initdb@, @postgres@ and
 (optionally) @createdb@.
@@ -52,10 +52,10 @@ module Database.Postgres.Temp
   -- * Exception safe interface
   -- $options
   , with
-  , withPlan
+  , withConfig
   -- * Separate start and stop interface.
   , start
-  , startWith
+  , startConfig
   , stop
   , defaultConfig
   , defaultPostgresConf
@@ -112,7 +112,7 @@ import Database.Postgres.Temp.Internal.Partial
    unix_socket_directories = SOCKET_DIRECTORY
  @
 
- are added. This occurs as a side effect of calling 'withPlan'.
+ are added. This occurs as a side effect of calling 'withConfig'.
 
 'defaultConfig' appends the following config by default
 
