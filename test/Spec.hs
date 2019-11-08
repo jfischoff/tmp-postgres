@@ -34,16 +34,6 @@ newtype Runner =  Runner (forall a. (DB -> IO a) -> IO a)
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
 withRunner g (Runner f) = f g
 
-updateCreateDb :: Config -> Lastoid (Maybe PartialProcessConfig) -> Config
-updateCreateDb options partialProcessConfig =
-  let originalPlan = configPlan options
-      newPlan = originalPlan
-        { partialPlanCreateDb = partialProcessConfig
-        }
-  in options
-      { configPlan = newPlan
-      }
-
 defaultConfigShouldMatchDefaultPlan :: SpecWith Runner
 defaultConfigShouldMatchDefaultPlan =
   it "default options should match default plan" $ withRunner $ \DB{..} -> do
@@ -74,7 +64,7 @@ customConfigWork action = do
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
 
   it "returns the right client options for the plan" $ do
-    initialCreateDbConfig <- standardProcessConfig
+    let initialCreateDbConfig = standardProcessConfig
     let customPlan = mempty
           { configPlan = mempty
               { partialPlanPostgres = mempty
@@ -84,28 +74,28 @@ customConfigWork action = do
                       , Client.dbname   = pure expectedDbName
                       }
                   }
-              , partialPlanInitDb = Mappend $ pure $ mempty
-                  { partialProcessConfigCmdLine = Mappend $ mempty
+              , partialPlanInitDb = pure mempty
+                  { partialProcessConfigCmdLine = mempty
                       { partialCommandLineArgsKeyBased =
                           Map.singleton "--username=" $ Just "user-name"
                       }
-                  , partialProcessConfigEnvVars = Mappend $
-                      Map.singleton "PGPASSWORD" "password"
+                  , partialProcessConfigEnvVars =
+                      mempty { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password" }
                   }
-              , partialPlanConfig = Mappend [extraConfig]
+              , partialPlanConfig = [extraConfig]
               }
           }
     -- hmm maybe I should provide lenses
     let combinedResources = defaultConfig <> customPlan
-        finalCombinedResources = updateCreateDb combinedResources $ Mappend $ pure $ initialCreateDbConfig
-          { partialProcessConfigCmdLine = Mappend $ mempty
+        finalCombinedResources = setCreateDb combinedResources $ pure initialCreateDbConfig
+          { partialProcessConfigCmdLine = mempty
           { partialCommandLineArgsKeyBased =
               Map.singleton "--username=" $ Just "user-name"
           , partialCommandLineArgsIndexBased =
               Map.singleton 0 expectedDbName
           }
-          , partialProcessConfigEnvVars = Mappend $
-              Map.singleton "PGPASSWORD" "password"
+          , partialProcessConfigEnvVars =
+              mempty { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password" }
           }
 
     action finalCombinedResources $ \db@DB {..} -> do
@@ -126,7 +116,7 @@ invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
 invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ do
   let customPlan = mempty
         { configPlan = mempty
-            { partialPlanConfig = Mappend
+            { partialPlanConfig =
                 [ "log_directory = /this/does/not/exist"
                 , "logging_collector = true"
                 ]
@@ -201,8 +191,6 @@ createDbThrowsIfTheDbExists = describe "createdb" $
 
 spec :: Spec
 spec = do
-  theStandardProcessConfig <- runIO standardProcessConfig
-
   let defaultIpPlan = defaultConfig
         { configSocket = PIpSocket $ Last Nothing
         }
@@ -214,24 +202,21 @@ spec = do
   describe "start" $ do
     let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
-    throwsIfCreateDbIsNotOnThePath startAction
   describe "startWith" $ do
     let startAction plan = bracket (either throwIO pure =<< startWith plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
-    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f ->
       bracket (either throwIO pure =<< startWith plan) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
-    throwsIfCreateDbIsNotOnThePath startAction
   describe "withPlan" $ do
     let startAction plan = either throwIO pure =<<
           withPlan plan pure
 
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
-    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
+--    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f -> either throwIO pure =<<
       withPlan plan f
@@ -279,9 +264,9 @@ spec = do
           [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
           actualDuration `shouldBe` expectedDuration
 
-    let invalidCreateDbPlan = updateCreateDb defaultConfig $
-          Mappend $ pure $ theStandardProcessConfig
-            { partialProcessConfigCmdLine = Mappend $ mempty
+    let invalidCreateDbPlan = setCreateDb defaultConfig $
+          pure $ standardProcessConfig
+            { partialProcessConfigCmdLine = mempty
               { partialCommandLineArgsIndexBased =
                   Map.singleton 0 "template1"
               }
@@ -291,7 +276,7 @@ spec = do
 
     let noCreateTemplate1 = mempty
           { configPlan = mempty
-              { partialPlanCreateDb = Replace Nothing
+              { partialPlanCreateDb = Accum Nothing
               , partialPlanPostgres = mempty
                   { partialPostgresPlanClientConfig = mempty
                     { Client.dbname = pure "template1"
@@ -334,7 +319,7 @@ spec = do
         let nonEmptyFolderPlan = defaultConfig
               { configDataDir = PPermanent dirPath
               , configPlan = (configPlan defaultConfig)
-                  { partialPlanInitDb = Replace Nothing
+                  { partialPlanInitDb = Accum Nothing
                   }
               }
         bracket (either throwIO pure =<< startWith nonEmptyFolderPlan) stop $ \db -> do
@@ -346,7 +331,7 @@ spec = do
 
     let justBackupResources = mempty
           { configPlan = mempty
-              { partialPlanConfig = Mappend
+              { partialPlanConfig =
                   [ "wal_level=replica"
                   , "archive_mode=on"
                   , "max_wal_senders=2"
