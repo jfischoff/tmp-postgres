@@ -103,7 +103,7 @@ executeProcess name = startProcess name >=> waitForProcess
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
--- | PostgresPlan is used be 'startPostgresProcess' to start the @postgres@
+-- | 'PostgresPlan' is used be 'startPostgresProcess' to start the @postgres@
 --   and then attempt to connect to it.
 data PostgresPlan = PostgresPlan
   { postgresPlanProcessConfig :: ProcessConfig
@@ -120,8 +120,7 @@ data PostgresProcess = PostgresProcess
   -- ^ @postgres@ process handle
   }
 
--- | Force all connections to the database to close. Can be useful in some
---   testing situations.
+-- | Force all connections to the database to close.
 --   Called during shutdown as well.
 terminateConnections :: PostgresClient.Options-> IO ()
 terminateConnections options = do
