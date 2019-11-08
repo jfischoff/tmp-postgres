@@ -70,8 +70,6 @@ module Database.Postgres.Temp
   , StartError (..)
   -- * Configuration Types
   , Config (..)
-  -- ** General extend or override monoid
-  , Lastoid (..)
   -- ** Directory configuration
   , DirectoryType (..)
   , PartialDirectoryType (..)

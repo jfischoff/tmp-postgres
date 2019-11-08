@@ -12,7 +12,6 @@ import qualified Database.PostgreSQL.Simple.Options as Client
 import System.Exit (ExitCode(..))
 import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Class
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.Map.Strict as Map
 
@@ -84,29 +83,18 @@ defaultConfig :: Config
 defaultConfig = mempty
   { configPlan = mempty
     { partialPlanLogger = pure mempty
-    , partialPlanConfig = Mappend defaultPostgresConfig
-    , partialPlanInitDb = Mappend $ pure mempty
-      { partialProcessConfigCmdLine = Mappend $ mempty
+    , partialPlanConfig = defaultPostgresConfig
+    , partialPlanCreateDb = Accum Nothing
+    , partialPlanInitDb = pure standardProcessConfig
+      { partialProcessConfigCmdLine = mempty
           { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
           }
       }
+    , partialPlanPostgres = mempty
+        { partialPostgresPlanProcessConfig = standardProcessConfig
+        }
     }
   }
-
--- | 'standardConfig' makes a default config with 'standardProcessConfig'.
---   It is used by default but can be overriden by the extra config.
-standardConfig :: IO Config
-standardConfig = do
-  theStandardProcessConfig <- standardProcessConfig
-  pure mempty
-    { configPlan = mempty
-      { partialPlanCreateDb = Mappend $ pure theStandardProcessConfig
-      , partialPlanInitDb = Mappend $ pure theStandardProcessConfig
-      , partialPlanPostgres = mempty
-          { partialPostgresPlanProcessConfig = theStandardProcessConfig
-          }
-      }
-    }
 
 {-|
 'mappend' the 'defaultConfig' with a 'Config' that provides additional
@@ -124,7 +112,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
 defaultPostgresConf :: [String] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
   { configPlan = mempty
-    { partialPlanConfig = Mappend extra
+    { partialPlanConfig = extra
     }
   }
 
@@ -140,10 +128,8 @@ startWith :: Config
           -- @generatedConfig <> extraConfiguration@
           -> IO (Either StartError DB)
 startWith extra = try $ evalContT $ do
-  theStandards <- lift standardConfig
-  let finalExtra = theStandards <> extra
   dbResources@Resources {..} <-
-    ContT $ bracketOnError (initConfig finalExtra) shutdownResources
+    ContT $ bracketOnError (initConfig extra) shutdownResources
   dbPostgresProcess <-
     ContT $ bracketOnError (initPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
@@ -218,4 +204,16 @@ withRestart db f = bracket (restart db) (either mempty stop) $
 --   supported so don't hesitate to open an issue on github if you find one.
 optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
-  defaultConfig <> optionsToConfig opts
+  let generated = optionsToConfig opts
+      startingConfig =
+        if partialPlanCreateDb (configPlan generated) == mempty
+          then defaultConfig
+          else setCreateDb defaultConfig $ pure standardProcessConfig
+  in startingConfig <> generated
+
+setCreateDb :: Config -> Accum PartialProcessConfig -> Config
+setCreateDb config@Config {..} new = config
+  { configPlan = configPlan
+      { partialPlanCreateDb = new
+      }
+  }
