@@ -202,10 +202,9 @@ withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)
 withRestart db f = bracket (restart db) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
--- | Attempt to create a config from a 'Client.Options'. This is useful if
---   want to create a database owned by a specific user you will also log in as
---   among other use cases. It is possible some 'Client.Options' are not
---   supported so don't hesitate to open an issue on github if you find one.
+-- | Attempt to create a 'Config' from a 'Client.Options'. Useful if you
+--   want to create a database owned by a specific user you will also login
+--   with among other use cases.
 optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
   let generated = optionsToConfig opts
