@@ -66,6 +66,7 @@ library
                , either
                , transformers
                , containers
+               , ansi-wl-pprint
   ghc-options: -Wall
   default-language:    Haskell2010
 

@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK prune #-}
 {-| This module provides types and functions for combining partial
     configs into a complete configs to ultimately make a 'Plan'.
 
@@ -32,6 +33,12 @@ import Control.Monad.Trans.Class
 import System.IO.Error
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+
+prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc
+prettyMap theMap =
+  let xs = Map.toList theMap
+  in vsep $ map (uncurry prettyKeyPair) xs
 
 -- | The environment variables can be declared to
 --   inherit from the running process or they
@@ -52,6 +59,15 @@ instance Semigroup PartialEnvVars where
 
 instance Monoid PartialEnvVars where
   mempty = PartialEnvVars mempty mempty
+
+instance Pretty PartialEnvVars where
+  pretty PartialEnvVars {..}
+    = text "partialEnvVarsInherit:"
+        <+> pretty (getLast partialEnvVarsInherit)
+    <> hardline
+    <> text "partialEnvVarsSpecific:"
+    <> softline
+    <> indent 2 (prettyMap partialEnvVarsSpecific)
 
 -- | Combine the current environment
 --   (if indicated by 'partialEnvVarsInherit')
@@ -86,8 +102,20 @@ instance Semigroup PartialCommandLineArgs where
         partialCommandLineArgsIndexBased y <> partialCommandLineArgsIndexBased x
     }
 
--- | Take values as long as the index is the successor of the
---   last index.
+instance Pretty PartialCommandLineArgs where
+  pretty p@PartialCommandLineArgs {..}
+    = text "partialCommandLineArgsKeyBased:"
+    <> softline
+    <> indent 2 (prettyMap partialCommandLineArgsKeyBased)
+    <> hardline
+    <> text "partialCommandLineArgsIndexBased:"
+    <> softline
+    <> indent 2 (prettyMap partialCommandLineArgsIndexBased)
+    <> hardline
+    <> text "completed:" <+> text (unwords (completeCommandLineArgs p))
+
+-- Take values as long as the index is the successor of the
+-- last index.
 takeWhileInSequence :: [(Int, a)] -> [a]
 takeWhileInSequence ((0, x):xs) = x : go 0 xs where
   go _ [] = []
@@ -122,6 +150,29 @@ data PartialProcessConfig = PartialProcessConfig
   deriving Semigroup via GenericSemigroup PartialProcessConfig
   deriving Monoid    via GenericMonoid PartialProcessConfig
 
+prettyHandle :: Handle -> Doc
+prettyHandle _ = text "[HANDLE]"
+
+instance Pretty PartialProcessConfig where
+  pretty PartialProcessConfig {..}
+    = text "partialProcessConfigEnvVars:"
+    <> softline
+    <> indent 2 (pretty partialProcessConfigEnvVars)
+    <> hardline
+    <> text "partialProcessConfigCmdLine:"
+    <> softline
+    <> indent 2 (pretty partialProcessConfigEnvVars)
+    <> hardline
+    <> text "partialProcessConfigStdIn:" <+>
+        pretty (prettyHandle <$> getLast partialProcessConfigStdIn)
+    <> hardline
+    <> text "partialProcessConfigStdOut:" <+>
+        pretty (prettyHandle <$> getLast partialProcessConfigStdOut)
+    <> hardline
+    <> text "partialProcessConfigStdErr:" <+>
+        pretty (prettyHandle <$> getLast partialProcessConfigStdErr)
+
+
 -- | The 'standardProcessConfig' sets the handles to 'stdin', 'stdout' and
 --   'stderr' and inherits the environment variables from the calling
 --   process.
@@ -135,11 +186,11 @@ standardProcessConfig = mempty
   , partialProcessConfigStdErr = pure stderr
   }
 
--- | A helper to add more info to all the error messages.
+-- A helper to add more info to all the error messages.
 addErrorContext :: String -> Either [String] a -> Either [String] a
 addErrorContext cxt = either (Left . map (cxt <>)) Right
 
--- | A helper for creating an error if a 'Last' is not defined.
+-- A helper for creating an error if a 'Last' is not defined.
 getOption :: String -> Last a -> Validation [String] a
 getOption optionName = \case
     Last (Just x) -> pure x
@@ -173,6 +224,11 @@ toFilePath = \case
   Permanent x -> x
   Temporary x -> x
 
+instance Pretty DirectoryType where
+  pretty = \case
+    Permanent x -> text "Permanent" <+> pretty x
+    Temporary x -> text "Temporary" <+> pretty x
+
 -- | The monoidial version of 'DirectoryType'. Used to combine overrides with
 --   defaults when creating a 'DirectoryType'. The monoid instance treats
 --   'PTemporary' as 'mempty' and takes the last 'PPermanent' value.
@@ -182,6 +238,11 @@ data PartialDirectoryType
   | PTemporary
   -- ^ A temporary file that needs to generated.
   deriving(Show, Eq, Ord)
+
+instance Pretty PartialDirectoryType where
+  pretty = \case
+    PPermanent x -> text "Permanent" <+> pretty x
+    PTemporary   -> text "Temporary"
 
 instance Semigroup PartialDirectoryType where
   x <> y = case (x, y) of
@@ -198,7 +259,7 @@ initDirectoryType pattern = \case
   PTemporary -> Temporary <$> createTempDirectory "/tmp" pattern
   PPermanent x  -> pure $ Permanent x
 
--- | Either create a temporary directory or do nothing
+-- Either create a temporary directory or do nothing
 rmDirIgnoreErrors :: FilePath -> IO ()
 rmDirIgnoreErrors mainDir = do
   let ignoreDirIsMissing e
@@ -224,6 +285,11 @@ data SocketClass
   | UnixSocket DirectoryType
   -- ^ UNIX domain socket
   deriving (Show, Eq, Ord, Generic, Typeable)
+
+instance Pretty SocketClass where
+  pretty = \case
+    IpSocket x   -> text "IpSocket:" <+> pretty x
+    UnixSocket x -> text "UnixSocket:" <+> pretty x
 
 -- | Create the extra config lines for listening based on the 'SocketClass'
 socketClassToConfig :: SocketClass -> [String]
@@ -255,6 +321,11 @@ data PartialSocketClass
   | PUnixSocket PartialDirectoryType
   -- ^ The monoid for combining UNIX socket configuration
     deriving stock (Show, Eq, Ord, Generic, Typeable)
+
+instance Pretty PartialSocketClass where
+  pretty = \case
+    PIpSocket x -> "IpSocket:" <+> pretty (getLast x)
+    PUnixSocket x -> "UnixSocket" <+> pretty x
 
 instance Semigroup PartialSocketClass where
   x <> y = case (x, y) of
@@ -293,11 +364,21 @@ data PartialPostgresPlan = PartialPostgresPlan
   deriving Semigroup via GenericSemigroup PartialPostgresPlan
   deriving Monoid    via GenericMonoid PartialPostgresPlan
 
+instance Pretty PartialPostgresPlan where
+  pretty PartialPostgresPlan {..}
+    = text "partialPostgresPlanProcessConfig:"
+    <> softline
+    <> indent 2 (pretty partialPostgresPlanProcessConfig)
+    <> hardline
+    <> text "partialPostgresPlanClientConfig:"
+    <> softline
+    <> indent 2 (prettyOptions partialPostgresPlanClientConfig)
+
 -- | Turn a 'PartialPostgresPlan' into a 'PostgresPlan'. Fails if any
 --   values are missing.
 completePostgresPlan :: [(String, String)] -> PartialPostgresPlan -> Either [String] PostgresPlan
 completePostgresPlan envs PartialPostgresPlan {..} = validationToEither $ do
-  let postgresPlanClientConfig = partialPostgresPlanClientConfig
+  let postgresPlanClientOptions = partialPostgresPlanClientConfig
   postgresPlanProcessConfig <-
     eitherToValidation $ addErrorContext "partialPostgresPlanProcessConfig: " $
       completeProcessConfig envs partialPostgresPlanProcessConfig
@@ -320,6 +401,26 @@ data PartialPlan = PartialPlan
   deriving Semigroup via GenericSemigroup PartialPlan
   deriving Monoid    via GenericMonoid PartialPlan
 
+instance Pretty PartialPlan where
+  pretty PartialPlan {..}
+    =  text "partialPlanInitDb:"
+    <> softline
+    <> indent 2 (pretty partialPlanInitDb)
+    <> hardline
+    <> text "partialPlanInitDb:"
+    <> softline
+    <> indent 2 (pretty partialPlanCreateDb)
+    <> hardline
+    <> text "partialPlanPostgres:"
+    <> softline
+    <> indent 2 (pretty partialPlanPostgres)
+    <> hardline
+    <> text "partialPlanConfig:"
+    <> softline
+    <> indent 2 (vsep $ map text partialPlanConfig)
+    <> hardline
+    <> text "partialPlanDataDirectory:" <+> pretty (getLast partialPlanDataDirectory)
+
 -- | Turn a 'PartialPlan' into a 'Plan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> PartialPlan -> Either [String] Plan
 completePlan envs PartialPlan {..} = validationToEither $ do
@@ -336,13 +437,13 @@ completePlan envs PartialPlan {..} = validationToEither $ do
 
   pure Plan {..}
 
--- | Returns 'True' if the 'PartialPlan' has a
---   'Just' 'partialPlanInitDb'
+-- Returns 'True' if the 'PartialPlan' has a
+-- 'Just' 'partialPlanInitDb'
 hasInitDb :: PartialPlan -> Bool
 hasInitDb PartialPlan {..} = isJust partialPlanInitDb
 
--- | Returns 'True' if the 'PartialPlan' has a
---   'Just' 'partialPlanCreateDb'
+-- Returns 'True' if the 'PartialPlan' has a
+-- 'Just' 'partialPlanCreateDb'
 hasCreateDb :: PartialPlan -> Bool
 hasCreateDb PartialPlan {..} = isJust partialPlanCreateDb
 
@@ -358,6 +459,18 @@ data Resources = Resources
   , resourcesDataDir :: DirectoryType
   -- ^ The data directory. Used to track if a temporary directory was used.
   }
+
+instance Pretty Resources where
+  pretty Resources {..}
+    =   text "resourcePlan:"
+    <>  softline
+    <>  indent 2 (pretty resourcesPlan)
+    <>  hardline
+    <>  text "resourcesSocket:"
+    <+> pretty resourcesSocket
+    <>  hardline
+    <>  text "resourcesDataDir:"
+    <+> pretty resourcesDataDir
 
 -- | The high level options for overriding default behavior.
 data Config = Config
@@ -376,6 +489,22 @@ data Config = Config
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config
   deriving Monoid    via GenericMonoid Config
+
+instance Pretty Config where
+  pretty Config {..}
+    =  text "configPlan:"
+    <> softline
+    <> pretty configPlan
+    <> hardline
+    <> text "configSocket:"
+    <> softline
+    <> pretty configSocket
+    <> hardline
+    <> text "configDataDir:"
+    <> softline
+    <> pretty configDataDir
+    <> hardline
+    <> text "configPort:" <+> pretty (getLast configPort)
 
 -- | Create a 'PartialPlan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@) using a
@@ -474,16 +603,16 @@ optionsToConfig opts@Client.Options {..}
        , configSocket = maybe mempty hostToSocketClass $ getLast host
        }
      )
--- | Convert the 'Client.Options' to a 'PartialPlan' that can
---   be connected to with the 'Client.Options'.
+-- Convert the 'Client.Options' to a 'PartialPlan' that can
+-- be connected to with the 'Client.Options'.
 optionsToPlan :: Client.Options -> PartialPlan
 optionsToPlan opts@Client.Options {..}
   =  maybe mempty dbnameToPlan (getLast dbname)
   <> maybe mempty userToPlan (getLast user)
   <> clientOptionsToPlan opts
 
--- | Wrap the 'Client.Options' in an appropiate
---   'PartialPostgresPlan'
+-- Wrap the 'Client.Options' in an appropiate
+-- 'PartialPostgresPlan'
 clientOptionsToPlan :: Client.Options -> PartialPlan
 clientOptionsToPlan opts = mempty
   { partialPlanPostgres = mempty
@@ -491,7 +620,7 @@ clientOptionsToPlan opts = mempty
     }
   }
 
--- | Create a 'PartialPlan' given a user
+-- Create a 'PartialPlan' given a user
 userToPlan :: String -> PartialPlan
 userToPlan user = mempty
   { partialPlanCreateDb = pure $ mempty
@@ -506,8 +635,8 @@ userToPlan user = mempty
     }
   }
 
--- | Adds a @createdb@ PartialProcessPlan with the argument
---   as the database name.
+-- Adds a @createdb@ PartialProcessPlan with the argument
+-- as the database name.
 dbnameToPlan :: String -> PartialPlan
 dbnameToPlan dbName = mempty
   { partialPlanCreateDb = pure $ mempty
@@ -517,8 +646,8 @@ dbnameToPlan dbName = mempty
     }
   }
 
--- | Parse a host string as either an UNIX domain socket directory
---   or a domain or IP.
+-- Parse a host string as either an UNIX domain socket directory
+-- or a domain or IP.
 hostToSocketClass :: String -> PartialSocketClass
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
   '/' : _ -> PUnixSocket $ PPermanent hostOrSocketPath

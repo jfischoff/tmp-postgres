@@ -47,11 +47,9 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 
 module Database.Postgres.Temp
   (
-  -- * Main resource handle
-    DB (..)
   -- * Exception safe interface
   -- $options
-  , with
+    with
   , withConfig
   -- * Separate start and stop interface.
   , start
@@ -72,8 +70,12 @@ module Database.Postgres.Temp
   , toConnectionString
   -- * Errors
   , StartError (..)
+  -- * Main resource handle
+  , DB (..)
+  , prettyPrintDB
   -- * Configuration Types
   , Config (..)
+  , prettyPrintConfig
   -- ** Directory configuration
   , DirectoryType (..)
   , PartialDirectoryType (..)

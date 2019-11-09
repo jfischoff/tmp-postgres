@@ -1,10 +1,11 @@
+{-# OPTIONS_HADDOCK prune #-}
 {-|
 This module provides the low level functionality for running @initdb@, @postgres@ and @createdb@ to make a database.
 
 See 'initPlan' for more details.
 -}
 module Database.Postgres.Temp.Internal.Core where
-import qualified Database.PostgreSQL.Simple.Options as PostgresClient
+import qualified Database.PostgreSQL.Simple.Options as Client
 import qualified Database.PostgreSQL.Simple as PG
 import System.Process.Internals
 import System.Exit (ExitCode(..))
@@ -19,6 +20,8 @@ import Data.Typeable
 import System.IO
 import System.Process
 import Data.Monoid
+import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import qualified Data.ByteString.Char8 as BSC
 
 -- | Internal events for debugging
 data Event
@@ -53,9 +56,9 @@ type Logger = Event -> IO ()
 -- | @postgres@ is not ready until we are able to successfully connect.
 --   'waitForDB' attempts to connect over and over again and returns
 --   after the first successful connection.
-waitForDB :: PostgresClient.Options -> IO ()
+waitForDB :: Client.Options -> IO ()
 waitForDB options = do
-  let theConnectionString = PostgresClient.toConnectionString options
+  let theConnectionString = Client.toConnectionString options
       startAction = PG.connectPostgreSQL theConnectionString
   try (bracket startAction PG.close mempty) >>= \case
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
@@ -75,6 +78,19 @@ data ProcessConfig = ProcessConfig
   , processConfigStdErr  :: Handle
   -- ^ The 'Handle' for standard error
   }
+
+prettyKeyPair ::(Pretty a, Pretty b) => a -> b -> Doc
+prettyKeyPair k v = pretty k <> text ": " <> pretty v
+
+instance Pretty ProcessConfig where
+  pretty ProcessConfig {..}
+    =  text "processConfigEnvVars:"
+    <> softline
+    <> indent 2 (vsep (map (uncurry prettyKeyPair) processConfigEnvVars))
+    <> hardline
+    <> text "processConfigCmdLine:"
+    <> softline
+    <> text (unwords processConfigCmdLine)
 
 -- | Start a process interactively and return the 'ProcessHandle'
 startProcess
@@ -107,23 +123,40 @@ executeProcess name = startProcess name >=> waitForProcess
 data PostgresPlan = PostgresPlan
   { postgresPlanProcessConfig :: ProcessConfig
   -- ^ The process config for @postgres@
-  , postgresPlanClientConfig  :: PostgresClient.Options
+  , postgresPlanClientOptions  :: Client.Options
   -- ^ Connection options. Used to verify that @postgres@ is ready.
   }
 
+instance Pretty PostgresPlan where
+  pretty PostgresPlan {..}
+    =  text "postgresPlanProcessConfig:"
+    <> softline
+    <> indent 2 (pretty postgresPlanProcessConfig)
+    <> hardline
+    <> text "postgresPlanClientOptions:"
+    <+> prettyOptions postgresPlanClientOptions
+
+prettyOptions :: Client.Options -> Doc
+prettyOptions = text . BSC.unpack . Client.toConnectionString
+
 -- | The output of calling 'startPostgresProcess'.
 data PostgresProcess = PostgresProcess
-  { postgresProcessClientConfig :: PostgresClient.Options
+  { postgresProcessClientOptions :: Client.Options
   -- ^ Connection options
   , postgresProcessHandle :: ProcessHandle
   -- ^ @postgres@ process handle
   }
 
--- | Force all connections to the database to close.
---   Called during shutdown as well.
-terminateConnections :: PostgresClient.Options-> IO ()
+instance Pretty PostgresProcess where
+  pretty PostgresProcess {..}
+    =   text "postgresProcessClientOptions:"
+    <+> prettyOptions postgresProcessClientOptions
+
+-- Force all connections to the database to close.
+-- Called during shutdown as well.
+terminateConnections :: Client.Options-> IO ()
 terminateConnections options = do
-  let theConnectionString = PostgresClient.toConnectionString options
+  let theConnectionString = Client.toConnectionString options
       terminationQuery = fromString $ unlines
         [ "SELECT pg_terminate_backend(pid)"
         , "FROM pg_stat_activity"
@@ -131,7 +164,7 @@ terminateConnections options = do
         ]
   e <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $
     \conn -> PG.execute conn terminationQuery
-      [getLast $ PostgresClient.dbname options]
+      [getLast $ Client.dbname options]
   case e of
     Left (_ :: IOError) -> pure ()
     Right _ -> pure ()
@@ -144,7 +177,7 @@ stopPostgresProcess PostgresProcess{..} = do
     OpenHandle p   -> do
       -- try to terminate the connects first. If we can't terminate still
       -- keep shutting down
-      terminateConnections postgresProcessClientConfig
+      terminateConnections postgresProcessClientOptions
 
       signalProcess sigINT p
     OpenExtHandle {} -> pure () -- TODO log windows is not supported
@@ -159,7 +192,7 @@ startPostgresProcess :: Logger -> PostgresPlan -> IO PostgresProcess
 startPostgresProcess logger PostgresPlan {..} = do
   logger StartPostgres
 
-  let startAction = PostgresProcess postgresPlanClientConfig
+  let startAction = PostgresProcess postgresPlanClientOptions
         <$> startProcess "postgres" postgresPlanProcessConfig
 
   -- Start postgres and stop if an exception occurs
@@ -173,8 +206,8 @@ startPostgresProcess logger PostgresPlan {..} = do
       logger WaitForDB
       -- We assume that 'template1' exist and make connection
       -- options to test if postgres is ready.
-      let options = postgresPlanClientConfig
-            { PostgresClient.dbname = pure "template1"
+      let options = postgresPlanClientOptions
+            { Client.dbname = pure "template1"
             }
 
       -- Block until a connection succeeds or postgres crashes
@@ -201,7 +234,28 @@ data Plan = Plan
   , planDataDirectory :: FilePath
   }
 
--- | A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
+instance Pretty Plan where
+  pretty Plan {..}
+    =   text "planInitDb:"
+    <>  softline
+    <>  indent 2 (pretty planInitDb)
+    <>  hardline
+    <>  text "planCreateDb:"
+    <>  softline
+    <>  indent 2 (pretty planCreateDb)
+    <>  hardline
+    <>  text "planPostgres:"
+    <>  softline
+    <>  indent 2 (pretty planPostgres)
+    <>  hardline
+    <>  text "planConfig:"
+    <>  softline
+    <>  indent 2 (pretty planConfig)
+    <>  hardline
+    <>  text "planDataDirectory:"
+    <+> pretty planDataDirectory
+
+-- A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
 throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
 throwIfNotSuccess f = \case
   ExitSuccess -> pure ()

@@ -47,18 +47,18 @@ defaultConfigShouldMatchDefaultPlan =
     let Resources {..} = dbResources
         Plan {..} = resourcesPlan
         PostgresPlan {..} = planPostgres
-    Client.dbname postgresPlanClientConfig `shouldBe` pure "postgres"
+    Client.dbname postgresPlanClientOptions `shouldBe` pure "postgres"
     let Temporary tmpDataDir = resourcesDataDir
     tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
-    let Just port = getLast $ Client.port postgresPlanClientConfig
+    let Just port = getLast $ Client.port postgresPlanClientOptions
     port `shouldSatisfy` (>32768)
     let UnixSocket (Temporary unixSocket) = resourcesSocket
     unixSocket `shouldStartWith` "/tmp/tmp-postgres-socket"
-    postgresPlanClientConfig `shouldBe`
+    postgresPlanClientOptions `shouldBe`
       (mempty
-        { Client.port = Client.port postgresPlanClientConfig
-        , Client.host = Client.host postgresPlanClientConfig
-        , Client.dbname = Client.dbname postgresPlanClientConfig
+        { Client.port = Client.port postgresPlanClientOptions
+        , Client.host = Client.host postgresPlanClientOptions
+        , Client.dbname = Client.dbname postgresPlanClientOptions
         }
       )
 
@@ -116,7 +116,7 @@ customConfigWork action = do
 
       let Resources {..} = dbResources
           Plan {..} = resourcesPlan
-          actualOptions = postgresPlanClientConfig planPostgres
+          actualOptions = postgresPlanClientOptions planPostgres
           actualPostgresConfig = planConfig
       Client.user actualOptions `shouldBe` pure expectedUser
       Client.dbname actualOptions `shouldBe` pure expectedDbName
@@ -368,8 +368,8 @@ spec = do
 
           reloadConfig db
 
-          let Just port = getLast $ Client.port $ postgresProcessClientConfig dbPostgresProcess
-              Just host = getLast $ Client.host $ postgresProcessClientConfig dbPostgresProcess
+          let Just port = getLast $ Client.port $ postgresProcessClientOptions dbPostgresProcess
+              Just host = getLast $ Client.host $ postgresProcessClientOptions dbPostgresProcess
               backupCommand = "pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p"
                 ++ show port ++ " -h" ++ host
 

@@ -14,6 +14,7 @@ import Data.ByteString (ByteString)
 import Control.Monad.Trans.Cont
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Data.Map.Strict as Map
+import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the
@@ -27,13 +28,23 @@ data DB = DB
   -- ^ @postgres@ process handle and the connection options.
   }
 
+instance Pretty DB where
+  pretty DB {..}
+    =  text "dbResources"
+    <> softline
+    <> indent 2 (pretty dbResources)
+    <> hardline
+    <> text "dbPostgresProcess"
+    <> softline
+    <> indent 2 (pretty dbPostgresProcess)
+
 -- | Convert a 'DB' to a connection string. Alternatively one can access the
 --   'Client.Options' using
---    @postgresProcessClientConfig . dbPostgresProcess@
+--    @postgresProcessClientOptions . dbPostgresProcess@
 toConnectionString :: DB -> ByteString
 toConnectionString
   = Client.toConnectionString
-  . postgresProcessClientConfig
+  . postgresProcessClientOptions
   . dbPostgresProcess
 -------------------------------------------------------------------------------
 -- Life Cycle Management
@@ -178,7 +189,7 @@ reloadConfig db =
 -------------------------------------------------------------------------------
 -- | Exception safe default database create. Takes an @action@ continuation
 --   which is given a 'DB' it can use to connect
---   to (see 'toConnectionString' or 'postgresProcessClientConfig').
+--   to (see 'toConnectionString' or 'postgresProcessClientOptions').
 --   All of the database resources are automatically cleaned up on
 --   completion even in the face of exceptions.
 withConfig :: Config
@@ -217,3 +228,14 @@ optionsToDefaultConfig opts@Client.Options {..} =
               }
             }
   in startingConfig <> generated
+
+-------------------------------------------------------------------------------
+-- Pretty Printing
+-------------------------------------------------------------------------------
+-- | Display a 'Config'.
+prettyPrintConfig :: Config -> String
+prettyPrintConfig = show . pretty
+
+-- | Display a 'DB'
+prettyPrintDB :: DB -> String
+prettyPrintDB = show . pretty
