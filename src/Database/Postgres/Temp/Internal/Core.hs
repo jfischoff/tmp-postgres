@@ -11,7 +11,6 @@ import System.Exit (ExitCode(..))
 import Data.String
 import System.Posix.Signals (sigINT, signalProcess)
 import Control.Exception
-import System.Process (getProcessExitCode, waitForProcess)
 import Data.Foldable (for_)
 import Control.Concurrent.Async (race_)
 import Control.Monad (forever, (>=>))
@@ -151,8 +150,7 @@ stopPostgresProcess PostgresProcess{..} = do
     OpenExtHandle {} -> pure () -- TODO log windows is not supported
     ClosedHandle _ -> return ()
 
-  exitCode <- waitForProcess postgresProcessHandle
-  pure exitCode
+  waitForProcess postgresProcessHandle
 
 -- | Start the @postgres@ process and block until a successful connection
 --   occurs. A separate thread we continously check to see if the @postgres@

@@ -170,7 +170,7 @@ restart db@DB{..} = try $ do
 --   @pg_reload_conf()@.
 reloadConfig :: DB -> IO ()
 reloadConfig db =
-  bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
+  bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn ->
     (void :: IO [PG.Only Bool] -> IO ()) $
       PG.query_ conn "SELECT pg_reload_conf()"
 -------------------------------------------------------------------------------
