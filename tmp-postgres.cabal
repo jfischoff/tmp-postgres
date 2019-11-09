@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.6.0.0
+version:             1.7.0.0
 synopsis: Start and stop a temporary postgres
 description:
  @tmp-postgres@ provides functions creating a temporary @postgres@ instance.
