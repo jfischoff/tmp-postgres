@@ -151,10 +151,6 @@ custom 'Config' like the following.
  This is common enough there is `defaultPostgresConf` which
  is a helper to do this.
 
- In general you'll want to 'mappend' a config to the 'defaultConfig'
- since the 'defaultConfig' setups a client connection to the
- @postgres@ database.
-
  As an alternative to using 'defaultConfig' one could create a
  config from connections parameters using 'optionsToDefaultConfig'
 -}
