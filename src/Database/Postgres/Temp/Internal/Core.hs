@@ -28,6 +28,7 @@ data Event
   = StartPostgres
   | WaitForDB
   | StartPlan String
+  | TryToConnect
   deriving (Show, Eq, Ord)
 
 -- | A list of failures that can occur when starting. This is not
@@ -57,12 +58,13 @@ type Logger = Event -> IO ()
 -- | @postgres@ is not ready until we are able to successfully connect.
 --   'waitForDB' attempts to connect over and over again and returns
 --   after the first successful connection.
-waitForDB :: Client.Options -> IO ()
-waitForDB options = do
+waitForDB :: Logger -> Client.Options -> IO ()
+waitForDB logger options = do
+  logger TryToConnect
   let theConnectionString = Client.toConnectionString options
       startAction = PG.connectPostgreSQL theConnectionString
   try (bracket startAction PG.close mempty) >>= \case
-    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB options
+    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB logger options
     Right () -> return ()
 
 -- | 'ProcessConfig' contains the configuration necessary for starting a
@@ -212,7 +214,7 @@ startPostgresProcess logger PostgresPlan {..} = do
             }
 
       -- Block until a connection succeeds or postgres crashes
-      waitForDB options
+      waitForDB logger options
         `race_` forever (checkForCrash >> threadDelay 100000)
 
       -- Postgres is now ready so return
