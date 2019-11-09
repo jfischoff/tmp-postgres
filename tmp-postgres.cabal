@@ -63,7 +63,6 @@ library
                , port-utils
                , async
                , generic-monoid
-               , either
                , transformers
                , containers
                , ansi-wl-pprint

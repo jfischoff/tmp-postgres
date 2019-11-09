@@ -27,7 +27,7 @@ import System.IO.Temp (createTempDirectory)
 import Network.Socket.Free (getFreePort)
 import Control.Monad (join)
 import System.Directory
-import Data.Either.Validation
+import Control.Applicative.Lift
 import Control.Monad.Trans.Cont
 import Control.Monad.Trans.Class
 import System.IO.Error
@@ -191,18 +191,18 @@ addErrorContext :: String -> Either [String] a -> Either [String] a
 addErrorContext cxt = either (Left . map (cxt <>)) Right
 
 -- A helper for creating an error if a 'Last' is not defined.
-getOption :: String -> Last a -> Validation [String] a
+getOption :: String -> Last a -> Errors [String] a
 getOption optionName = \case
     Last (Just x) -> pure x
-    Last Nothing  -> Failure ["Missing " ++ optionName ++ " option"]
+    Last Nothing  -> failure ["Missing " ++ optionName ++ " option"]
 
 -- | Turn a 'PartialProcessConfig' into a 'ProcessConfig'. Fails if
 --   any values are missing.
 completeProcessConfig
   :: [(String, String)] -> PartialProcessConfig -> Either [String] ProcessConfig
-completeProcessConfig envs PartialProcessConfig {..} = validationToEither $ do
+completeProcessConfig envs PartialProcessConfig {..} = runErrors $ do
   let processConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
-  processConfigEnvVars <- eitherToValidation $
+  processConfigEnvVars <- eitherToErrors $
     completePartialEnvVars envs partialProcessConfigEnvVars
   processConfigStdIn  <-
     getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
@@ -377,10 +377,10 @@ instance Pretty PartialPostgresPlan where
 -- | Turn a 'PartialPostgresPlan' into a 'PostgresPlan'. Fails if any
 --   values are missing.
 completePostgresPlan :: [(String, String)] -> PartialPostgresPlan -> Either [String] PostgresPlan
-completePostgresPlan envs PartialPostgresPlan {..} = validationToEither $ do
+completePostgresPlan envs PartialPostgresPlan {..} = runErrors $ do
   let postgresPlanClientOptions = partialPostgresPlanClientConfig
   postgresPlanProcessConfig <-
-    eitherToValidation $ addErrorContext "partialPostgresPlanProcessConfig: " $
+    eitherToErrors $ addErrorContext "partialPostgresPlanProcessConfig: " $
       completeProcessConfig envs partialPostgresPlanProcessConfig
 
   pure PostgresPlan {..}
@@ -423,13 +423,13 @@ instance Pretty PartialPlan where
 
 -- | Turn a 'PartialPlan' into a 'Plan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> PartialPlan -> Either [String] Plan
-completePlan envs PartialPlan {..} = validationToEither $ do
+completePlan envs PartialPlan {..} = runErrors $ do
   planLogger   <- getOption "partialPlanLogger" partialPlanLogger
-  planInitDb   <- eitherToValidation $ addErrorContext "partialPlanInitDb: " $
+  planInitDb   <- eitherToErrors $ addErrorContext "partialPlanInitDb: " $
     traverse (completeProcessConfig envs) partialPlanInitDb
-  planCreateDb <- eitherToValidation $ addErrorContext "partialPlanCreateDb: " $
+  planCreateDb <- eitherToErrors $ addErrorContext "partialPlanCreateDb: " $
     traverse (completeProcessConfig envs) partialPlanCreateDb
-  planPostgres <- eitherToValidation $ addErrorContext "partialPlanPostgres: " $
+  planPostgres <- eitherToErrors $ addErrorContext "partialPlanPostgres: " $
     completePostgresPlan envs partialPlanPostgres
   let planConfig = unlines partialPlanConfig
   planDataDirectory <- getOption "partialPlanDataDirectory"
