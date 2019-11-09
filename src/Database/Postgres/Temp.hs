@@ -68,10 +68,12 @@ module Database.Postgres.Temp
   , reloadConfig
   -- * DB manipulation
   , toConnectionString
+  , toConnectionOptions
+  , toDataDirectory
   -- * Errors
   , StartError (..)
   -- * Main resource handle
-  , DB (..)
+  , DB
   , prettyPrintDB
   -- * Configuration Types
   , Config (..)

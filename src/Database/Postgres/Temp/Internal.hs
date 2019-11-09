@@ -39,13 +39,22 @@ instance Pretty DB where
     <> indent 2 (pretty dbPostgresProcess)
 
 -- | Convert a 'DB' to a connection string. Alternatively one can access the
---   'Client.Options' using
---    @postgresProcessClientOptions . dbPostgresProcess@
+--   'Client.Options' using 'toConnectionOptions'
 toConnectionString :: DB -> ByteString
 toConnectionString
   = Client.toConnectionString
-  . postgresProcessClientOptions
+  . toConnectionOptions
+
+-- | Convert a 'DB' to a connection 'Client.Options' type.
+toConnectionOptions :: DB -> Client.Options
+toConnectionOptions
+  = postgresProcessClientOptions
   . dbPostgresProcess
+
+-- | Access the data directory. This was either generated or
+--   specified explicitly when creating the 'Config'
+toDataDirectory :: DB -> FilePath
+toDataDirectory =  toFilePath . resourcesDataDir . dbResources
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
