@@ -1,3 +1,4 @@
+[![Hackage](https://img.shields.io/hackage/v/tmp-postgres.svg?style=flat)](https://hackage.haskell.org/package/tmp-postgres)
 [![Travis CI Status](https://travis-ci.org/jfischoff/tmp-postgres.svg?branch=master)](http://travis-ci.org/jfischoff/tmp-postgres)
 # tmp-postgres
 
