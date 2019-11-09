@@ -4,4 +4,4 @@
 * Fix old documentation
 * Figure out a consistent way to name the PartialSocketClass and
   PartialDirectoryType constructors
-* Rename start to initialize and stop to shutdown
+* Rename start to initialize and stop to cleanup

@@ -144,9 +144,9 @@ startConfig :: Config
           -> IO (Either StartError DB)
 startConfig extra = try $ evalContT $ do
   dbResources@Resources {..} <-
-    ContT $ bracketOnError (initConfig extra) shutdownResources
+    ContT $ bracketOnError (setupConfig extra) cleanupResources
   dbPostgresProcess <-
-    ContT $ bracketOnError (initPlan resourcesPlan) stopPostgresProcess
+    ContT $ bracketOnError (startPlan resourcesPlan) stopPostgresProcess
   pure DB {..}
 
 -- | Default start behavior. Equivalent to calling 'startConfig' with the
@@ -159,7 +159,7 @@ start = startConfig defaultConfig
 stop :: DB -> IO ()
 stop DB {..} = do
   void $ stopPostgresProcess dbPostgresProcess
-  shutdownResources dbResources
+  cleanupResources dbResources
 
 -- | Only stop the @postgres@ process but leave any temporary resources.
 --   Useful for testing backup strategies when used in conjunction with

@@ -254,8 +254,8 @@ instance Monoid PartialDirectoryType where
 
 -- | Either create a'Temporary' directory or do nothing to a 'Permanent'
 --   one.
-initDirectoryType :: String -> PartialDirectoryType -> IO DirectoryType
-initDirectoryType pattern = \case
+setupDirectoryType :: String -> PartialDirectoryType -> IO DirectoryType
+setupDirectoryType pattern = \case
   PTemporary -> Temporary <$> createTempDirectory "/tmp" pattern
   PPermanent x  -> pure $ Permanent x
 
@@ -269,8 +269,8 @@ rmDirIgnoreErrors mainDir = do
 
 -- | Either remove a 'Temporary' directory or do nothing to a 'Permanent'
 -- one.
-shutdownDirectoryType :: DirectoryType -> IO ()
-shutdownDirectoryType = \case
+cleanupDirectoryType :: DirectoryType -> IO ()
+cleanupDirectoryType = \case
   Permanent _ -> pure ()
   Temporary filePath -> rmDirIgnoreErrors filePath
 
@@ -340,18 +340,18 @@ instance Monoid PartialSocketClass where
 -- | Turn a 'PartialSocketClass' to a 'SocketClass'. If the 'PIpSocket' is
 --   'Nothing' default to \"127.0.0.1\". If the is a 'PUnixSocket'
 --    optionally create a temporary directory if configured to do so.
-initPartialSocketClass :: PartialSocketClass -> IO SocketClass
-initPartialSocketClass theClass = case theClass of
+setupPartialSocketClass :: PartialSocketClass -> IO SocketClass
+setupPartialSocketClass theClass = case theClass of
   PIpSocket mIp -> pure $ IpSocket $ fromMaybe "127.0.0.1" $
     getLast mIp
   PUnixSocket mFilePath ->
-    UnixSocket <$> initDirectoryType "tmp-postgres-socket" mFilePath
+    UnixSocket <$> setupDirectoryType "tmp-postgres-socket" mFilePath
 
 -- | Cleanup the UNIX socket temporary directory if one was created.
-shutdownSocketConfig :: SocketClass -> IO ()
-shutdownSocketConfig = \case
+cleanupSocketConfig :: SocketClass -> IO ()
+cleanupSocketConfig = \case
   IpSocket   {}  -> pure ()
-  UnixSocket dir -> shutdownDirectoryType dir
+  UnixSocket dir -> cleanupDirectoryType dir
 
 -- | PartialPostgresPlan
 data PartialPostgresPlan = PartialPostgresPlan
@@ -448,11 +448,11 @@ hasCreateDb :: PartialPlan -> Bool
 hasCreateDb PartialPlan {..} = isJust partialPlanCreateDb
 
 -- | 'Resources' holds a description of the temporary folders (if there are any)
---   and includes the final 'Plan' that can be used with 'initPlan'.
---   See 'initConfig' for an example of how to create a 'Resources'.
+--   and includes the final 'Plan' that can be used with 'startPlan'.
+--   See 'setupConfig' for an example of how to create a 'Resources'.
 data Resources = Resources
   { resourcesPlan    :: Plan
-  -- ^ Final 'Plan'. See 'initPlan' for information on 'Plan's
+  -- ^ Final 'Plan'. See 'startPlan' for information on 'Plan's
   , resourcesSocket  :: SocketClass
   -- ^ The 'SocketClass'. Used to track if a temporary directory was made
   --   as the socket location.
@@ -561,17 +561,17 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectory = mempty
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
 -- 'PartialPlan' from 'toPlan' with the @extraConfig@ passed in.
-initConfig
+setupConfig
   :: Config
   -- ^ @extraConfig@ to 'mappend' after the default config
   -> IO Resources
-initConfig Config {..} = evalContT $ do
+setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
   port <- lift $ maybe getFreePort pure $ join $ getLast configPort
   resourcesSocket <- ContT $ bracketOnError
-    (initPartialSocketClass configSocket) shutdownSocketConfig
+    (setupPartialSocketClass configSocket) cleanupSocketConfig
   resourcesDataDir <- ContT $ bracketOnError
-    (initDirectoryType "tmp-postgres-data" configDataDir) shutdownDirectoryType
+    (setupDirectoryType "tmp-postgres-data" configDataDir) cleanupDirectoryType
   let hostAndDirPartial = toPlan
           (hasInitDb configPlan)
           (hasCreateDb configPlan)
@@ -583,11 +583,11 @@ initConfig Config {..} = evalContT $ do
     completePlan envs finalPlan
   pure Resources {..}
 
--- | Free the temporary resources created by 'initConfig'
-shutdownResources :: Resources -> IO ()
-shutdownResources Resources {..} = do
-  shutdownSocketConfig resourcesSocket
-  shutdownDirectoryType resourcesDataDir
+-- | Free the temporary resources created by 'setupConfig'
+cleanupResources :: Resources -> IO ()
+cleanupResources Resources {..} = do
+  cleanupSocketConfig resourcesSocket
+  cleanupDirectoryType resourcesDataDir
 -------------------------------------------------------------------------------
 -- Config Generation
 -------------------------------------------------------------------------------

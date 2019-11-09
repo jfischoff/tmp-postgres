@@ -2,7 +2,7 @@
 {-|
 This module provides the low level functionality for running @initdb@, @postgres@ and @createdb@ to make a database.
 
-See 'initPlan' for more details.
+See 'startPlan' for more details.
 -}
 module Database.Postgres.Temp.Internal.Core where
 import qualified Database.PostgreSQL.Simple.Options as Client
@@ -261,13 +261,13 @@ throwIfNotSuccess f = \case
   ExitSuccess -> pure ()
   e -> throwIO $ f e
 
--- | 'initPlan' optionally calls @initdb@, optionally calls @createdb@ and
+-- | 'startPlan' optionally calls @initdb@, optionally calls @createdb@ and
 --   unconditionally calls @postgres@.
 --   Additionally it writes a \"postgresql.conf\" and does not return until
 --   the @postgres@ process is ready. See 'startPostgresProcess' for more
 --   details.
-initPlan :: Plan -> IO PostgresProcess
-initPlan Plan {..} = do
+startPlan :: Plan -> IO PostgresProcess
+startPlan Plan {..} = do
   for_ planInitDb  $ executeProcess "initdb" >=>
     throwIfNotSuccess InitDbFailed
 
@@ -283,5 +283,5 @@ initPlan Plan {..} = do
     pure result
 
 -- | Stop the @postgres@ process. See 'stopPostgresProcess' for more details.
-shutdownPlan :: PostgresProcess -> IO ExitCode
-shutdownPlan = stopPostgresProcess
+stopPlan :: PostgresProcess -> IO ExitCode
+stopPlan = stopPostgresProcess
