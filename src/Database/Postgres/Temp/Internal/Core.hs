@@ -27,6 +27,7 @@ import qualified Data.ByteString.Char8 as BSC
 data Event
   = StartPostgres
   | WaitForDB
+  | StartPlan String
   deriving (Show, Eq, Ord)
 
 -- | A list of failures that can occur when starting. This is not
@@ -267,7 +268,8 @@ throwIfNotSuccess f = \case
 --   the @postgres@ process is ready. See 'startPostgresProcess' for more
 --   details.
 startPlan :: Plan -> IO PostgresProcess
-startPlan Plan {..} = do
+startPlan plan@Plan {..} = do
+  planLogger $ StartPlan $ show $ pretty plan
   for_ planInitDb  $ executeProcess "initdb" >=>
     throwIfNotSuccess InitDbFailed
 
