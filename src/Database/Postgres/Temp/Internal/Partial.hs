@@ -579,8 +579,9 @@ setupConfig Config {..} = evalContT $ do
           resourcesSocket
           (toFilePath resourcesDataDir)
       finalPlan = hostAndDirPartial <> configPlan
-  resourcesPlan <- lift $ either (throwIO . CompletePlanFailed) pure $
-    completePlan envs finalPlan
+  resourcesPlan <- lift $
+    either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
+      completePlan envs finalPlan
   pure Resources {..}
 
 -- | Free the temporary resources created by 'setupConfig'
