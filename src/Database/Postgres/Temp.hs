@@ -66,8 +66,6 @@ module Database.Postgres.Temp
   , withRestart
   -- * Reloading the config
   , reloadConfig
-  -- * Errors
-  , StartError (..)
   -- * Main resource handle
   , DB
   -- ** 'DB' manipulation
@@ -75,30 +73,21 @@ module Database.Postgres.Temp
   , toConnectionString
   , toConnectionOptions
   , toDataDirectory
-  -- * Configuration Types
+  -- * Monoidial Configuration Types
   , Config (..)
   , prettyPrintConfig
-  -- ** Directory configuration
-  , DirectoryType (..)
-  , PartialDirectoryType (..)
-  -- ** Listening socket configuration
-  , SocketClass (..)
-  , PartialSocketClass (..)
-  -- ** An environment variables monoid
-  , PartialEnvVars (..)
-  -- ** An command line monoid
-  , PartialCommandLineArgs (..)
-  -- ** Process configuration
-  , PartialProcessConfig (..)
-  , ProcessConfig (..)
-  -- ** @postgres@ process configuration
-  , PartialPostgresPlan (..)
-  , PostgresPlan (..)
-  -- *** @postgres@ process handle. Includes the client options for connecting
-  , PostgresProcess (..)
-  -- ** Database plans. This is used to call @initdb@, @postgres@ and @createdb@
   , PartialPlan (..)
-  , Plan (..)
+  , PartialPostgresPlan (..)
+  , PartialProcessConfig (..)
+  , PartialEnvVars (..)
+  , PartialCommandLineArgs (..)
+  , PartialDirectoryType (..)
+  , PartialSocketClass (..)
+  , Logger
+  -- * Internal events passed to the 'partialPlanLogger' .
+  , Event (..)
+    -- * Errors
+  , StartError (..)
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core

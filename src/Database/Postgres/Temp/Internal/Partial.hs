@@ -353,7 +353,8 @@ cleanupSocketConfig = \case
   IpSocket   {}  -> pure ()
   UnixSocket dir -> cleanupDirectoryType dir
 
--- | PartialPostgresPlan
+-- | @postgres@ process config and corresponding client connection
+--   'Client.Options'.
 data PartialPostgresPlan = PartialPostgresPlan
   { partialPostgresPlanProcessConfig :: PartialProcessConfig
   -- ^ Monoid for the @postgres@ ProcessConfig.
