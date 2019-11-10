@@ -231,6 +231,11 @@ instance Pretty DirectoryType where
     Permanent x -> text "Permanent" <+> pretty x
     Temporary x -> text "Temporary" <+> pretty x
 
+makePermanent :: DirectoryType -> DirectoryType
+makePermanent = \case
+  Temporary x -> Permanent x
+  x -> x
+
 -- | The monoidial version of 'DirectoryType'. Used to combine overrides with
 --   defaults when creating a 'DirectoryType'. The monoid instance treats
 --   'PTemporary' as 'mempty' and takes the last 'PPermanent' value.
@@ -474,6 +479,13 @@ instance Pretty Resources where
     <>  hardline
     <>  text "resourcesDataDir:"
     <+> pretty resourcesDataDir
+
+-- | Make the 'resourcesDataDir' 'Permanent' so it will not
+--   get cleaned up.
+makeResourcesDataDirPermanent :: Resources -> Resources
+makeResourcesDataDirPermanent r = r
+  { resourcesDataDir = makePermanent $ resourcesDataDir r
+  }
 
 -- | The high level options for overriding default behavior.
 data Config = Config

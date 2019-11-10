@@ -57,6 +57,22 @@ toConnectionOptions
 --   specified explicitly when creating the 'Config'
 toDataDirectory :: DB -> FilePath
 toDataDirectory =  toFilePath . resourcesDataDir . dbResources
+
+{-|
+Make the data directory permanent. Useful for debugging.
+If you are using 'with' or 'withConfig' this function will
+not modify the 'DB' that is passed for cleanup. You will
+need to setup your own bracket like
+
+ @
+    bracket (fmap 'makeDataDirPermanent' 'start') (either mempty 'stop')
+ @
+
+-}
+makeDataDirPermanent :: DB -> DB
+makeDataDirPermanent db = db
+  { dbResources = makeResourcesDataDirPermanent $ dbResources db
+  }
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
