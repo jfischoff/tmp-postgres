@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.7.0.1
+version:             1.7.1.0
 synopsis: Start and stop a temporary postgres
 description: See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
@@ -10,7 +10,7 @@ maintainer:          jonathangfischoff@gmail.com
 copyright:           2017-2019 Jonathan Fischoff
 category:            Web
 build-type:          Simple
-extra-source-files:  README.md
+extra-source-files:  README.md, CHANGELOG.md
 cabal-version:       >=1.10
 tested-with: GHC ==8.6.5
 
