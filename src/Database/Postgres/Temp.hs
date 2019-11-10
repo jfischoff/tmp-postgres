@@ -66,15 +66,15 @@ module Database.Postgres.Temp
   , withRestart
   -- * Reloading the config
   , reloadConfig
-  -- * DB manipulation
-  , toConnectionString
-  , toConnectionOptions
-  , toDataDirectory
   -- * Errors
   , StartError (..)
   -- * Main resource handle
   , DB
+  -- ** 'DB' manipulation
   , prettyPrintDB
+  , toConnectionString
+  , toConnectionOptions
+  , toDataDirectory
   -- * Configuration Types
   , Config (..)
   , prettyPrintConfig
