@@ -5,23 +5,25 @@ This module provides the low level functionality for running @initdb@, @postgres
 See 'startPlan' for more details.
 -}
 module Database.Postgres.Temp.Internal.Core where
-import qualified Database.PostgreSQL.Simple.Options as Client
-import qualified Database.PostgreSQL.Simple as PG
-import System.Process.Internals
-import System.Exit (ExitCode(..))
-import Data.String
-import System.Posix.Signals (sigINT, signalProcess)
-import Control.Exception
-import Data.Foldable (for_)
-import Control.Concurrent.Async (race_)
-import Control.Monad (forever, (>=>))
-import Control.Concurrent (threadDelay)
-import Data.Typeable
-import System.IO
-import System.Process
-import Data.Monoid
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+
+import           Control.Concurrent (threadDelay)
+import           Control.Concurrent.Async (race_)
+import           Control.Exception
+import           Control.Monad (forever, (>=>))
 import qualified Data.ByteString.Char8 as BSC
+import           Data.Foldable (for_)
+import           Data.Monoid
+import           Data.String
+import           Data.Typeable
+import qualified Database.PostgreSQL.Simple as PG
+import qualified Database.PostgreSQL.Simple.Options as Client
+import           System.Exit (ExitCode(..))
+import           System.IO
+import           System.Posix.Signals (sigINT, signalProcess)
+import           System.Process
+import           System.Process.Internals
+import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+
 
 -- | Internal events for debugging
 data Event

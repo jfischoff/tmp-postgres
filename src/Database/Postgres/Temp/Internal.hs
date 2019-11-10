@@ -4,17 +4,19 @@ by @Database.Postgres.Temp@. Additionally it includes some
 identifiers that are used for testing but are not exported.
 -}
 module Database.Postgres.Temp.Internal where
+
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Partial
-import Control.Exception
-import Control.Monad (void)
-import qualified Database.PostgreSQL.Simple.Options as Client
-import System.Exit (ExitCode(..))
-import Data.ByteString (ByteString)
-import Control.Monad.Trans.Cont
-import qualified Database.PostgreSQL.Simple as PG
+
+import           Control.Exception
+import           Control.Monad (void)
+import           Control.Monad.Trans.Cont
+import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import qualified Database.PostgreSQL.Simple as PG
+import qualified Database.PostgreSQL.Simple.Options as Client
+import           System.Exit (ExitCode(..))
+import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the

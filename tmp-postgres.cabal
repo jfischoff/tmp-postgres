@@ -35,37 +35,38 @@ cabal-version:       >=1.10
 tested-with: GHC ==8.6.5
 
 library
-  hs-source-dirs:      src
+  hs-source-dirs: src
   exposed-modules: Database.Postgres.Temp
                  , Database.Postgres.Temp.Internal
                  , Database.Postgres.Temp.Internal.Core
                  , Database.Postgres.Temp.Internal.Partial
-  default-extensions: LambdaCase
+  default-extensions:
+      ApplicativeDo
+    , DeriveFunctor
+    , DeriveGeneric
     , DerivingStrategies
     , DerivingVia
-    , ScopedTypeVariables
-    , RecordWildCards
-    , DeriveGeneric
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
     , OverloadedStrings
     , RecordWildCards
-    , ApplicativeDo
-    , DeriveFunctor
+    , RecordWildCards
+    , ScopedTypeVariables
     , ViewPatterns
-    , GeneralizedNewtypeDeriving
   build-depends: base >= 4.6 && < 5
-               , temporary
-               , process >= 1.2.0.0
-               , unix
-               , directory
-               , bytestring
-               , postgresql-simple
-               , postgres-options >= 0.2.0.0
-               , port-utils
-               , async
-               , generic-monoid
-               , transformers
-               , containers
                , ansi-wl-pprint
+               , async
+               , bytestring
+               , containers
+               , directory
+               , generic-monoid
+               , port-utils
+               , postgres-options >= 0.2.0.0
+               , postgresql-simple
+               , process >= 1.2.0.0
+               , temporary
+               , transformers
+               , unix
   ghc-options: -Wall
   default-language:    Haskell2010
 
@@ -76,35 +77,31 @@ test-suite test
   main-is:             Spec.hs
   build-depends:       base
                      , containers
-                     , postgresql-libpq
-                     , tmp-postgres
-                     , hspec
-                     , temporary
                      , directory
-                     , process
-                     , postgresql-simple
-                     , bytestring
+                     , hspec
                      , mtl
-                     , unix
-                     , temporary
-                     , either
-                     , transformers
-                     , postgres-options
                      , port-utils
+                     , postgres-options
+                     , postgresql-simple
+                     , process
+                     , temporary
+                     , tmp-postgres
+                     , unix
 
   ghc-options:        -Wall -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
-  default-extensions: LambdaCase
+  default-extensions:
+      DeriveDataTypeable
+    , DeriveGeneric
     , DerivingStrategies
     , DerivingVia
-    , ScopedTypeVariables
-    , RecordWildCards
-    , DeriveGeneric
+    , LambdaCase
     , OverloadedStrings
-    , RecordWildCards
-    , DeriveDataTypeable
     , QuasiQuotes
     , RankNTypes
+    , RecordWildCards
+    , RecordWildCards
+    , ScopedTypeVariables
 
 
 source-repository head

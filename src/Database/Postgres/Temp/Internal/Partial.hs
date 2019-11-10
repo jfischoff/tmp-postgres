@@ -13,27 +13,29 @@
     functions.
 |-}
 module Database.Postgres.Temp.Internal.Partial where
+
 import Database.Postgres.Temp.Internal.Core
-import qualified Database.PostgreSQL.Simple.Options as Client
-import GHC.Generics (Generic)
-import Data.Monoid.Generic
-import Data.Monoid
-import Data.Typeable
-import System.IO
-import System.Environment
-import Data.Maybe
-import Control.Exception
-import System.IO.Temp (createTempDirectory)
-import Network.Socket.Free (getFreePort)
-import Control.Monad (join)
-import System.Directory
-import Control.Applicative.Lift
-import Control.Monad.Trans.Cont
-import Control.Monad.Trans.Class
-import System.IO.Error
-import Data.Map.Strict (Map)
+
+import           Control.Applicative.Lift
+import           Control.Exception
+import           Control.Monad (join)
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Cont
 import qualified Data.Map.Strict as Map
-import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import           Data.Map.Strict (Map)
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Monoid.Generic
+import           Data.Typeable
+import qualified Database.PostgreSQL.Simple.Options as Client
+import           GHC.Generics (Generic)
+import           Network.Socket.Free (getFreePort)
+import           System.Directory
+import           System.Environment
+import           System.IO
+import           System.IO.Error
+import           System.IO.Temp (createTempDirectory)
+import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc
 prettyMap theMap =
