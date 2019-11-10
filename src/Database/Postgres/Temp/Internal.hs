@@ -77,7 +77,7 @@ The default configuration. This will create a database called \"postgres\"
    It will create a temporary directory for the data and a temporary directory
  for a unix socket on a random port.
  Additionally it will use append the following onto the \"postgresql.conf\"
-
+ which is optimized for performance.
  @
    shared_buffers = 12MB
    fsync = off

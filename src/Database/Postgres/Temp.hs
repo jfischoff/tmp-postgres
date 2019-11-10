@@ -131,11 +131,11 @@ custom 'Config' like the following.
   let custom = defaultConfig <> mempty
         { configPlan = mempty
           { partialPlanConfig =
-              [ "wal_level=replica"
-              , "archive_mode=on"
-              , "max_wal_senders=2"
-              , "fsync=on"
-              , "synchronous_commit=on"
+              [ "wal_level = replica"
+              , "archive_mode = on"
+              , "max_wal_senders = 2"
+              , "fsync = on"
+              , "synchronous_commit = on"
               ]
           }
         }
