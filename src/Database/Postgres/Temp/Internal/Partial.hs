@@ -586,8 +586,8 @@ setupConfig Config {..} = evalContT $ do
   pure Resources {..}
 
 -- | Free the temporary resources created by 'setupConfig'
-cleanupResources :: Resources -> IO ()
-cleanupResources Resources {..} = do
+cleanupConfig :: Resources -> IO ()
+cleanupConfig Resources {..} = do
   cleanupSocketConfig resourcesSocket
   cleanupDirectoryType resourcesDataDir
 -------------------------------------------------------------------------------

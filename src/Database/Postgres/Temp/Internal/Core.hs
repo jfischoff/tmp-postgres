@@ -110,6 +110,10 @@ startProcess name ProcessConfig {..} = (\(_, _, _, x) -> x) <$>
     , env     = Just processConfigEnvVars
     }
 
+-- | Stop a 'ProcessHandle'. An alias for 'waitForProcess'
+stopProcess :: ProcessHandle -> IO ExitCode
+stopProcess = waitForProcess
+
 -- | Start a process and block until it finishes return the 'ExitCode'.
 executeProcess
   :: String
