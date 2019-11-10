@@ -1,7 +1,7 @@
 name:                tmp-postgres
 version:             1.7.1.0
 synopsis: Start and stop a temporary postgres
-description: See README.md
+description: Start and stop a temporary postgres. See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
 license:             BSD3
 license-file:        LICENSE
