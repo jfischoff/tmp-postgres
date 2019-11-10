@@ -56,3 +56,4 @@ tags
 bin/
 core/
 *.s
+dist-newstyle
