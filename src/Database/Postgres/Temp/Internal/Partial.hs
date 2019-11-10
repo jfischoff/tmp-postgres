@@ -656,3 +656,254 @@ hostToSocketClass :: String -> PartialSocketClass
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
   '/' : _ -> PUnixSocket $ PPermanent hostOrSocketPath
   _ -> PIpSocket $ pure hostOrSocketPath
+
+-------------------------------------------------------------------------------
+-- Lenses
+-- Most this code was generated with microlens-th
+-------------------------------------------------------------------------------
+-- | Local Lens alias
+type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
+-- | Local Lens' alias
+type Lens' s a = Lens s s a a
+
+-- | Lens for 'partialEnvVarsInherit'
+partialEnvVarsInheritL :: Lens' PartialEnvVars (Last Bool)
+partialEnvVarsInheritL f_aj5e (PartialEnvVars x_aj5f x_aj5g)
+  = (fmap (\ y_aj5h -> (PartialEnvVars y_aj5h) x_aj5g))
+      (f_aj5e x_aj5f)
+{-# INLINE partialEnvVarsInheritL #-}
+
+-- | Lens for 'partialEnvVarsSpecific'
+partialEnvVarsSpecificL :: Lens' PartialEnvVars (Map String String)
+partialEnvVarsSpecificL f_aj5i (PartialEnvVars x_aj5j x_aj5k)
+  = (fmap (\ y_aj5l -> (PartialEnvVars x_aj5j) y_aj5l))
+      (f_aj5i x_aj5k)
+{-# INLINE partialEnvVarsSpecificL #-}
+
+-- | Lens for 'partialProcessConfigCmdLine'
+partialProcessConfigCmdLineL ::
+  Lens' PartialProcessConfig PartialCommandLineArgs
+partialProcessConfigCmdLineL
+  f_allv
+  (PartialProcessConfig x_allw x_allx x_ally x_allz x_allA)
+  = (fmap
+       (\ y_allB
+          -> ((((PartialProcessConfig x_allw) y_allB) x_ally) x_allz)
+               x_allA))
+      (f_allv x_allx)
+{-# INLINE partialProcessConfigCmdLineL #-}
+
+-- | Lens for 'partialProcessConfigEnvVars'
+partialProcessConfigEnvVarsL ::
+  Lens' PartialProcessConfig PartialEnvVars
+partialProcessConfigEnvVarsL
+  f_allC
+  (PartialProcessConfig x_allD x_allE x_allF x_allG x_allH)
+  = (fmap
+       (\ y_allI
+          -> ((((PartialProcessConfig y_allI) x_allE) x_allF) x_allG)
+               x_allH))
+      (f_allC x_allD)
+{-# INLINE partialProcessConfigEnvVarsL #-}
+
+-- | Lens for 'partialProcessConfigStdErr'
+partialProcessConfigStdErrL ::
+  Lens' PartialProcessConfig (Last Handle)
+partialProcessConfigStdErrL
+  f_allJ
+  (PartialProcessConfig x_allK x_allL x_allM x_allN x_allO)
+  = (fmap
+       (\ y_allP
+          -> ((((PartialProcessConfig x_allK) x_allL) x_allM) x_allN)
+               y_allP))
+      (f_allJ x_allO)
+
+-- | Lens for 'partialProcessConfigStdIn'
+{-# INLINE partialProcessConfigStdErrL #-}
+partialProcessConfigStdInL ::
+  Lens' PartialProcessConfig (Last Handle)
+partialProcessConfigStdInL
+  f_allQ
+  (PartialProcessConfig x_allR x_allS x_allT x_allU x_allV)
+  = (fmap
+       (\ y_allW
+          -> ((((PartialProcessConfig x_allR) x_allS) y_allW) x_allU)
+               x_allV))
+      (f_allQ x_allT)
+{-# INLINE partialProcessConfigStdInL #-}
+
+-- | Lens for 'partialProcessConfigStdOut'
+partialProcessConfigStdOutL ::
+  Lens' PartialProcessConfig (Last Handle)
+partialProcessConfigStdOutL
+  f_allX
+  (PartialProcessConfig x_allY x_allZ x_alm0 x_alm1 x_alm2)
+  = (fmap
+       (\ y_alm3
+          -> ((((PartialProcessConfig x_allY) x_allZ) x_alm0) y_alm3)
+               x_alm2))
+      (f_allX x_alm1)
+{-# INLINE partialProcessConfigStdOutL #-}
+
+-- | Lens for 'partialPostgresPlanClientConfig'
+partialPostgresPlanClientConfigL ::
+  Lens' PartialPostgresPlan Client.Options
+partialPostgresPlanClientConfigL
+  f_am1y
+  (PartialPostgresPlan x_am1z x_am1A)
+  = (fmap (\ y_am1B -> (PartialPostgresPlan x_am1z) y_am1B))
+      (f_am1y x_am1A)
+{-# INLINE partialPostgresPlanClientConfigL #-}
+
+-- | Lens for 'partialPostgresPlanProcessConfig'
+partialPostgresPlanProcessConfigL ::
+  Lens' PartialPostgresPlan PartialProcessConfig
+partialPostgresPlanProcessConfigL
+  f_am1C
+  (PartialPostgresPlan x_am1D x_am1E)
+  = (fmap (\ y_am1F -> (PartialPostgresPlan y_am1F) x_am1E))
+      (f_am1C x_am1D)
+{-# INLINE partialPostgresPlanProcessConfigL #-}
+
+-- | Lens for 'partialPlanConfig'
+partialPlanConfigL :: Lens' PartialPlan [String]
+partialPlanConfigL
+  f_amcw
+  (PartialPlan x_amcx x_amcy x_amcz x_amcA x_amcB x_amcC)
+  = (fmap
+       (\ y_amcD
+          -> (((((PartialPlan x_amcx) x_amcy) x_amcz) x_amcA) y_amcD)
+               x_amcC))
+      (f_amcw x_amcB)
+{-# INLINE partialPlanConfigL #-}
+
+-- | Lens for 'partialPlanCreateDb'
+partialPlanCreateDbL ::
+  Lens' PartialPlan (Maybe PartialProcessConfig)
+partialPlanCreateDbL
+  f_amcE
+  (PartialPlan x_amcF x_amcG x_amcH x_amcI x_amcJ x_amcK)
+  = (fmap
+       (\ y_amcL
+          -> (((((PartialPlan x_amcF) x_amcG) y_amcL) x_amcI) x_amcJ)
+               x_amcK))
+      (f_amcE x_amcH)
+{-# INLINE partialPlanCreateDbL #-}
+
+-- | Lens for 'partialPlanDataDirectory'
+partialPlanDataDirectoryL :: Lens' PartialPlan (Last String)
+partialPlanDataDirectoryL
+  f_amcM
+  (PartialPlan x_amcN x_amcO x_amcP x_amcQ x_amcR x_amcS)
+  = (fmap
+       (\ y_amcT
+          -> (((((PartialPlan x_amcN) x_amcO) x_amcP) x_amcQ) x_amcR)
+               y_amcT))
+      (f_amcM x_amcS)
+{-# INLINE partialPlanDataDirectoryL #-}
+
+-- | Lens for 'partialPlanInitDb'
+partialPlanInitDbL ::
+  Lens' PartialPlan (Maybe PartialProcessConfig)
+partialPlanInitDbL
+  f_amcU
+  (PartialPlan x_amcV x_amcW x_amcX x_amcY x_amcZ x_amd0)
+  = (fmap
+       (\ y_amd1
+          -> (((((PartialPlan x_amcV) y_amd1) x_amcX) x_amcY) x_amcZ)
+               x_amd0))
+      (f_amcU x_amcW)
+{-# INLINE partialPlanInitDbL #-}
+
+-- | Lens for 'partialPlanLogger'
+partialPlanLoggerL :: Lens' PartialPlan (Last Logger)
+partialPlanLoggerL
+  f_amd2
+  (PartialPlan x_amd3 x_amd4 x_amd5 x_amd6 x_amd7 x_amd8)
+  = (fmap
+       (\ y_amd9
+          -> (((((PartialPlan y_amd9) x_amd4) x_amd5) x_amd6) x_amd7)
+               x_amd8))
+      (f_amd2 x_amd3)
+{-# INLINE partialPlanLoggerL #-}
+
+-- | Lens for 'partialPlanPostgres'
+partialPlanPostgresL :: Lens' PartialPlan PartialPostgresPlan
+partialPlanPostgresL
+  f_amda
+  (PartialPlan x_amdb x_amdc x_amdd x_amde x_amdf x_amdg)
+  = (fmap
+       (\ y_amdh
+          -> (((((PartialPlan x_amdb) x_amdc) x_amdd) y_amdh) x_amdf)
+               x_amdg))
+      (f_amda x_amde)
+{-# INLINE partialPlanPostgresL #-}
+
+-- | Lens for 'resourcesDataDir'
+resourcesDataDirL :: Lens' Resources DirectoryType
+resourcesDataDirL f_ampd (Resources x_ampe x_ampf x_ampg)
+  = (fmap (\ y_amph -> ((Resources x_ampe) x_ampf) y_amph))
+      (f_ampd x_ampg)
+{-# INLINE resourcesDataDirL #-}
+
+-- | Lens for 'resourcesPlan'
+resourcesPlanL :: Lens' Resources Plan
+resourcesPlanL f_ampi (Resources x_ampj x_ampk x_ampl)
+  = (fmap (\ y_ampm -> ((Resources y_ampm) x_ampk) x_ampl))
+      (f_ampi x_ampj)
+{-# INLINE resourcesPlanL #-}
+
+-- | Lens for 'resourcesSocket'
+resourcesSocketL :: Lens' Resources SocketClass
+resourcesSocketL f_ampn (Resources x_ampo x_ampp x_ampq)
+  = (fmap (\ y_ampr -> ((Resources x_ampo) y_ampr) x_ampq))
+      (f_ampn x_ampp)
+{-# INLINE resourcesSocketL #-}
+
+-- | Lens for 'configDataDir'
+configDataDirL :: Lens' Config PartialDirectoryType
+configDataDirL f_amyD (Config x_amyE x_amyF x_amyG x_amyH)
+  = (fmap (\ y_amyI -> (((Config x_amyE) x_amyF) y_amyI) x_amyH))
+      (f_amyD x_amyG)
+{-# INLINE configDataDirL #-}
+
+-- | Lens for 'configPlan'
+configPlanL :: Lens' Config PartialPlan
+configPlanL f_amyJ (Config x_amyK x_amyL x_amyM x_amyN)
+  = (fmap (\ y_amyO -> (((Config y_amyO) x_amyL) x_amyM) x_amyN))
+      (f_amyJ x_amyK)
+{-# INLINE configPlanL #-}
+
+-- | Lens for 'configPort'
+configPortL :: Lens' Config (Last (Maybe Int))
+configPortL f_amyP (Config x_amyQ x_amyR x_amyS x_amyT)
+  = (fmap (\ y_amyU -> (((Config x_amyQ) x_amyR) x_amyS) y_amyU))
+      (f_amyP x_amyT)
+{-# INLINE configPortL #-}
+
+-- | Lens for 'configSocket'
+configSocketL :: Lens' Config PartialSocketClass
+configSocketL f_amyV (Config x_amyW x_amyX x_amyY x_amyZ)
+  = (fmap (\ y_amz0 -> (((Config x_amyW) y_amz0) x_amyY) x_amyZ))
+      (f_amyV x_amyX)
+{-# INLINE configSocketL #-}
+
+-- | Lens for 'partialCommandLineArgsIndexBased'
+partialCommandLineArgsIndexBasedL ::
+  Lens' PartialCommandLineArgs (Map Int String)
+partialCommandLineArgsIndexBasedL
+  f_amNr
+  (PartialCommandLineArgs x_amNs x_amNt)
+  = (fmap (\ y_amNu -> (PartialCommandLineArgs x_amNs) y_amNu))
+      (f_amNr x_amNt)
+{-# INLINE partialCommandLineArgsIndexBasedL #-}
+
+-- | Lens for 'partialCommandLineArgsKeyBased'
+partialCommandLineArgsKeyBasedL ::
+  Lens' PartialCommandLineArgs (Map String (Maybe String))
+partialCommandLineArgsKeyBasedL
+  f_amNv
+  (PartialCommandLineArgs x_amNw x_amNx)
+  = (fmap (\ y_amNy -> (PartialCommandLineArgs y_amNy) x_amNx))
+      (f_amNv x_amNw)
+{-# INLINE partialCommandLineArgsKeyBasedL #-}

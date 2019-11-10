@@ -49,9 +49,10 @@ library
     , GeneralizedNewtypeDeriving
     , LambdaCase
     , OverloadedStrings
-    , RecordWildCards
+    , RankNTypes
     , RecordWildCards
     , ScopedTypeVariables
+    , TemplateHaskell
     , ViewPatterns
   build-depends: base >= 4.6 && < 5
                , ansi-wl-pprint
@@ -99,7 +100,6 @@ test-suite test
     , OverloadedStrings
     , QuasiQuotes
     , RankNTypes
-    , RecordWildCards
     , RecordWildCards
     , ScopedTypeVariables
 

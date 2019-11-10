@@ -24,7 +24,6 @@ import           System.Process
 import           System.Process.Internals
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
-
 -- | Internal events for debugging
 data Event
   = StartPostgres

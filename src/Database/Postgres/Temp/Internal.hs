@@ -80,6 +80,7 @@ The default configuration. This will create a database called \"postgres\"
  for a unix socket on a random port.
  Additionally it will use append the following onto the \"postgresql.conf\"
  which is optimized for performance.
+
  @
    shared_buffers = 12MB
    fsync = off
@@ -97,13 +98,48 @@ If you would like to customize this behavior you can start with the
 'defaultConfig' and overwrite fields or combine a 'defaultConfig' with another 'Config'
  using '<>' ('mappend').
 
- Alternatively you can eschew 'defaultConfig' altogether, however
- your @postgres@ might start and run faster if you use
- 'defaultConfig'.
+Alternatively you can eschew 'defaultConfig' altogether, however
+your @postgres@ might start and run faster if you use
+'defaultConfig'.
 
- 'defaultConfig' also sets the 'partialPlanInitDb' to
-  'pure' 'standardProcessConfig' and
-  'partialPostgresPlanProcessConfig' to 'standardProcessConfig'.
+'defaultConfig' also sets the 'partialPlanInitDb' to
+'pure' 'standardProcessConfig' and
+'partialPostgresPlanProcessConfig' to 'standardProcessConfig'.
+
+To append additional lines to \"postgresql.conf\" file create a
+custom 'Config' like the following.
+
+ @
+  custom = defaultConfig <> mempty
+    { configPlan = mempty
+      { partialPlanConfig =
+          [ "wal_level = replica"
+          , "archive_mode = on"
+          , "max_wal_senders = 2"
+          , "fsync = on"
+          , "synchronous_commit = on"
+          ]
+      }
+    }
+ @
+
+Or using the provided lenses and your favorite lens library
+
+ @
+  custom = defaultConfig & 'configPlanL' . 'partialPlanConfigL' <>~
+    [ "wal_level = replica"
+    , "archive_mode = on"
+    , "max_wal_senders = 2"
+    , "fsync = on"
+    , "synchronous_commit = on"
+    ]
+ @
+
+ This is common enough there is `defaultPostgresConf` which
+ is a helper to do this.
+
+ As an alternative to using 'defaultConfig' one could create a
+ config from connections parameters using 'optionsToDefaultConfig'
 -}
 defaultConfig :: Config
 defaultConfig = mempty
@@ -198,11 +234,27 @@ reloadConfig db =
 -------------------------------------------------------------------------------
 -- Exception safe interface
 -------------------------------------------------------------------------------
--- | Exception safe default database create. Takes an @action@ continuation
---   which is given a 'DB' it can use to connect
---   to (see 'toConnectionString' or 'postgresProcessClientOptions').
---   All of the database resources are automatically cleaned up on
---   completion even in the face of exceptions.
+{-|
+Exception safe default database create. Takes an @action@ continuation
+which is given a 'DB' it can use to connect
+to (see 'toConnectionString' or 'postgresProcessClientOptions').
+All of the database resources are automatically cleaned up on
+completion even in the face of exceptions.
+Based on the value of 'configSocket' a \"postgresql.conf\" is created with
+
+ @
+   listen_addresses = \'IP_ADDRESS\'
+ @
+
+ if it is 'IpSocket'. If is 'UnixSocket' then the lines
+
+ @
+   listen_addresses = ''
+   unix_socket_directories = SOCKET_DIRECTORY
+ @
+
+are added. This occurs as a side effect of calling 'withConfig'.
+-}
 withConfig :: Config
          -- ^ @extraConfiguration@. Combined with the generated 'Config'. See
          -- 'startConfig' for more info

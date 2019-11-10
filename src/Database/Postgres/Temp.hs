@@ -48,7 +48,6 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 module Database.Postgres.Temp
   (
   -- * Exception safe interface
-  -- $options
     with
   , withConfig
   -- * Separate start and stop interface.
@@ -74,15 +73,51 @@ module Database.Postgres.Temp
   , toConnectionOptions
   , toDataDirectory
   -- * Monoidial Configuration Types
+  -- ** 'Config'
   , Config (..)
   , prettyPrintConfig
+    -- *** 'Config' Lenses
+  , configPlanL
+  , configSocketL
+  , configDataDirL
+  , configPortL
+  -- ** 'PartialPlan'
   , PartialPlan (..)
+  -- *** 'PartialPlan' lenses
+  , partialPlanConfigL
+  , partialPlanCreateDbL
+  , partialPlanDataDirectoryL
+  , partialPlanInitDbL
+  , partialPlanLoggerL
+  , partialPlanPostgresL
+  -- ** 'PartialPostgresPlan'
   , PartialPostgresPlan (..)
+  -- *** 'PartialPostgresPlan' lenses
+  , partialPostgresPlanClientConfigL
+  , partialPostgresPlanProcessConfigL
+  -- ** 'PartialProcessConfig'
   , PartialProcessConfig (..)
+  -- *** 'PartialProcessConfig' Lenses
+  , partialProcessConfigCmdLineL
+  , partialProcessConfigEnvVarsL
+  , partialProcessConfigStdErrL
+  , partialProcessConfigStdInL
+  , partialProcessConfigStdOutL
+  -- ** 'PartialEnvVars'
   , PartialEnvVars (..)
+  -- *** 'PartialEnvVars' Lenses
+  , partialEnvVarsInheritL
+  , partialEnvVarsSpecificL
+  -- ** 'PartialCommandLineArgs'
   , PartialCommandLineArgs (..)
+  -- *** 'PartialCommandLineArgs' Lenses
+  , partialCommandLineArgsIndexBasedL
+  , partialCommandLineArgsKeyBasedL
+  -- ** 'PartialDirectoryType'
   , PartialDirectoryType (..)
+  -- ** 'PartialSocketClass'
   , PartialSocketClass (..)
+  -- ** 'Logger'
   , Logger
   -- * Internal events passed to the 'partialPlanLogger' .
   , Event (..)
@@ -92,58 +127,3 @@ module Database.Postgres.Temp
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Partial
-
-
-{- $options
-
- Based on the value of 'configSocket' a \"postgresql.conf\" is created with
-
- @
-   listen_addresses = \'IP_ADDRESS\'
- @
-
- if it is 'IpSocket'. If is 'UnixSocket' then the lines
-
- @
-   listen_addresses = ''
-   unix_socket_directories = SOCKET_DIRECTORY
- @
-
- are added. This occurs as a side effect of calling 'withConfig'.
-
-'defaultConfig' appends the following config by default
-
- @
-   shared_buffers = 12MB
-   fsync = off
-   synchronous_commit = off
-   full_page_writes = off
-   log_min_duration_statement = 0
-   log_connections = on
-   log_disconnections = on
-   client_min_messages = ERROR
- @
-
-To append additional lines to \"postgresql.conf\" file create a
-custom 'Config' like the following.
-
- @
-  let custom = defaultConfig <> mempty
-        { configPlan = mempty
-          { partialPlanConfig =
-              [ "wal_level = replica"
-              , "archive_mode = on"
-              , "max_wal_senders = 2"
-              , "fsync = on"
-              , "synchronous_commit = on"
-              ]
-          }
-        }
- @
-
- This is common enough there is `defaultPostgresConf` which
- is a helper to do this.
-
- As an alternative to using 'defaultConfig' one could create a
- config from connections parameters using 'optionsToDefaultConfig'
--}
