@@ -1,27 +1,7 @@
 name:                tmp-postgres
 version:             1.7.0.1
 synopsis: Start and stop a temporary postgres
-description:
- @tmp-postgres@ provides functions creating a temporary @postgres@ instance.
- .
- By default it will create a temporary directory for the data,
- a random port for listening and a temporary directory for a UNIX
- domain socket.
- .
- Here is an example using the expection safe 'with' function:
- .
- >  with $ \db -> bracket (connectPostgreSQL (toConnectionString db)) close $ \conn ->
- >   execute_ conn "CREATE TABLE foo (id int)"
- .
- MacOS and Linux are support. Windows is not.
- .
- Requires PostgreSQL 9.3+
- .
- WARNING!!
- Ubuntu's PostgreSQL installation does not put @initdb@ on the @PATH@. We need to add it manually. The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ directory, and should be added to the @PATH@
- .
- > echo "export PATH=$PATH:/usr/lib/postgresql/VERSION/bin/" >> /home/ubuntu/.bashrc
- .
+description: See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
 license:             BSD3
 license-file:        LICENSE
