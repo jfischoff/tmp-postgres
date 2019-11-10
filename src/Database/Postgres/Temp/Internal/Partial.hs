@@ -262,8 +262,8 @@ instance Monoid PartialDirectoryType where
 -- | Either create a'Temporary' directory or do nothing to a 'Permanent'
 --   one.
 setupDirectoryType :: String -> PartialDirectoryType -> IO DirectoryType
-setupDirectoryType pattern = \case
-  PTemporary -> Temporary <$> createTempDirectory "/tmp" pattern
+setupDirectoryType p = \case
+  PTemporary -> Temporary <$> createTempDirectory "/tmp" p
   PPermanent x  -> pure $ Permanent x
 
 -- Either create a temporary directory or do nothing
