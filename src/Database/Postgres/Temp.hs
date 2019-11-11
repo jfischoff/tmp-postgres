@@ -80,42 +80,42 @@ module Database.Postgres.Temp
   , configSocketL
   , configDataDirL
   , configPortL
-  -- ** 'PartialPlan'
-  , PartialPlan (..)
-  -- *** 'PartialPlan' lenses
+  -- ** 'Plan'
+  , Plan (..)
+  -- *** 'Plan' lenses
   , partialPlanConfigL
   , partialPlanCreateDbL
   , partialPlanDataDirectoryL
   , partialPlanInitDbL
   , partialPlanLoggerL
   , partialPlanPostgresL
-  -- ** 'PartialPostgresPlan'
-  , PartialPostgresPlan (..)
-  -- *** 'PartialPostgresPlan' lenses
+  -- ** 'PostgresPlan'
+  , PostgresPlan (..)
+  -- *** 'PostgresPlan' lenses
   , partialPostgresPlanClientConfigL
   , partialPostgresPlanProcessConfigL
-  -- ** 'PartialProcessConfig'
-  , PartialProcessConfig (..)
-  -- *** 'PartialProcessConfig' Lenses
+  -- ** 'ProcessConfig'
+  , ProcessConfig (..)
+  -- *** 'ProcessConfig' Lenses
   , partialProcessConfigCmdLineL
   , partialProcessConfigEnvVarsL
   , partialProcessConfigStdErrL
   , partialProcessConfigStdInL
   , partialProcessConfigStdOutL
-  -- ** 'PartialEnvVars'
-  , PartialEnvVars (..)
-  -- *** 'PartialEnvVars' Lenses
+  -- ** 'EnvVars'
+  , EnvVars (..)
+  -- *** 'EnvVars' Lenses
   , partialEnvVarsInheritL
   , partialEnvVarsSpecificL
-  -- ** 'PartialCommandLineArgs'
-  , PartialCommandLineArgs (..)
-  -- *** 'PartialCommandLineArgs' Lenses
+  -- ** 'CommandLineArgs'
+  , CommandLineArgs (..)
+  -- *** 'CommandLineArgs' Lenses
   , partialCommandLineArgsIndexBasedL
   , partialCommandLineArgsKeyBasedL
-  -- ** 'PartialDirectoryType'
-  , PartialDirectoryType (..)
-  -- ** 'PartialSocketClass'
-  , PartialSocketClass (..)
+  -- ** 'DirectoryType'
+  , DirectoryType (..)
+  -- ** 'SocketClass'
+  , SocketClass (..)
   -- ** 'Logger'
   , Logger
   -- * Internal events passed to the 'partialPlanLogger' .

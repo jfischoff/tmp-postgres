@@ -29,7 +29,7 @@ main = hspec spec
 
 -- Cleanup
 
-fromCreateDb :: Maybe PartialProcessConfig -> Config
+fromCreateDb :: Maybe ProcessConfig -> Config
 fromCreateDb createDb = mempty
   { configPlan = mempty
       { partialPlanCreateDb = createDb

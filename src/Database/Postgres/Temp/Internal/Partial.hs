@@ -4,7 +4,7 @@
 
     This module has two classes of types.
 
-    Types like 'PartialProcessConfig' that could be used by any
+    Types like 'ProcessConfig' that could be used by any
     library that  needs to combine process options.
 
     Finally it has types and functions for creating 'CompletePlan's that
@@ -45,25 +45,25 @@ prettyMap theMap =
 -- | The environment variables can be declared to
 --   inherit from the running process or they
 --   can be specifically added.
-data PartialEnvVars = PartialEnvVars
+data EnvVars = EnvVars
   { partialEnvVarsInherit  :: Last Bool
   , partialEnvVarsSpecific :: Map String String
   }
   deriving stock (Generic, Show, Eq)
 
-instance Semigroup PartialEnvVars where
-  x <> y = PartialEnvVars
+instance Semigroup EnvVars where
+  x <> y = EnvVars
     { partialEnvVarsInherit  =
         partialEnvVarsInherit x <> partialEnvVarsInherit y
     , partialEnvVarsSpecific =
         partialEnvVarsSpecific y <> partialEnvVarsSpecific x
     }
 
-instance Monoid PartialEnvVars where
-  mempty = PartialEnvVars mempty mempty
+instance Monoid EnvVars where
+  mempty = EnvVars mempty mempty
 
-instance Pretty PartialEnvVars where
-  pretty PartialEnvVars {..}
+instance Pretty EnvVars where
+  pretty EnvVars {..}
     = text "partialEnvVarsInherit:"
         <+> pretty (getLast partialEnvVarsInherit)
     <> hardline
@@ -74,14 +74,14 @@ instance Pretty PartialEnvVars where
 -- | Combine the current environment
 --   (if indicated by 'partialEnvVarsInherit')
 --   with 'partialEnvVarsSpecific'
-completePartialEnvVars :: [(String, String)] -> PartialEnvVars -> Either [String] [(String, String)]
-completePartialEnvVars envs PartialEnvVars {..} = case getLast partialEnvVarsInherit of
+completeEnvVars :: [(String, String)] -> EnvVars -> Either [String] [(String, String)]
+completeEnvVars envs EnvVars {..} = case getLast partialEnvVarsInherit of
   Nothing -> Left ["Inherit not specified"]
   Just x -> Right $ (if x then envs else [])
     <> Map.toList partialEnvVarsSpecific
 
 -- | A type to help combine command line arguments.
-data PartialCommandLineArgs = PartialCommandLineArgs
+data CommandLineArgs = CommandLineArgs
   { partialCommandLineArgsKeyBased   :: Map String (Maybe String)
   -- ^ Arguments of the form @-h foo@, @--host=foo@ and @--switch@.
   --   The key is `mappend`ed with value so the key should include
@@ -94,18 +94,18 @@ data PartialCommandLineArgs = PartialCommandLineArgs
   --   The 'Dual' monoid is used so the last key wins.
   }
   deriving stock (Generic, Show, Eq)
-  deriving Monoid via GenericMonoid PartialCommandLineArgs
+  deriving Monoid via GenericMonoid CommandLineArgs
 
-instance Semigroup PartialCommandLineArgs where
-  x <> y = PartialCommandLineArgs
+instance Semigroup CommandLineArgs where
+  x <> y = CommandLineArgs
     { partialCommandLineArgsKeyBased   =
         partialCommandLineArgsKeyBased y <> partialCommandLineArgsKeyBased x
     , partialCommandLineArgsIndexBased =
         partialCommandLineArgsIndexBased y <> partialCommandLineArgsIndexBased x
     }
 
-instance Pretty PartialCommandLineArgs where
-  pretty p@PartialCommandLineArgs {..}
+instance Pretty CommandLineArgs where
+  pretty p@CommandLineArgs {..}
     = text "partialCommandLineArgsKeyBased:"
     <> softline
     <> indent 2 (prettyMap partialCommandLineArgsKeyBased)
@@ -126,20 +126,20 @@ takeWhileInSequence ((0, x):xs) = x : go 0 xs where
     | otherwise = []
 takeWhileInSequence _ = []
 
--- | This convert the 'PartialCommandLineArgs' to '
-completeCommandLineArgs :: PartialCommandLineArgs -> [String]
-completeCommandLineArgs PartialCommandLineArgs {..}
+-- | This convert the 'CommandLineArgs' to '
+completeCommandLineArgs :: CommandLineArgs -> [String]
+completeCommandLineArgs CommandLineArgs {..}
   =  map (\(name, mvalue) -> maybe name (name <>) mvalue)
        (Map.toList partialCommandLineArgsKeyBased)
   <> takeWhileInSequence (Map.toList partialCommandLineArgsIndexBased)
 
 -- | The monoidial version of 'ProcessConfig'. Used to combine overrides with
 --   defaults when creating a 'ProcessConfig'.
-data PartialProcessConfig = PartialProcessConfig
-  { partialProcessConfigEnvVars :: PartialEnvVars
+data ProcessConfig = ProcessConfig
+  { partialProcessConfigEnvVars :: EnvVars
   -- ^ A monoid for combine environment variables or replacing them.
   --   for the maps the 'Dual' monoid is used. So the last key wins.
-  , partialProcessConfigCmdLine :: PartialCommandLineArgs
+  , partialProcessConfigCmdLine :: CommandLineArgs
   -- ^ A monoid for combine command line arguments or replacing them
   , partialProcessConfigStdIn   :: Last Handle
   -- ^ A monoid for configuring the standard input 'Handle'
@@ -149,14 +149,14 @@ data PartialProcessConfig = PartialProcessConfig
   -- ^ A monoid for configuring the standard error 'Handle'
   }
   deriving stock (Generic, Eq, Show)
-  deriving Semigroup via GenericSemigroup PartialProcessConfig
-  deriving Monoid    via GenericMonoid PartialProcessConfig
+  deriving Semigroup via GenericSemigroup ProcessConfig
+  deriving Monoid    via GenericMonoid ProcessConfig
 
 prettyHandle :: Handle -> Doc
 prettyHandle _ = text "[HANDLE]"
 
-instance Pretty PartialProcessConfig where
-  pretty PartialProcessConfig {..}
+instance Pretty ProcessConfig where
+  pretty ProcessConfig {..}
     = text "partialProcessConfigEnvVars:"
     <> softline
     <> indent 2 (pretty partialProcessConfigEnvVars)
@@ -178,7 +178,7 @@ instance Pretty PartialProcessConfig where
 -- | The 'standardProcessConfig' sets the handles to 'stdin', 'stdout' and
 --   'stderr' and inherits the environment variables from the calling
 --   process.
-standardProcessConfig :: PartialProcessConfig
+standardProcessConfig :: ProcessConfig
 standardProcessConfig = mempty
   { partialProcessConfigEnvVars = mempty
       { partialEnvVarsInherit = pure True
@@ -198,22 +198,22 @@ getOption optionName = \case
     Last (Just x) -> pure x
     Last Nothing  -> failure ["Missing " ++ optionName ++ " option"]
 
--- | Turn a 'PartialProcessConfig' into a 'ProcessConfig'. Fails if
+-- | Turn a 'ProcessConfig' into a 'ProcessConfig'. Fails if
 --   any values are missing.
 completeProcessConfig
-  :: [(String, String)] -> PartialProcessConfig -> Either [String] ProcessConfig
-completeProcessConfig envs PartialProcessConfig {..} = runErrors $ do
-  let processConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
-  processConfigEnvVars <- eitherToErrors $
-    completePartialEnvVars envs partialProcessConfigEnvVars
-  processConfigStdIn  <-
+  :: [(String, String)] -> ProcessConfig -> Either [String] CompleteProcessConfig
+completeProcessConfig envs ProcessConfig {..} = runErrors $ do
+  let completeProcessConfigCmdLine = completeCommandLineArgs partialProcessConfigCmdLine
+  completeProcessConfigEnvVars <- eitherToErrors $
+    completeEnvVars envs partialProcessConfigEnvVars
+  completeProcessConfigStdIn  <-
     getOption "partialProcessConfigStdIn" partialProcessConfigStdIn
-  processConfigStdOut <-
+  completeProcessConfigStdOut <-
     getOption "partialProcessConfigStdOut" partialProcessConfigStdOut
-  processConfigStdErr <-
+  completeProcessConfigStdErr <-
     getOption "partialProcessConfigStdErr" partialProcessConfigStdErr
 
-  pure ProcessConfig {..}
+  pure CompleteProcessConfig {..}
 
 -- | A type to track whether a file is temporary and needs to be cleaned up.
 data CompleteDirectoryType = CPermanent FilePath | CTemporary FilePath
@@ -239,29 +239,29 @@ makePermanent = \case
 -- | The monoidial version of 'CompleteDirectoryType'. Used to combine overrides with
 --   defaults when creating a 'CompleteDirectoryType'. The monoid instance treats
 --   'PTemporary' as 'mempty' and takes the last 'PPermanent' value.
-data PartialDirectoryType
+data DirectoryType
   = PPermanent FilePath
   -- ^ A permanent file that should not be generated.
   | PTemporary
   -- ^ A temporary file that needs to generated.
   deriving(Show, Eq, Ord)
 
-instance Pretty PartialDirectoryType where
+instance Pretty DirectoryType where
   pretty = \case
     PPermanent x -> text "CPermanent" <+> pretty x
     PTemporary   -> text "CTemporary"
 
-instance Semigroup PartialDirectoryType where
+instance Semigroup DirectoryType where
   x <> y = case (x, y) of
     (a, PTemporary     ) -> a
     (_, a@PPermanent {}) -> a
 
-instance Monoid PartialDirectoryType where
+instance Monoid DirectoryType where
   mempty = PTemporary
 
 -- | Either create a'CTemporary' directory or do nothing to a 'CPermanent'
 --   one.
-setupDirectoryType :: String -> PartialDirectoryType -> IO CompleteDirectoryType
+setupDirectoryType :: String -> DirectoryType -> IO CompleteDirectoryType
 setupDirectoryType p = \case
   PTemporary -> CTemporary <$> createTempDirectory "/tmp" p
   PPermanent x  -> pure $ CPermanent x
@@ -322,33 +322,33 @@ socketClassToHost = \case
 -- | The monoidial version of 'CompleteSocketClass'. Used to combine overrides with
 --   defaults when creating a 'CompleteSocketClass'. The monoid instance treats
 --   'PUnixSocket mempty' as 'mempty' and combines the
-data PartialSocketClass
+data SocketClass
   = PIpSocket (Last String)
   -- ^ The monoid for combining IP address configuration
-  | PUnixSocket PartialDirectoryType
+  | PUnixSocket DirectoryType
   -- ^ The monoid for combining UNIX socket configuration
     deriving stock (Show, Eq, Ord, Generic, Typeable)
 
-instance Pretty PartialSocketClass where
+instance Pretty SocketClass where
   pretty = \case
     PIpSocket x -> "CIpSocket:" <+> pretty (getLast x)
     PUnixSocket x -> "CUnixSocket" <+> pretty x
 
-instance Semigroup PartialSocketClass where
+instance Semigroup SocketClass where
   x <> y = case (x, y) of
     (PIpSocket   a, PIpSocket b) -> PIpSocket $ a <> b
     (a@(PIpSocket _), PUnixSocket _) -> a
     (PUnixSocket _, a@(PIpSocket _)) -> a
     (PUnixSocket a, PUnixSocket b) -> PUnixSocket $ a <> b
 
-instance Monoid PartialSocketClass where
+instance Monoid SocketClass where
  mempty = PUnixSocket mempty
 
--- | Turn a 'PartialSocketClass' to a 'CompleteSocketClass'. If the 'PIpSocket' is
+-- | Turn a 'SocketClass' to a 'CompleteSocketClass'. If the 'PIpSocket' is
 --   'Nothing' default to \"127.0.0.1\". If the is a 'PUnixSocket'
 --    optionally create a temporary directory if configured to do so.
-setupPartialSocketClass :: PartialSocketClass -> IO CompleteSocketClass
-setupPartialSocketClass theClass = case theClass of
+setupSocketClass :: SocketClass -> IO CompleteSocketClass
+setupSocketClass theClass = case theClass of
   PIpSocket mIp -> pure $ CIpSocket $ fromMaybe "127.0.0.1" $
     getLast mIp
   PUnixSocket mFilePath ->
@@ -362,18 +362,18 @@ cleanupSocketConfig = \case
 
 -- | @postgres@ process config and corresponding client connection
 --   'Client.Options'.
-data PartialPostgresPlan = PartialPostgresPlan
-  { partialPostgresPlanProcessConfig :: PartialProcessConfig
+data PostgresPlan = PostgresPlan
+  { partialPostgresPlanProcessConfig :: ProcessConfig
   -- ^ Monoid for the @postgres@ ProcessConfig.
   , partialPostgresPlanClientConfig  :: Client.Options
   -- ^ Monoid for the @postgres@ client connection options.
   }
   deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup PartialPostgresPlan
-  deriving Monoid    via GenericMonoid PartialPostgresPlan
+  deriving Semigroup via GenericSemigroup PostgresPlan
+  deriving Monoid    via GenericMonoid PostgresPlan
 
-instance Pretty PartialPostgresPlan where
-  pretty PartialPostgresPlan {..}
+instance Pretty PostgresPlan where
+  pretty PostgresPlan {..}
     = text "partialPostgresPlanProcessConfig:"
     <> softline
     <> indent 2 (pretty partialPostgresPlanProcessConfig)
@@ -382,10 +382,10 @@ instance Pretty PartialPostgresPlan where
     <> softline
     <> indent 2 (prettyOptions partialPostgresPlanClientConfig)
 
--- | Turn a 'PartialPostgresPlan' into a 'CompletePostgresPlan'. Fails if any
+-- | Turn a 'PostgresPlan' into a 'CompletePostgresPlan'. Fails if any
 --   values are missing.
-completePostgresPlan :: [(String, String)] -> PartialPostgresPlan -> Either [String] CompletePostgresPlan
-completePostgresPlan envs PartialPostgresPlan {..} = runErrors $ do
+completePostgresPlan :: [(String, String)] -> PostgresPlan -> Either [String] CompletePostgresPlan
+completePostgresPlan envs PostgresPlan {..} = runErrors $ do
   let completePostgresPlanClientOptions = partialPostgresPlanClientConfig
   completePostgresPlanProcessConfig <-
     eitherToErrors $ addErrorContext "partialPostgresPlanProcessConfig: " $
@@ -393,24 +393,24 @@ completePostgresPlan envs PartialPostgresPlan {..} = runErrors $ do
 
   pure CompletePostgresPlan {..}
 -------------------------------------------------------------------------------
--- PartialPlan
+-- Plan
 -------------------------------------------------------------------------------
 -- | The monoidial version of 'CompletePlan'. Used to combine overrides with defaults
 --   when creating a plan.
-data PartialPlan = PartialPlan
+data Plan = Plan
   { partialPlanLogger        :: Last Logger
-  , partialPlanInitDb        :: Maybe PartialProcessConfig
-  , partialPlanCreateDb      :: Maybe PartialProcessConfig
-  , partialPlanPostgres      :: PartialPostgresPlan
+  , partialPlanInitDb        :: Maybe ProcessConfig
+  , partialPlanCreateDb      :: Maybe ProcessConfig
+  , partialPlanPostgres      :: PostgresPlan
   , partialPlanConfig        :: [String]
   , partialPlanDataDirectory :: Last String
   }
   deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup PartialPlan
-  deriving Monoid    via GenericMonoid PartialPlan
+  deriving Semigroup via GenericSemigroup Plan
+  deriving Monoid    via GenericMonoid Plan
 
-instance Pretty PartialPlan where
-  pretty PartialPlan {..}
+instance Pretty Plan where
+  pretty Plan {..}
     =  text "partialPlanInitDb:"
     <> softline
     <> indent 2 (pretty partialPlanInitDb)
@@ -429,9 +429,9 @@ instance Pretty PartialPlan where
     <> hardline
     <> text "partialPlanDataDirectory:" <+> pretty (getLast partialPlanDataDirectory)
 
--- | Turn a 'PartialPlan' into a 'CompletePlan'. Fails if any values are missing.
-completePlan :: [(String, String)] -> PartialPlan -> Either [String] CompletePlan
-completePlan envs PartialPlan {..} = runErrors $ do
+-- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
+completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
+completePlan envs Plan {..} = runErrors $ do
   completePlanLogger   <- getOption "partialPlanLogger" partialPlanLogger
   completePlanInitDb   <- eitherToErrors $ addErrorContext "partialPlanInitDb: " $
     traverse (completeProcessConfig envs) partialPlanInitDb
@@ -445,15 +445,15 @@ completePlan envs PartialPlan {..} = runErrors $ do
 
   pure CompletePlan {..}
 
--- Returns 'True' if the 'PartialPlan' has a
+-- Returns 'True' if the 'Plan' has a
 -- 'Just' 'partialPlanInitDb'
-hasInitDb :: PartialPlan -> Bool
-hasInitDb PartialPlan {..} = isJust partialPlanInitDb
+hasInitDb :: Plan -> Bool
+hasInitDb Plan {..} = isJust partialPlanInitDb
 
--- Returns 'True' if the 'PartialPlan' has a
+-- Returns 'True' if the 'Plan' has a
 -- 'Just' 'partialPlanCreateDb'
-hasCreateDb :: PartialPlan -> Bool
-hasCreateDb PartialPlan {..} = isJust partialPlanCreateDb
+hasCreateDb :: Plan -> Bool
+hasCreateDb Plan {..} = isJust partialPlanCreateDb
 
 -- | 'Resources' holds a description of the temporary folders (if there are any)
 --   and includes the final 'CompletePlan' that can be used with 'startPlan'.
@@ -489,12 +489,12 @@ makeResourcesDataDirPermanent r = r
 
 -- | The high level options for overriding default behavior.
 data Config = Config
-  { configPlan    :: PartialPlan
+  { configPlan    :: Plan
   -- ^ Extend or replace any of the configuration used to create a final
   --   'CompletePlan'
-  , configSocket  :: PartialSocketClass
+  , configSocket  :: SocketClass
   -- ^ Override the default 'CompleteSocketClass' by setting this.
-  , configDataDir :: PartialDirectoryType
+  , configDataDir :: DirectoryType
   -- ^ Override the default temporary data directory by passing in
   -- 'CPermanent DIRECTORY'
   , configPort    :: Last (Maybe Int)
@@ -521,7 +521,7 @@ instance Pretty Config where
     <> hardline
     <> text "configPort:" <+> pretty (getLast configPort)
 
--- | Create a 'PartialPlan' that sets the command line options of all processes
+-- | Create a 'Plan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@) using a
 toPlan
   :: Bool
@@ -534,7 +534,7 @@ toPlan
   -- ^ Whether to listen on a IP address or UNIX domain socket
   -> FilePath
   -- ^ The @postgres@ data directory
-  -> PartialPlan
+  -> Plan
 toPlan makeInitDb makeCreateDb port socketClass dataDirectory = mempty
   { partialPlanConfig = socketClassToConfig socketClass
   , partialPlanDataDirectory = pure dataDirectory
@@ -575,7 +575,7 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectory = mempty
 
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
--- 'PartialPlan' from 'toPlan' with the @extraConfig@ passed in.
+-- 'Plan' from 'toPlan' with the @extraConfig@ passed in.
 setupConfig
   :: Config
   -- ^ @extraConfig@ to 'mappend' after the default config
@@ -584,16 +584,16 @@ setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
   port <- lift $ maybe getFreePort pure $ join $ getLast configPort
   resourcesSocket <- ContT $ bracketOnError
-    (setupPartialSocketClass configSocket) cleanupSocketConfig
+    (setupSocketClass configSocket) cleanupSocketConfig
   resourcesDataDir <- ContT $ bracketOnError
     (setupDirectoryType "tmp-postgres-data" configDataDir) cleanupDirectoryType
-  let hostAndDirPartial = toPlan
+  let hostAndDir = toPlan
           (hasInitDb configPlan)
           (hasCreateDb configPlan)
           port
           resourcesSocket
           (toFilePath resourcesDataDir)
-      finalPlan = hostAndDirPartial <> configPlan
+      finalPlan = hostAndDir <> configPlan
   resourcesPlan <- lift $
     either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
       completePlan envs finalPlan
@@ -619,25 +619,25 @@ optionsToConfig opts@Client.Options {..}
        , configSocket = maybe mempty hostToSocketClass $ getLast host
        }
      )
--- Convert the 'Client.Options' to a 'PartialPlan' that can
+-- Convert the 'Client.Options' to a 'Plan' that can
 -- be connected to with the 'Client.Options'.
-optionsToPlan :: Client.Options -> PartialPlan
+optionsToPlan :: Client.Options -> Plan
 optionsToPlan opts@Client.Options {..}
   =  maybe mempty dbnameToPlan (getLast dbname)
   <> maybe mempty userToPlan (getLast user)
   <> clientOptionsToPlan opts
 
 -- Wrap the 'Client.Options' in an appropiate
--- 'PartialPostgresPlan'
-clientOptionsToPlan :: Client.Options -> PartialPlan
+-- 'PostgresPlan'
+clientOptionsToPlan :: Client.Options -> Plan
 clientOptionsToPlan opts = mempty
   { partialPlanPostgres = mempty
     { partialPostgresPlanClientConfig = opts
     }
   }
 
--- Create a 'PartialPlan' given a user
-userToPlan :: String -> PartialPlan
+-- Create a 'Plan' given a user
+userToPlan :: String -> Plan
 userToPlan user = mempty
   { partialPlanCreateDb = pure $ mempty
     { partialProcessConfigCmdLine = mempty
@@ -651,9 +651,9 @@ userToPlan user = mempty
     }
   }
 
--- Adds a @createdb@ PartialProcessPlan with the argument
+-- Adds a @createdb@ ProcessPlan with the argument
 -- as the database name.
-dbnameToPlan :: String -> PartialPlan
+dbnameToPlan :: String -> Plan
 dbnameToPlan dbName = mempty
   { partialPlanCreateDb = pure $ mempty
     { partialProcessConfigCmdLine = mempty
@@ -664,7 +664,7 @@ dbnameToPlan dbName = mempty
 
 -- Parse a host string as either an UNIX domain socket directory
 -- or a domain or IP.
-hostToSocketClass :: String -> PartialSocketClass
+hostToSocketClass :: String -> SocketClass
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
   '/' : _ -> PUnixSocket $ PPermanent hostOrSocketPath
   _ -> PIpSocket $ pure hostOrSocketPath
@@ -679,170 +679,170 @@ type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
 type Lens' s a = Lens s s a a
 
 -- | Lens for 'partialEnvVarsInherit'
-partialEnvVarsInheritL :: Lens' PartialEnvVars (Last Bool)
-partialEnvVarsInheritL f_aj5e (PartialEnvVars x_aj5f x_aj5g)
-  = fmap (`PartialEnvVars` x_aj5g)
+partialEnvVarsInheritL :: Lens' EnvVars (Last Bool)
+partialEnvVarsInheritL f_aj5e (EnvVars x_aj5f x_aj5g)
+  = fmap (`EnvVars` x_aj5g)
       (f_aj5e x_aj5f)
 {-# INLINE partialEnvVarsInheritL #-}
 
 -- | Lens for 'partialEnvVarsSpecific'
-partialEnvVarsSpecificL :: Lens' PartialEnvVars (Map String String)
-partialEnvVarsSpecificL f_aj5i (PartialEnvVars x_aj5j x_aj5k)
-  = fmap (PartialEnvVars x_aj5j)
+partialEnvVarsSpecificL :: Lens' EnvVars (Map String String)
+partialEnvVarsSpecificL f_aj5i (EnvVars x_aj5j x_aj5k)
+  = fmap (EnvVars x_aj5j)
       (f_aj5i x_aj5k)
 {-# INLINE partialEnvVarsSpecificL #-}
 
 -- | Lens for 'partialProcessConfigCmdLine'
 partialProcessConfigCmdLineL ::
-  Lens' PartialProcessConfig PartialCommandLineArgs
+  Lens' ProcessConfig CommandLineArgs
 partialProcessConfigCmdLineL
   f_allv
-  (PartialProcessConfig x_allw x_allx x_ally x_allz x_allA)
+  (ProcessConfig x_allw x_allx x_ally x_allz x_allA)
   = fmap
        (\ y_allB
-          -> PartialProcessConfig x_allw y_allB x_ally x_allz
+          -> ProcessConfig x_allw y_allB x_ally x_allz
                x_allA)
       (f_allv x_allx)
 {-# INLINE partialProcessConfigCmdLineL #-}
 
 -- | Lens for 'partialProcessConfigEnvVars'
 partialProcessConfigEnvVarsL ::
-  Lens' PartialProcessConfig PartialEnvVars
+  Lens' ProcessConfig EnvVars
 partialProcessConfigEnvVarsL
   f_allC
-  (PartialProcessConfig x_allD x_allE x_allF x_allG x_allH)
+  (ProcessConfig x_allD x_allE x_allF x_allG x_allH)
   = fmap
        (\ y_allI
-          -> PartialProcessConfig y_allI x_allE x_allF x_allG
+          -> ProcessConfig y_allI x_allE x_allF x_allG
                x_allH)
       (f_allC x_allD)
 {-# INLINE partialProcessConfigEnvVarsL #-}
 
 -- | Lens for 'partialProcessConfigStdErr'
 partialProcessConfigStdErrL ::
-  Lens' PartialProcessConfig (Last Handle)
+  Lens' ProcessConfig (Last Handle)
 partialProcessConfigStdErrL
   f_allJ
-  (PartialProcessConfig x_allK x_allL x_allM x_allN x_allO)
+  (ProcessConfig x_allK x_allL x_allM x_allN x_allO)
   = fmap
-       (PartialProcessConfig x_allK x_allL x_allM x_allN)
+       (ProcessConfig x_allK x_allL x_allM x_allN)
       (f_allJ x_allO)
 
 -- | Lens for 'partialProcessConfigStdIn'
 {-# INLINE partialProcessConfigStdErrL #-}
 partialProcessConfigStdInL ::
-  Lens' PartialProcessConfig (Last Handle)
+  Lens' ProcessConfig (Last Handle)
 partialProcessConfigStdInL
   f_allQ
-  (PartialProcessConfig x_allR x_allS x_allT x_allU x_allV)
+  (ProcessConfig x_allR x_allS x_allT x_allU x_allV)
   = fmap
        (\ y_allW
-          -> PartialProcessConfig x_allR x_allS y_allW x_allU
+          -> ProcessConfig x_allR x_allS y_allW x_allU
                x_allV)
       (f_allQ x_allT)
 {-# INLINE partialProcessConfigStdInL #-}
 
 -- | Lens for 'partialProcessConfigStdOut'
 partialProcessConfigStdOutL ::
-  Lens' PartialProcessConfig (Last Handle)
+  Lens' ProcessConfig (Last Handle)
 partialProcessConfigStdOutL
   f_allX
-  (PartialProcessConfig x_allY x_allZ x_alm0 x_alm1 x_alm2)
+  (ProcessConfig x_allY x_allZ x_alm0 x_alm1 x_alm2)
   = fmap
        (\ y_alm3
-          -> PartialProcessConfig x_allY x_allZ x_alm0 y_alm3
+          -> ProcessConfig x_allY x_allZ x_alm0 y_alm3
                x_alm2)
       (f_allX x_alm1)
 {-# INLINE partialProcessConfigStdOutL #-}
 
 -- | Lens for 'partialPostgresPlanClientConfig'
 partialPostgresPlanClientConfigL ::
-  Lens' PartialPostgresPlan Client.Options
+  Lens' PostgresPlan Client.Options
 partialPostgresPlanClientConfigL
   f_am1y
-  (PartialPostgresPlan x_am1z x_am1A)
-  = fmap (PartialPostgresPlan x_am1z)
+  (PostgresPlan x_am1z x_am1A)
+  = fmap (PostgresPlan x_am1z)
       (f_am1y x_am1A)
 {-# INLINE partialPostgresPlanClientConfigL #-}
 
 -- | Lens for 'partialPostgresPlanProcessConfig'
 partialPostgresPlanProcessConfigL ::
-  Lens' PartialPostgresPlan PartialProcessConfig
+  Lens' PostgresPlan ProcessConfig
 partialPostgresPlanProcessConfigL
   f_am1C
-  (PartialPostgresPlan x_am1D x_am1E)
-  = fmap (`PartialPostgresPlan` x_am1E)
+  (PostgresPlan x_am1D x_am1E)
+  = fmap (`PostgresPlan` x_am1E)
       (f_am1C x_am1D)
 {-# INLINE partialPostgresPlanProcessConfigL #-}
 
 -- | Lens for 'partialPlanConfig'
-partialPlanConfigL :: Lens' PartialPlan [String]
+partialPlanConfigL :: Lens' Plan [String]
 partialPlanConfigL
   f_amcw
-  (PartialPlan x_amcx x_amcy x_amcz x_amcA x_amcB x_amcC)
+  (Plan x_amcx x_amcy x_amcz x_amcA x_amcB x_amcC)
   = fmap
        (\ y_amcD
-          -> PartialPlan x_amcx x_amcy x_amcz x_amcA y_amcD
+          -> Plan x_amcx x_amcy x_amcz x_amcA y_amcD
                x_amcC)
       (f_amcw x_amcB)
 {-# INLINE partialPlanConfigL #-}
 
 -- | Lens for 'partialPlanCreateDb'
 partialPlanCreateDbL ::
-  Lens' PartialPlan (Maybe PartialProcessConfig)
+  Lens' Plan (Maybe ProcessConfig)
 partialPlanCreateDbL
   f_amcE
-  (PartialPlan x_amcF x_amcG x_amcH x_amcI x_amcJ x_amcK)
+  (Plan x_amcF x_amcG x_amcH x_amcI x_amcJ x_amcK)
   = fmap
        (\ y_amcL
-          -> PartialPlan x_amcF x_amcG y_amcL x_amcI x_amcJ
+          -> Plan x_amcF x_amcG y_amcL x_amcI x_amcJ
                x_amcK)
       (f_amcE x_amcH)
 {-# INLINE partialPlanCreateDbL #-}
 
 -- | Lens for 'partialPlanDataDirectory'
-partialPlanDataDirectoryL :: Lens' PartialPlan (Last String)
+partialPlanDataDirectoryL :: Lens' Plan (Last String)
 partialPlanDataDirectoryL
   f_amcM
-  (PartialPlan x_amcN x_amcO x_amcP x_amcQ x_amcR x_amcS)
+  (Plan x_amcN x_amcO x_amcP x_amcQ x_amcR x_amcS)
   = fmap
-       (PartialPlan x_amcN x_amcO x_amcP x_amcQ x_amcR)
+       (Plan x_amcN x_amcO x_amcP x_amcQ x_amcR)
       (f_amcM x_amcS)
 {-# INLINE partialPlanDataDirectoryL #-}
 
 -- | Lens for 'partialPlanInitDb'
 partialPlanInitDbL ::
-  Lens' PartialPlan (Maybe PartialProcessConfig)
+  Lens' Plan (Maybe ProcessConfig)
 partialPlanInitDbL
   f_amcU
-  (PartialPlan x_amcV x_amcW x_amcX x_amcY x_amcZ x_amd0)
+  (Plan x_amcV x_amcW x_amcX x_amcY x_amcZ x_amd0)
   = fmap
        (\ y_amd1
-          -> PartialPlan x_amcV y_amd1 x_amcX x_amcY x_amcZ
+          -> Plan x_amcV y_amd1 x_amcX x_amcY x_amcZ
                x_amd0)
       (f_amcU x_amcW)
 {-# INLINE partialPlanInitDbL #-}
 
 -- | Lens for 'partialPlanLogger'
-partialPlanLoggerL :: Lens' PartialPlan (Last Logger)
+partialPlanLoggerL :: Lens' Plan (Last Logger)
 partialPlanLoggerL
   f_amd2
-  (PartialPlan x_amd3 x_amd4 x_amd5 x_amd6 x_amd7 x_amd8)
+  (Plan x_amd3 x_amd4 x_amd5 x_amd6 x_amd7 x_amd8)
   = fmap
        (\ y_amd9
-          -> PartialPlan y_amd9 x_amd4 x_amd5 x_amd6 x_amd7
+          -> Plan y_amd9 x_amd4 x_amd5 x_amd6 x_amd7
                x_amd8)
       (f_amd2 x_amd3)
 {-# INLINE partialPlanLoggerL #-}
 
 -- | Lens for 'partialPlanPostgres'
-partialPlanPostgresL :: Lens' PartialPlan PartialPostgresPlan
+partialPlanPostgresL :: Lens' Plan PostgresPlan
 partialPlanPostgresL
   f_amda
-  (PartialPlan x_amdb x_amdc x_amdd x_amde x_amdf x_amdg)
+  (Plan x_amdb x_amdc x_amdd x_amde x_amdf x_amdg)
   = fmap
        (\ y_amdh
-          -> PartialPlan x_amdb x_amdc x_amdd y_amdh x_amdf
+          -> Plan x_amdb x_amdc x_amdd y_amdh x_amdf
                x_amdg)
       (f_amda x_amde)
 {-# INLINE partialPlanPostgresL #-}
@@ -869,14 +869,14 @@ resourcesSocketL f_ampn (Resources x_ampo x_ampp x_ampq)
 {-# INLINE resourcesSocketL #-}
 
 -- | Lens for 'configDataDir'
-configDataDirL :: Lens' Config PartialDirectoryType
+configDataDirL :: Lens' Config DirectoryType
 configDataDirL f_amyD (Config x_amyE x_amyF x_amyG x_amyH)
   = fmap (\ y_amyI -> Config x_amyE x_amyF y_amyI x_amyH)
       (f_amyD x_amyG)
 {-# INLINE configDataDirL #-}
 
 -- | Lens for 'configPlan'
-configPlanL :: Lens' Config PartialPlan
+configPlanL :: Lens' Config Plan
 configPlanL f_amyJ (Config x_amyK x_amyL x_amyM x_amyN)
   = fmap (\ y_amyO -> Config y_amyO x_amyL x_amyM x_amyN)
       (f_amyJ x_amyK)
@@ -890,7 +890,7 @@ configPortL f_amyP (Config x_amyQ x_amyR x_amyS x_amyT)
 {-# INLINE configPortL #-}
 
 -- | Lens for 'configSocket'
-configSocketL :: Lens' Config PartialSocketClass
+configSocketL :: Lens' Config SocketClass
 configSocketL f_amyV (Config x_amyW x_amyX x_amyY x_amyZ)
   = fmap (\ y_amz0 -> Config x_amyW y_amz0 x_amyY x_amyZ)
       (f_amyV x_amyX)
@@ -898,20 +898,20 @@ configSocketL f_amyV (Config x_amyW x_amyX x_amyY x_amyZ)
 
 -- | Lens for 'partialCommandLineArgsIndexBased'
 partialCommandLineArgsIndexBasedL ::
-  Lens' PartialCommandLineArgs (Map Int String)
+  Lens' CommandLineArgs (Map Int String)
 partialCommandLineArgsIndexBasedL
   f_amNr
-  (PartialCommandLineArgs x_amNs x_amNt)
-  = fmap (PartialCommandLineArgs x_amNs)
+  (CommandLineArgs x_amNs x_amNt)
+  = fmap (CommandLineArgs x_amNs)
       (f_amNr x_amNt)
 {-# INLINE partialCommandLineArgsIndexBasedL #-}
 
 -- | Lens for 'partialCommandLineArgsKeyBased'
 partialCommandLineArgsKeyBasedL ::
-  Lens' PartialCommandLineArgs (Map String (Maybe String))
+  Lens' CommandLineArgs (Map String (Maybe String))
 partialCommandLineArgsKeyBasedL
   f_amNv
-  (PartialCommandLineArgs x_amNw x_amNx)
-  = fmap (`PartialCommandLineArgs` x_amNx)
+  (CommandLineArgs x_amNw x_amNx)
+  = fmap (`CommandLineArgs` x_amNx)
       (f_amNv x_amNw)
 {-# INLINE partialCommandLineArgsKeyBasedL #-}

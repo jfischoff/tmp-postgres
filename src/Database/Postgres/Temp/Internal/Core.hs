@@ -46,7 +46,7 @@ data StartError
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
   | CompletePlanFailed String [String]
-  -- ^ The 'Database.Postgres.Temp.Partial.PartialPlan' was missing info and a complete 'CompletePlan' could
+  -- ^ The 'Database.Postgres.Temp.Partial.Plan' was missing info and a complete 'CompletePlan' could
   --   not be created.
   deriving (Show, Eq, Ord, Typeable)
 
@@ -70,45 +70,45 @@ waitForDB logger options = do
 
 -- | 'ProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
-data ProcessConfig = ProcessConfig
-  { processConfigEnvVars :: [(String, String)]
+data CompleteProcessConfig = CompleteProcessConfig
+  { completeProcessConfigEnvVars :: [(String, String)]
   -- ^ Environment variables
-  , processConfigCmdLine :: [String]
+  , completeProcessConfigCmdLine :: [String]
   -- ^ Command line arguements
-  , processConfigStdIn   :: Handle
+  , completeProcessConfigStdIn   :: Handle
   -- ^ The 'Handle' for standard input
-  , processConfigStdOut  :: Handle
+  , completeProcessConfigStdOut  :: Handle
   -- ^ The 'Handle' for standard output
-  , processConfigStdErr  :: Handle
+  , completeProcessConfigStdErr  :: Handle
   -- ^ The 'Handle' for standard error
   }
 
 prettyKeyPair ::(Pretty a, Pretty b) => a -> b -> Doc
 prettyKeyPair k v = pretty k <> text ": " <> pretty v
 
-instance Pretty ProcessConfig where
-  pretty ProcessConfig {..}
-    =  text "processConfigEnvVars:"
+instance Pretty CompleteProcessConfig where
+  pretty CompleteProcessConfig {..}
+    =  text "completeProcessConfigEnvVars:"
     <> softline
-    <> indent 2 (vsep (map (uncurry prettyKeyPair) processConfigEnvVars))
+    <> indent 2 (vsep (map (uncurry prettyKeyPair) completeProcessConfigEnvVars))
     <> hardline
-    <> text "processConfigCmdLine:"
+    <> text "completeProcessConfigCmdLine:"
     <> softline
-    <> text (unwords processConfigCmdLine)
+    <> text (unwords completeProcessConfigCmdLine)
 
 -- | Start a process interactively and return the 'ProcessHandle'
 startProcess
   :: String
   -- ^ Process name
-  -> ProcessConfig
+  -> CompleteProcessConfig
   -- ^ Process config
   -> IO ProcessHandle
-startProcess name ProcessConfig {..} = (\(_, _, _, x) -> x) <$>
-  createProcess_ name (proc name processConfigCmdLine)
-    { std_err = UseHandle processConfigStdErr
-    , std_out = UseHandle processConfigStdOut
-    , std_in  = UseHandle processConfigStdIn
-    , env     = Just processConfigEnvVars
+startProcess name CompleteProcessConfig {..} = (\(_, _, _, x) -> x) <$>
+  createProcess_ name (proc name completeProcessConfigCmdLine)
+    { std_err = UseHandle completeProcessConfigStdErr
+    , std_out = UseHandle completeProcessConfigStdOut
+    , std_in  = UseHandle completeProcessConfigStdIn
+    , env     = Just completeProcessConfigEnvVars
     }
 
 -- | Stop a 'ProcessHandle'. An alias for 'waitForProcess'
@@ -119,7 +119,7 @@ stopProcess = waitForProcess
 executeProcess
   :: String
   -- ^ Process name
-  -> ProcessConfig
+  -> CompleteProcessConfig
   -- ^ Process config
   -> IO ExitCode
 executeProcess name = startProcess name >=> waitForProcess
@@ -129,7 +129,7 @@ executeProcess name = startProcess name >=> waitForProcess
 -- | 'CompletePostgresPlan' is used be 'startPostgresProcess' to start the @postgres@
 --   and then attempt to connect to it.
 data CompletePostgresPlan = CompletePostgresPlan
-  { completePostgresPlanProcessConfig :: ProcessConfig
+  { completePostgresPlanProcessConfig :: CompleteProcessConfig
   -- ^ The process config for @postgres@
   , completePostgresPlanClientOptions  :: Client.Options
   -- ^ Connection options. Used to verify that @postgres@ is ready.
@@ -235,8 +235,8 @@ startPostgresProcess logger CompletePostgresPlan {..} = do
 --   level plan generation is not sufficent.
 data CompletePlan = CompletePlan
   { completePlanLogger        :: Logger
-  , completePlanInitDb        :: Maybe ProcessConfig
-  , completePlanCreateDb      :: Maybe ProcessConfig
+  , completePlanInitDb        :: Maybe CompleteProcessConfig
+  , completePlanCreateDb      :: Maybe CompleteProcessConfig
   , completePlanPostgres      :: CompletePostgresPlan
   , completePlanConfig        :: String
   , completePlanDataDirectory :: FilePath
