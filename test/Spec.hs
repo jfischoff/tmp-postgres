@@ -204,7 +204,7 @@ createDbThrowsIfTheDbExists = describe "createdb" $
     runner (const $ pure ()) `shouldThrow` (== CreateDbFailed (ExitFailure 1))
 
 spec :: Spec
-spec = parallel $ do
+spec = do
   let defaultIpPlan = defaultConfig
         { socketClass = IpSocket $ Last Nothing
         }
@@ -257,7 +257,7 @@ spec = parallel $ do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
 
-  describe "start/stop" $ parallel $ do
+  describe "start/stop" $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
