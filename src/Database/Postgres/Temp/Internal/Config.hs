@@ -45,25 +45,25 @@ prettyMap theMap =
 -- | The environment variables can be declared to
 --   inherit from the running process or they
 --   can be specifically added.
-data EnvVars = EnvVars
+data EnvironmentVariables = EnvironmentVariables
   { inherit  :: Last Bool
   , specific :: Map String String
   }
   deriving stock (Generic, Show, Eq)
 
-instance Semigroup EnvVars where
-  x <> y = EnvVars
+instance Semigroup EnvironmentVariables where
+  x <> y = EnvironmentVariables
     { inherit  =
         inherit x <> inherit y
     , specific =
         specific y <> specific x
     }
 
-instance Monoid EnvVars where
-  mempty = EnvVars mempty mempty
+instance Monoid EnvironmentVariables where
+  mempty = EnvironmentVariables mempty mempty
 
-instance Pretty EnvVars where
-  pretty EnvVars {..}
+instance Pretty EnvironmentVariables where
+  pretty EnvironmentVariables {..}
     = text "inherit:"
         <+> pretty (getLast inherit)
     <> hardline
@@ -74,23 +74,26 @@ instance Pretty EnvVars where
 -- | Combine the current environment
 --   (if indicated by 'inherit')
 --   with 'specific'
-completeEnvVars :: [(String, String)] -> EnvVars -> Either [String] [(String, String)]
-completeEnvVars envs EnvVars {..} = case getLast inherit of
+completeEnvironmentVariables
+  :: [(String, String)]
+  -> EnvironmentVariables
+  -> Either [String] [(String, String)]
+completeEnvironmentVariables envs EnvironmentVariables {..} = case getLast inherit of
   Nothing -> Left ["Inherit not specified"]
   Just x -> Right $ (if x then envs else [])
     <> Map.toList specific
 
--- | A type to help combine command line arguments.
+-- | A type to help combine command line Args.
 data CommandLineArgs = CommandLineArgs
   { keyBased   :: Map String (Maybe String)
-  -- ^ Arguments of the form @-h foo@, @--host=foo@ and @--switch@.
+  -- ^ Args of the form @-h foo@, @--host=foo@ and @--switch@.
   --   The key is `mappend`ed with value so the key should include
   --   the space or equals (as shown in the first two examples
   --   respectively).
   --   The 'Dual' monoid is used so the last key wins.
   , indexBased :: Map Int String
-  -- ^ Arguments that appear at the end of the key based
-  --   arguments.
+  -- ^ Args that appear at the end of the key based
+  --   Args.
   --   The 'Dual' monoid is used so the last key wins.
   }
   deriving stock (Generic, Show, Eq)
@@ -136,11 +139,11 @@ completeCommandLineArgs CommandLineArgs {..}
 -- | The monoidial version of 'ProcessConfig'. Used to combine overrides with
 --   defaults when creating a 'ProcessConfig'.
 data ProcessConfig = ProcessConfig
-  { environmentVariables :: EnvVars
+  { environmentVariables :: EnvironmentVariables
   -- ^ A monoid for combine environment variables or replacing them.
   --   for the maps the 'Dual' monoid is used. So the last key wins.
   , commandLine :: CommandLineArgs
-  -- ^ A monoid for combine command line arguments or replacing them
+  -- ^ A monoid for combine command line Args or replacing them
   , stdIn :: Last Handle
   -- ^ A monoid for configuring the standard input 'Handle'
   , stdOut :: Last Handle
@@ -205,7 +208,7 @@ completeProcessConfig
 completeProcessConfig envs ProcessConfig {..} = runErrors $ do
   let completeProcessConfigCmdLine = completeCommandLineArgs commandLine
   completeProcessConfigEnvVars <- eitherToErrors $
-    completeEnvVars envs environmentVariables
+    completeEnvironmentVariables envs environmentVariables
   completeProcessConfigStdIn  <-
     getOption "stdIn" stdIn
   completeProcessConfigStdOut <-
@@ -679,16 +682,16 @@ type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
 type Lens' s a = Lens s s a a
 
 -- | Lens for 'inherit'
-inheritL :: Lens' EnvVars (Last Bool)
-inheritL f_aj5e (EnvVars x_aj5f x_aj5g)
-  = fmap (`EnvVars` x_aj5g)
+inheritL :: Lens' EnvironmentVariables (Last Bool)
+inheritL f_aj5e (EnvironmentVariables x_aj5f x_aj5g)
+  = fmap (`EnvironmentVariables` x_aj5g)
       (f_aj5e x_aj5f)
 {-# INLINE inheritL #-}
 
 -- | Lens for 'specific'
-specificL :: Lens' EnvVars (Map String String)
-specificL f_aj5i (EnvVars x_aj5j x_aj5k)
-  = fmap (EnvVars x_aj5j)
+specificL :: Lens' EnvironmentVariables (Map String String)
+specificL f_aj5i (EnvironmentVariables x_aj5j x_aj5k)
+  = fmap (EnvironmentVariables x_aj5j)
       (f_aj5i x_aj5k)
 {-# INLINE specificL #-}
 
@@ -707,7 +710,7 @@ commandLineL
 
 -- | Lens for 'environmentVariables'
 environmentVariablesL ::
-  Lens' ProcessConfig EnvVars
+  Lens' ProcessConfig EnvironmentVariables
 environmentVariablesL
   f_allC
   (ProcessConfig x_allD x_allE x_allF x_allG x_allH)
