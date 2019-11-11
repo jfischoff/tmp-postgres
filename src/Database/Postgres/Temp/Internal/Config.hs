@@ -480,7 +480,7 @@ data Config = Config
   -- ^ Override the default temporary data directory by passing in
   -- 'CPermanent DIRECTORY'
   , port    :: Last (Maybe Int)
-  -- ^ A monoid for using an existing port (via 'Just' 'PORT_NUMBER') or
+  -- ^ A monoid for using an existing port (via 'Just' @PORT_NUMBER@) or
   -- requesting a free port (via a 'Nothing')
   , temporaryDirectory :: Last FilePath
   -- ^ The directory used to create other temporary directories. Defaults

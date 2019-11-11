@@ -77,7 +77,7 @@ waitForDB logger options = do
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB logger options
     Right () -> return ()
 
--- | 'ProcessConfig' contains the configuration necessary for starting a
+-- | 'CompleteProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
 data CompleteProcessConfig = CompleteProcessConfig
   { completeProcessConfigEnvVars :: [(String, String)]

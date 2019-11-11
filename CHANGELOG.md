@@ -12,3 +12,6 @@ Changelog for tmp-postgres
 1.9.0.0
   #41 Configurable temporary directory
   #59 Change EnvVars to EnvironmentVariables
+
+1.9.0.1
+  Documentation fixes
