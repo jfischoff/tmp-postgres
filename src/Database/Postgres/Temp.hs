@@ -76,8 +76,8 @@ module Database.Postgres.Temp
   , Config (..)
   , prettyPrintConfig
     -- *** 'Config' Lenses
-  , configPlanL
-  , configSocketL
+  , planL
+  , socketClassL
   , dataDirectoryL
   , configPortL
   -- ** 'Plan'

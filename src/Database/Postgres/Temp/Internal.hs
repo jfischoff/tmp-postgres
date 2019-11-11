@@ -142,7 +142,7 @@ custom 'Config' like the following.
 Or using the provided lenses and your favorite lens library
 
  @
-  custom = defaultConfig & 'configPlanL' . 'postgresConfigFile' <>~
+  custom = defaultConfig & 'planL' . 'postgresConfigFile' <>~
     [ "wal_level = replica"
     , "archive_mode = on"
     , "max_wal_senders = 2"
@@ -194,16 +194,48 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 
--- | Create temporary resources and use them to make a 'Config'.
---   The generated 'Config' is combined with the passed in @extraConfiguration@
---   to create a 'CompletePlan' that is used to create a database.
---   The output 'DB' includes references to the temporary resources for
---   cleanup and the final plan that was used to generate the database and
---   processes
+{-|
+
+Create zero or more temporary resources and use them to make a 'Config'.
+
+The passed in config is inspected and a generated config is created.
+The final config is built by
+
+ @
+   generated '<>' extra
+ @
+
+Returns a 'DB' that requires cleanup. `startConfig` should be
+used with a `bracket` and 'stop', e.g.
+
+ @
+   `withConfig` :: `Config` -> (`DB` -> IO a) -> IO (Either `StartError` a)
+   'withConfig' plan f = `bracket` (`startConfig` plan) (either mempty `stop`) $
+      either (pure . Left) (fmap Right . f)
+ @
+
+or just use 'withConfig'. If you are calling 'startConfig' you
+probably want 'withConfig' anyway.
+
+Based on the value of 'socketClass' a \"postgresql.conf\" is created with
+
+ @
+   listen_addresses = \'IP_ADDRESS\'
+ @
+
+ if it is 'CIpSocket'. If is 'CUnixSocket' then the lines
+
+ @
+   listen_addresses = ''
+   unix_socket_directories = \'SOCKET_DIRECTORY\'
+ @
+
+are added.
+
+-}
 startConfig :: Config
-          -- ^ @extraConfiguration@ that is 'mappend'ed to the generated `Config`.
-          -- The extra config is 'mappend'ed second, e.g.
-          -- @generatedConfig <> extraConfiguration@
+          -- ^ @extra@ configuration that is 'mappend'ed last to the generated `Config`.
+          -- @generated <> extra@
           -> IO (Either StartError DB)
 startConfig extra = try $ evalContT $ do
   dbResources@Resources {..} <-
@@ -217,7 +249,7 @@ startConfig extra = try $ evalContT $ do
 start :: IO (Either StartError DB)
 start = startConfig defaultConfig
 
--- | Stop the @postgres@ process and cleanup any temporary directories that
+-- | Stop the @postgres@ process and cleanup any temporary resources that
 --   might have been created.
 stop :: DB -> IO ()
 stop DB {..} = do
@@ -230,8 +262,7 @@ stop DB {..} = do
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
 
--- | Restart the @postgres@ using the 'CompletePlan' from the 'DB'
---  (e.g. @resourcesPlan . dbResources@)
+-- | Restart the @postgres@ from 'DB' using the prior 'Plan'
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
@@ -251,25 +282,8 @@ reloadConfig db =
 -- Exception safe interface
 -------------------------------------------------------------------------------
 {-|
-Exception safe default database create. Takes an @action@ continuation
-which is given a 'DB' it can use to connect
-to (see 'toConnectionString' or 'postgresProcessClientOptions').
-All of the database resources are automatically cleaned up on
-completion even in the face of exceptions.
-Based on the value of 'socketClass' a \"postgresql.conf\" is created with
-
- @
-   listen_addresses = \'IP_ADDRESS\'
- @
-
- if it is 'CIpSocket'. If is 'CUnixSocket' then the lines
-
- @
-   listen_addresses = ''
-   unix_socket_directories = SOCKET_DIRECTORY
- @
-
-are added. This occurs as a side effect of calling 'withConfig'.
+Exception safe database create with options. See 'startConfig' for more
+details. Calls 'stop' even in the face of exceptions.
 -}
 withConfig :: Config
          -- ^ @extraConfiguration@. Combined with the generated 'Config'. See
@@ -280,8 +294,13 @@ withConfig :: Config
 withConfig plan f = bracket (startConfig plan) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
--- | Default expectation safe interface. Equivalent to 'withConfig' the
---   'defaultConfig'
+{-| Default expectation safe interface. Equivalent to
+
+ @
+   'with' = withConfig' 'defaultConfig'
+ @
+
+-}
 with :: (DB -> IO a)
      -- ^ @action@ continuation.
      -> IO (Either StartError a)
