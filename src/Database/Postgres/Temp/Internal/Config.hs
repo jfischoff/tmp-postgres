@@ -891,11 +891,11 @@ planL f (config@Config{..})
 {-# INLINE planL #-}
 
 -- | Lens for 'port'
-configPortL :: Lens' Config (Last (Maybe Int))
-configPortL f (config@Config{..})
+portL :: Lens' Config (Last (Maybe Int))
+portL f (config@Config{..})
   = fmap (\ x -> config { port = x } )
       (f port)
-{-# INLINE configPortL #-}
+{-# INLINE portL #-}
 
 -- | Lens for 'socketClass'
 socketClassL :: Lens' Config SocketClass

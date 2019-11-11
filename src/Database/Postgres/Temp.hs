@@ -79,7 +79,7 @@ module Database.Postgres.Temp
   , planL
   , socketClassL
   , dataDirectoryL
-  , configPortL
+  , portL
   -- ** 'Plan'
   , Plan (..)
   -- *** 'Plan' lenses
