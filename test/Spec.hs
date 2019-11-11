@@ -175,10 +175,13 @@ withAnyPlan = do
 
     one `shouldBe` (1 :: Int)
 
+{-
+  Reenable after temp files are configurable #41
   it "cleans up temp files" $ \(Runner runner) -> do
     initialFiles <- listDirectory "/tmp"
     runner $ const $ pure ()
     listDirectory "/tmp" `shouldReturn` initialFiles
+ -}
 
 -- This assumes that the directory is initially empty
 withInitDbEmptyInitially :: SpecWith Runner
