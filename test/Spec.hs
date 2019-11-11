@@ -45,20 +45,20 @@ defaultConfigShouldMatchDefaultPlan :: SpecWith Runner
 defaultConfigShouldMatchDefaultPlan =
   it "default options should match default plan" $ withRunner $ \DB{..} -> do
     let Resources {..} = dbResources
-        Plan {..} = resourcesPlan
-        PostgresPlan {..} = planPostgres
-    Client.dbname postgresPlanClientOptions `shouldBe` pure "postgres"
-    let Temporary tmpDataDir = resourcesDataDir
+        CompletePlan {..} = resourcesPlan
+        CompletePostgresPlan {..} = completePlanPostgres
+    Client.dbname completePostgresPlanClientOptions `shouldBe` pure "postgres"
+    let CTemporary tmpDataDir = resourcesDataDir
     tmpDataDir `shouldStartWith` "/tmp/tmp-postgres-data"
-    let Just port = getLast $ Client.port postgresPlanClientOptions
+    let Just port = getLast $ Client.port completePostgresPlanClientOptions
     port `shouldSatisfy` (>32768)
-    let UnixSocket (Temporary unixSocket) = resourcesSocket
+    let CUnixSocket (CTemporary unixSocket) = resourcesSocket
     unixSocket `shouldStartWith` "/tmp/tmp-postgres-socket"
-    postgresPlanClientOptions `shouldBe`
+    completePostgresPlanClientOptions `shouldBe`
       (mempty
-        { Client.port = Client.port postgresPlanClientOptions
-        , Client.host = Client.host postgresPlanClientOptions
-        , Client.dbname = Client.dbname postgresPlanClientOptions
+        { Client.port = Client.port completePostgresPlanClientOptions
+        , Client.host = Client.host completePostgresPlanClientOptions
+        , Client.dbname = Client.dbname completePostgresPlanClientOptions
         }
       )
 
@@ -115,9 +115,9 @@ customConfigWork action = do
         actualDuration `shouldBe` expectedDuration
 
       let Resources {..} = dbResources
-          Plan {..} = resourcesPlan
-          actualOptions = postgresPlanClientOptions planPostgres
-          actualPostgresConfig = planConfig
+          CompletePlan {..} = resourcesPlan
+          actualOptions = completePostgresPlanClientOptions completePlanPostgres
+          actualPostgresConfig = completePlanConfig
       Client.user actualOptions `shouldBe` pure expectedUser
       Client.dbname actualOptions `shouldBe` pure expectedDbName
       Client.password actualOptions `shouldBe` pure expectedPassword
@@ -201,7 +201,7 @@ createDbThrowsIfTheDbExists = describe "createdb" $
     runner (const $ pure ()) `shouldThrow` (== CreateDbFailed (ExitFailure 1))
 
 spec :: Spec
-spec = do
+spec = parallel $ do
   let defaultIpPlan = defaultConfig
         { configSocket = PIpSocket $ Last Nothing
         }
@@ -254,7 +254,7 @@ spec = do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
 
-  describe "start/stop" $ do
+  describe "start/stop" $ parallel $ do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan

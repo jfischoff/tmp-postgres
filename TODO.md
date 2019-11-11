@@ -1,4 +1,4 @@
-* Call Plan suffix Config for consistency
+* Call CompletePlan suffix Config for consistency
 * Organize exports better
 * Add documentation to all exported functions and types
 * Fix old documentation

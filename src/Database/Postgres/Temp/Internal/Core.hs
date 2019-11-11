@@ -46,7 +46,7 @@ data StartError
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
   | CompletePlanFailed String [String]
-  -- ^ The 'Database.Postgres.Temp.Partial.PartialPlan' was missing info and a complete 'Plan' could
+  -- ^ The 'Database.Postgres.Temp.Partial.PartialPlan' was missing info and a complete 'CompletePlan' could
   --   not be created.
   deriving (Show, Eq, Ord, Typeable)
 
@@ -126,23 +126,23 @@ executeProcess name = startProcess name >=> waitForProcess
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
--- | 'PostgresPlan' is used be 'startPostgresProcess' to start the @postgres@
+-- | 'CompletePostgresPlan' is used be 'startPostgresProcess' to start the @postgres@
 --   and then attempt to connect to it.
-data PostgresPlan = PostgresPlan
-  { postgresPlanProcessConfig :: ProcessConfig
+data CompletePostgresPlan = CompletePostgresPlan
+  { completePostgresPlanProcessConfig :: ProcessConfig
   -- ^ The process config for @postgres@
-  , postgresPlanClientOptions  :: Client.Options
+  , completePostgresPlanClientOptions  :: Client.Options
   -- ^ Connection options. Used to verify that @postgres@ is ready.
   }
 
-instance Pretty PostgresPlan where
-  pretty PostgresPlan {..}
-    =  text "postgresPlanProcessConfig:"
+instance Pretty CompletePostgresPlan where
+  pretty CompletePostgresPlan {..}
+    =  text "completePostgresPlanProcessConfig:"
     <> softline
-    <> indent 2 (pretty postgresPlanProcessConfig)
+    <> indent 2 (pretty completePostgresPlanProcessConfig)
     <> hardline
-    <> text "postgresPlanClientOptions:"
-    <+> prettyOptions postgresPlanClientOptions
+    <> text "completePostgresPlanClientOptions:"
+    <+> prettyOptions completePostgresPlanClientOptions
 
 prettyOptions :: Client.Options -> Doc
 prettyOptions = text . BSC.unpack . Client.toConnectionString
@@ -196,12 +196,12 @@ stopPostgresProcess PostgresProcess{..} = do
 -- | Start the @postgres@ process and block until a successful connection
 --   occurs. A separate thread we continously check to see if the @postgres@
 --   process has crashed.
-startPostgresProcess :: Logger -> PostgresPlan -> IO PostgresProcess
-startPostgresProcess logger PostgresPlan {..} = do
+startPostgresProcess :: Logger -> CompletePostgresPlan -> IO PostgresProcess
+startPostgresProcess logger CompletePostgresPlan {..} = do
   logger StartPostgres
 
-  let startAction = PostgresProcess postgresPlanClientOptions
-        <$> startProcess "postgres" postgresPlanProcessConfig
+  let startAction = PostgresProcess completePostgresPlanClientOptions
+        <$> startProcess "postgres" completePostgresPlanProcessConfig
 
   -- Start postgres and stop if an exception occurs
   bracketOnError startAction stopPostgresProcess $
@@ -214,7 +214,7 @@ startPostgresProcess logger PostgresPlan {..} = do
       logger WaitForDB
       -- We assume that 'template1' exist and make connection
       -- options to test if postgres is ready.
-      let options = postgresPlanClientOptions
+      let options = completePostgresPlanClientOptions
             { Client.dbname = pure "template1"
             }
 
@@ -225,43 +225,43 @@ startPostgresProcess logger PostgresPlan {..} = do
       -- Postgres is now ready so return
       return result
 -------------------------------------------------------------------------------
--- Plan
+-- CompletePlan
 -------------------------------------------------------------------------------
--- | 'Plan' is the low level configuration necessary for creating a database
+-- | 'CompletePlan' is the low level configuration necessary for creating a database
 --   starting @postgres@ and creating a database. There is no validation done
---   on the 'Plan'. It is recommend that one use the higher level functions
+--   on the 'CompletePlan'. It is recommend that one use the higher level functions
 --   such as 'Database.Postgres.Temp.start' which will generate plans that
---   are valid. 'Plan's are used internally but are exposed if the higher
+--   are valid. 'CompletePlan's are used internally but are exposed if the higher
 --   level plan generation is not sufficent.
-data Plan = Plan
-  { planLogger        :: Logger
-  , planInitDb        :: Maybe ProcessConfig
-  , planCreateDb      :: Maybe ProcessConfig
-  , planPostgres      :: PostgresPlan
-  , planConfig        :: String
-  , planDataDirectory :: FilePath
+data CompletePlan = CompletePlan
+  { completePlanLogger        :: Logger
+  , completePlanInitDb        :: Maybe ProcessConfig
+  , completePlanCreateDb      :: Maybe ProcessConfig
+  , completePlanPostgres      :: CompletePostgresPlan
+  , completePlanConfig        :: String
+  , completePlanDataDirectory :: FilePath
   }
 
-instance Pretty Plan where
-  pretty Plan {..}
-    =   text "planInitDb:"
+instance Pretty CompletePlan where
+  pretty CompletePlan {..}
+    =   text "completePlanInitDb:"
     <>  softline
-    <>  indent 2 (pretty planInitDb)
+    <>  indent 2 (pretty completePlanInitDb)
     <>  hardline
-    <>  text "planCreateDb:"
+    <>  text "completePlanCreateDb:"
     <>  softline
-    <>  indent 2 (pretty planCreateDb)
+    <>  indent 2 (pretty completePlanCreateDb)
     <>  hardline
-    <>  text "planPostgres:"
+    <>  text "completePlanPostgres:"
     <>  softline
-    <>  indent 2 (pretty planPostgres)
+    <>  indent 2 (pretty completePlanPostgres)
     <>  hardline
-    <>  text "planConfig:"
+    <>  text "completePlanConfig:"
     <>  softline
-    <>  indent 2 (pretty planConfig)
+    <>  indent 2 (pretty completePlanConfig)
     <>  hardline
-    <>  text "planDataDirectory:"
-    <+> pretty planDataDirectory
+    <>  text "completePlanDataDirectory:"
+    <+> pretty completePlanDataDirectory
 
 -- A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
 throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
@@ -274,19 +274,19 @@ throwIfNotSuccess f = \case
 --   Additionally it writes a \"postgresql.conf\" and does not return until
 --   the @postgres@ process is ready. See 'startPostgresProcess' for more
 --   details.
-startPlan :: Plan -> IO PostgresProcess
-startPlan plan@Plan {..} = do
-  planLogger $ StartPlan $ show $ pretty plan
-  for_ planInitDb  $ executeProcess "initdb" >=>
+startPlan :: CompletePlan -> IO PostgresProcess
+startPlan plan@CompletePlan {..} = do
+  completePlanLogger $ StartPlan $ show $ pretty plan
+  for_ completePlanInitDb  $ executeProcess "initdb" >=>
     throwIfNotSuccess InitDbFailed
 
   -- We must provide a config file before we can start postgres.
-  writeFile (planDataDirectory <> "/postgresql.conf") planConfig
+  writeFile (completePlanDataDirectory <> "/postgresql.conf") completePlanConfig
 
-  let startAction = startPostgresProcess planLogger planPostgres
+  let startAction = startPostgresProcess completePlanLogger completePlanPostgres
 
   bracketOnError startAction stopPostgresProcess $ \result -> do
-    for_ planCreateDb $  executeProcess "createdb" >=>
+    for_ completePlanCreateDb $  executeProcess "createdb" >=>
       throwIfNotSuccess CreateDbFailed
 
     pure result

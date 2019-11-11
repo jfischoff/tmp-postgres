@@ -1,13 +1,13 @@
 {-# OPTIONS_HADDOCK prune #-}
 {-| This module provides types and functions for combining partial
-    configs into a complete configs to ultimately make a 'Plan'.
+    configs into a complete configs to ultimately make a 'CompletePlan'.
 
     This module has two classes of types.
 
     Types like 'PartialProcessConfig' that could be used by any
     library that  needs to combine process options.
 
-    Finally it has types and functions for creating 'Plan's that
+    Finally it has types and functions for creating 'CompletePlan's that
     use temporary resources. This is used to create the default
     behavior of 'Database.Postgres.Temp.startConfig' and related
     functions.
@@ -216,28 +216,28 @@ completeProcessConfig envs PartialProcessConfig {..} = runErrors $ do
   pure ProcessConfig {..}
 
 -- | A type to track whether a file is temporary and needs to be cleaned up.
-data DirectoryType = Permanent FilePath | Temporary FilePath
+data CompleteDirectoryType = CPermanent FilePath | CTemporary FilePath
   deriving(Show, Eq, Ord)
 
--- | Get the file path of a 'DirectoryType', regardless if it is a
--- 'Permanent' or 'Temporary' type.
-toFilePath :: DirectoryType -> FilePath
+-- | Get the file path of a 'CompleteDirectoryType', regardless if it is a
+-- 'CPermanent' or 'CTemporary' type.
+toFilePath :: CompleteDirectoryType -> FilePath
 toFilePath = \case
-  Permanent x -> x
-  Temporary x -> x
+  CPermanent x -> x
+  CTemporary x -> x
 
-instance Pretty DirectoryType where
+instance Pretty CompleteDirectoryType where
   pretty = \case
-    Permanent x -> text "Permanent" <+> pretty x
-    Temporary x -> text "Temporary" <+> pretty x
+    CPermanent x -> text "CPermanent" <+> pretty x
+    CTemporary x -> text "CTemporary" <+> pretty x
 
-makePermanent :: DirectoryType -> DirectoryType
+makePermanent :: CompleteDirectoryType -> CompleteDirectoryType
 makePermanent = \case
-  Temporary x -> Permanent x
+  CTemporary x -> CPermanent x
   x -> x
 
--- | The monoidial version of 'DirectoryType'. Used to combine overrides with
---   defaults when creating a 'DirectoryType'. The monoid instance treats
+-- | The monoidial version of 'CompleteDirectoryType'. Used to combine overrides with
+--   defaults when creating a 'CompleteDirectoryType'. The monoid instance treats
 --   'PTemporary' as 'mempty' and takes the last 'PPermanent' value.
 data PartialDirectoryType
   = PPermanent FilePath
@@ -248,8 +248,8 @@ data PartialDirectoryType
 
 instance Pretty PartialDirectoryType where
   pretty = \case
-    PPermanent x -> text "Permanent" <+> pretty x
-    PTemporary   -> text "Temporary"
+    PPermanent x -> text "CPermanent" <+> pretty x
+    PTemporary   -> text "CTemporary"
 
 instance Semigroup PartialDirectoryType where
   x <> y = case (x, y) of
@@ -259,12 +259,12 @@ instance Semigroup PartialDirectoryType where
 instance Monoid PartialDirectoryType where
   mempty = PTemporary
 
--- | Either create a'Temporary' directory or do nothing to a 'Permanent'
+-- | Either create a'CTemporary' directory or do nothing to a 'CPermanent'
 --   one.
-setupDirectoryType :: String -> PartialDirectoryType -> IO DirectoryType
+setupDirectoryType :: String -> PartialDirectoryType -> IO CompleteDirectoryType
 setupDirectoryType p = \case
-  PTemporary -> Temporary <$> createTempDirectory "/tmp" p
-  PPermanent x  -> pure $ Permanent x
+  PTemporary -> CTemporary <$> createTempDirectory "/tmp" p
+  PPermanent x  -> pure $ CPermanent x
 
 -- Either create a temporary directory or do nothing
 rmDirIgnoreErrors :: FilePath -> IO ()
@@ -274,53 +274,53 @@ rmDirIgnoreErrors mainDir = do
         | otherwise = throwIO e
   removeDirectoryRecursive mainDir `catch` ignoreDirIsMissing
 
--- | Either remove a 'Temporary' directory or do nothing to a 'Permanent'
+-- | Either remove a 'CTemporary' directory or do nothing to a 'CPermanent'
 -- one.
-cleanupDirectoryType :: DirectoryType -> IO ()
+cleanupDirectoryType :: CompleteDirectoryType -> IO ()
 cleanupDirectoryType = \case
-  Permanent _ -> pure ()
-  Temporary filePath -> rmDirIgnoreErrors filePath
+  CPermanent _ -> pure ()
+  CTemporary filePath -> rmDirIgnoreErrors filePath
 
 -- | A type for configuring the listening address of the @postgres@ process.
 --   @postgres@ can listen on several types of sockets simulatanously but we
 --   don't support that behavior. One can either listen on a IP based socket
 --   or a UNIX domain socket.
-data SocketClass
-  = IpSocket String
+data CompleteSocketClass
+  = CIpSocket String
   -- ^ IP socket type. The 'String' is either an IP address or
   -- a host that will resolve to an IP address.
-  | UnixSocket DirectoryType
+  | CUnixSocket CompleteDirectoryType
   -- ^ UNIX domain socket
   deriving (Show, Eq, Ord, Generic, Typeable)
 
-instance Pretty SocketClass where
+instance Pretty CompleteSocketClass where
   pretty = \case
-    IpSocket x   -> text "IpSocket:" <+> pretty x
-    UnixSocket x -> text "UnixSocket:" <+> pretty x
+    CIpSocket x   -> text "CIpSocket:" <+> pretty x
+    CUnixSocket x -> text "CUnixSocket:" <+> pretty x
 
--- | Create the extra config lines for listening based on the 'SocketClass'
-socketClassToConfig :: SocketClass -> [String]
+-- | Create the extra config lines for listening based on the 'CompleteSocketClass'
+socketClassToConfig :: CompleteSocketClass -> [String]
 socketClassToConfig = \case
-  IpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
-  UnixSocket dir ->
+  CIpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
+  CUnixSocket dir ->
     [ "listen_addresses = ''"
     , "unix_socket_directories = '" <> toFilePath dir <> "'"
     ]
 
 -- | Many processes require a \"host\" flag. We can generate one from the
---   'SocketClass'.
-socketClassToHostFlag :: SocketClass -> [(String, Maybe String)]
+--   'CompleteSocketClass'.
+socketClassToHostFlag :: CompleteSocketClass -> [(String, Maybe String)]
 socketClassToHostFlag x = [("-h", Just (socketClassToHost x))]
 
 -- | Get the IP address, host name or UNIX domain socket directory
 --   as a 'String'
-socketClassToHost :: SocketClass -> String
+socketClassToHost :: CompleteSocketClass -> String
 socketClassToHost = \case
-  IpSocket ip    -> ip
-  UnixSocket dir -> toFilePath dir
+  CIpSocket ip    -> ip
+  CUnixSocket dir -> toFilePath dir
 
--- | The monoidial version of 'SocketClass'. Used to combine overrides with
---   defaults when creating a 'SocketClass'. The monoid instance treats
+-- | The monoidial version of 'CompleteSocketClass'. Used to combine overrides with
+--   defaults when creating a 'CompleteSocketClass'. The monoid instance treats
 --   'PUnixSocket mempty' as 'mempty' and combines the
 data PartialSocketClass
   = PIpSocket (Last String)
@@ -331,8 +331,8 @@ data PartialSocketClass
 
 instance Pretty PartialSocketClass where
   pretty = \case
-    PIpSocket x -> "IpSocket:" <+> pretty (getLast x)
-    PUnixSocket x -> "UnixSocket" <+> pretty x
+    PIpSocket x -> "CIpSocket:" <+> pretty (getLast x)
+    PUnixSocket x -> "CUnixSocket" <+> pretty x
 
 instance Semigroup PartialSocketClass where
   x <> y = case (x, y) of
@@ -344,21 +344,21 @@ instance Semigroup PartialSocketClass where
 instance Monoid PartialSocketClass where
  mempty = PUnixSocket mempty
 
--- | Turn a 'PartialSocketClass' to a 'SocketClass'. If the 'PIpSocket' is
+-- | Turn a 'PartialSocketClass' to a 'CompleteSocketClass'. If the 'PIpSocket' is
 --   'Nothing' default to \"127.0.0.1\". If the is a 'PUnixSocket'
 --    optionally create a temporary directory if configured to do so.
-setupPartialSocketClass :: PartialSocketClass -> IO SocketClass
+setupPartialSocketClass :: PartialSocketClass -> IO CompleteSocketClass
 setupPartialSocketClass theClass = case theClass of
-  PIpSocket mIp -> pure $ IpSocket $ fromMaybe "127.0.0.1" $
+  PIpSocket mIp -> pure $ CIpSocket $ fromMaybe "127.0.0.1" $
     getLast mIp
   PUnixSocket mFilePath ->
-    UnixSocket <$> setupDirectoryType "tmp-postgres-socket" mFilePath
+    CUnixSocket <$> setupDirectoryType "tmp-postgres-socket" mFilePath
 
 -- | Cleanup the UNIX socket temporary directory if one was created.
-cleanupSocketConfig :: SocketClass -> IO ()
+cleanupSocketConfig :: CompleteSocketClass -> IO ()
 cleanupSocketConfig = \case
-  IpSocket   {}  -> pure ()
-  UnixSocket dir -> cleanupDirectoryType dir
+  CIpSocket   {}  -> pure ()
+  CUnixSocket dir -> cleanupDirectoryType dir
 
 -- | @postgres@ process config and corresponding client connection
 --   'Client.Options'.
@@ -382,20 +382,20 @@ instance Pretty PartialPostgresPlan where
     <> softline
     <> indent 2 (prettyOptions partialPostgresPlanClientConfig)
 
--- | Turn a 'PartialPostgresPlan' into a 'PostgresPlan'. Fails if any
+-- | Turn a 'PartialPostgresPlan' into a 'CompletePostgresPlan'. Fails if any
 --   values are missing.
-completePostgresPlan :: [(String, String)] -> PartialPostgresPlan -> Either [String] PostgresPlan
+completePostgresPlan :: [(String, String)] -> PartialPostgresPlan -> Either [String] CompletePostgresPlan
 completePostgresPlan envs PartialPostgresPlan {..} = runErrors $ do
-  let postgresPlanClientOptions = partialPostgresPlanClientConfig
-  postgresPlanProcessConfig <-
+  let completePostgresPlanClientOptions = partialPostgresPlanClientConfig
+  completePostgresPlanProcessConfig <-
     eitherToErrors $ addErrorContext "partialPostgresPlanProcessConfig: " $
       completeProcessConfig envs partialPostgresPlanProcessConfig
 
-  pure PostgresPlan {..}
+  pure CompletePostgresPlan {..}
 -------------------------------------------------------------------------------
 -- PartialPlan
 -------------------------------------------------------------------------------
--- | The monoidial version of 'Plan'. Used to combine overrides with defaults
+-- | The monoidial version of 'CompletePlan'. Used to combine overrides with defaults
 --   when creating a plan.
 data PartialPlan = PartialPlan
   { partialPlanLogger        :: Last Logger
@@ -429,21 +429,21 @@ instance Pretty PartialPlan where
     <> hardline
     <> text "partialPlanDataDirectory:" <+> pretty (getLast partialPlanDataDirectory)
 
--- | Turn a 'PartialPlan' into a 'Plan'. Fails if any values are missing.
-completePlan :: [(String, String)] -> PartialPlan -> Either [String] Plan
+-- | Turn a 'PartialPlan' into a 'CompletePlan'. Fails if any values are missing.
+completePlan :: [(String, String)] -> PartialPlan -> Either [String] CompletePlan
 completePlan envs PartialPlan {..} = runErrors $ do
-  planLogger   <- getOption "partialPlanLogger" partialPlanLogger
-  planInitDb   <- eitherToErrors $ addErrorContext "partialPlanInitDb: " $
+  completePlanLogger   <- getOption "partialPlanLogger" partialPlanLogger
+  completePlanInitDb   <- eitherToErrors $ addErrorContext "partialPlanInitDb: " $
     traverse (completeProcessConfig envs) partialPlanInitDb
-  planCreateDb <- eitherToErrors $ addErrorContext "partialPlanCreateDb: " $
+  completePlanCreateDb <- eitherToErrors $ addErrorContext "partialPlanCreateDb: " $
     traverse (completeProcessConfig envs) partialPlanCreateDb
-  planPostgres <- eitherToErrors $ addErrorContext "partialPlanPostgres: " $
+  completePlanPostgres <- eitherToErrors $ addErrorContext "partialPlanPostgres: " $
     completePostgresPlan envs partialPlanPostgres
-  let planConfig = unlines partialPlanConfig
-  planDataDirectory <- getOption "partialPlanDataDirectory"
+  let completePlanConfig = unlines partialPlanConfig
+  completePlanDataDirectory <- getOption "partialPlanDataDirectory"
     partialPlanDataDirectory
 
-  pure Plan {..}
+  pure CompletePlan {..}
 
 -- Returns 'True' if the 'PartialPlan' has a
 -- 'Just' 'partialPlanInitDb'
@@ -456,15 +456,15 @@ hasCreateDb :: PartialPlan -> Bool
 hasCreateDb PartialPlan {..} = isJust partialPlanCreateDb
 
 -- | 'Resources' holds a description of the temporary folders (if there are any)
---   and includes the final 'Plan' that can be used with 'startPlan'.
+--   and includes the final 'CompletePlan' that can be used with 'startPlan'.
 --   See 'setupConfig' for an example of how to create a 'Resources'.
 data Resources = Resources
-  { resourcesPlan    :: Plan
-  -- ^ Final 'Plan'. See 'startPlan' for information on 'Plan's
-  , resourcesSocket  :: SocketClass
-  -- ^ The 'SocketClass'. Used to track if a temporary directory was made
+  { resourcesPlan    :: CompletePlan
+  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's
+  , resourcesSocket  :: CompleteSocketClass
+  -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
   --   as the socket location.
-  , resourcesDataDir :: DirectoryType
+  , resourcesDataDir :: CompleteDirectoryType
   -- ^ The data directory. Used to track if a temporary directory was used.
   }
 
@@ -480,7 +480,7 @@ instance Pretty Resources where
     <>  text "resourcesDataDir:"
     <+> pretty resourcesDataDir
 
--- | Make the 'resourcesDataDir' 'Permanent' so it will not
+-- | Make the 'resourcesDataDir' 'CPermanent' so it will not
 --   get cleaned up.
 makeResourcesDataDirPermanent :: Resources -> Resources
 makeResourcesDataDirPermanent r = r
@@ -491,12 +491,12 @@ makeResourcesDataDirPermanent r = r
 data Config = Config
   { configPlan    :: PartialPlan
   -- ^ Extend or replace any of the configuration used to create a final
-  --   'Plan'
+  --   'CompletePlan'
   , configSocket  :: PartialSocketClass
-  -- ^ Override the default 'SocketClass' by setting this.
+  -- ^ Override the default 'CompleteSocketClass' by setting this.
   , configDataDir :: PartialDirectoryType
   -- ^ Override the default temporary data directory by passing in
-  -- 'Permanent DIRECTORY'
+  -- 'CPermanent DIRECTORY'
   , configPort    :: Last (Maybe Int)
   -- ^ A monoid for using an existing port (via 'Just PORT_NUMBER') or
   -- requesting a free port (via a 'Nothing')
@@ -530,7 +530,7 @@ toPlan
   -- ^ Make @createdb@ options
   -> Int
   -- ^ port
-  -> SocketClass
+  -> CompleteSocketClass
   -- ^ Whether to listen on a IP address or UNIX domain socket
   -> FilePath
   -- ^ The @postgres@ data directory
@@ -848,21 +848,21 @@ partialPlanPostgresL
 {-# INLINE partialPlanPostgresL #-}
 
 -- | Lens for 'resourcesDataDir'
-resourcesDataDirL :: Lens' Resources DirectoryType
+resourcesDataDirL :: Lens' Resources CompleteDirectoryType
 resourcesDataDirL f_ampd (Resources x_ampe x_ampf x_ampg)
   = fmap (Resources x_ampe x_ampf)
       (f_ampd x_ampg)
 {-# INLINE resourcesDataDirL #-}
 
 -- | Lens for 'resourcesPlan'
-resourcesPlanL :: Lens' Resources Plan
+resourcesPlanL :: Lens' Resources CompletePlan
 resourcesPlanL f_ampi (Resources x_ampj x_ampk x_ampl)
   = fmap (\ y_ampm -> Resources y_ampm x_ampk x_ampl)
       (f_ampi x_ampj)
 {-# INLINE resourcesPlanL #-}
 
 -- | Lens for 'resourcesSocket'
-resourcesSocketL :: Lens' Resources SocketClass
+resourcesSocketL :: Lens' Resources CompleteSocketClass
 resourcesSocketL f_ampn (Resources x_ampo x_ampp x_ampq)
   = fmap (\ y_ampr -> Resources x_ampo y_ampr x_ampq)
       (f_ampn x_ampp)

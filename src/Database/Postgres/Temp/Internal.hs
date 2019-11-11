@@ -20,12 +20,12 @@ import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the
---   final 'Plan' that was used to start @initdb@, @createdb@ and
+--   final 'CompletePlan' that was used to start @initdb@, @createdb@ and
 --   @postgres@. See 'toConnectionString' for converting a 'DB' to
 --   postgresql connection string.
 data DB = DB
   { dbResources :: Resources
-  -- ^ Temporary resources and the final 'Plan'.
+  -- ^ Temporary resources and the final 'CompletePlan'.
   , dbPostgresProcess :: PostgresProcess
   -- ^ @postgres@ process handle and the connection options.
   }
@@ -196,7 +196,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
 
 -- | Create temporary resources and use them to make a 'Config'.
 --   The generated 'Config' is combined with the passed in @extraConfiguration@
---   to create a 'Plan' that is used to create a database.
+--   to create a 'CompletePlan' that is used to create a database.
 --   The output 'DB' includes references to the temporary resources for
 --   cleanup and the final plan that was used to generate the database and
 --   processes
@@ -230,13 +230,13 @@ stop DB {..} = do
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
 
--- | Restart the @postgres@ using the 'Plan' from the 'DB'
+-- | Restart the @postgres@ using the 'CompletePlan' from the 'DB'
 --  (e.g. @resourcesPlan . dbResources@)
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
   let plan = resourcesPlan dbResources
-  bracketOnError (startPostgresProcess (planLogger plan) $ planPostgres plan)
+  bracketOnError (startPostgresProcess (completePlanLogger plan) $ completePlanPostgres plan)
     stopPostgresProcess $ \result ->
       pure $ db { dbPostgresProcess = result }
 
@@ -262,7 +262,7 @@ Based on the value of 'configSocket' a \"postgresql.conf\" is created with
    listen_addresses = \'IP_ADDRESS\'
  @
 
- if it is 'IpSocket'. If is 'UnixSocket' then the lines
+ if it is 'CIpSocket'. If is 'CUnixSocket' then the lines
 
  @
    listen_addresses = ''
