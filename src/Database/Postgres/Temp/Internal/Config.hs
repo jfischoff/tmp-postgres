@@ -458,38 +458,6 @@ hasInitDb Plan {..} = isJust initDbConfig
 hasCreateDb :: Plan -> Bool
 hasCreateDb Plan {..} = isJust createDbConfig
 
--- | 'Resources' holds a description of the temporary folders (if there are any)
---   and includes the final 'CompletePlan' that can be used with 'startPlan'.
---   See 'setupConfig' for an example of how to create a 'Resources'.
-data Resources = Resources
-  { resourcesPlan    :: CompletePlan
-  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's
-  , resourcesSocket  :: CompleteSocketClass
-  -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
-  --   as the socket location.
-  , resourcesDataDir :: CompleteDirectoryType
-  -- ^ The data directory. Used to track if a temporary directory was used.
-  }
-
-instance Pretty Resources where
-  pretty Resources {..}
-    =   text "resourcePlan:"
-    <>  softline
-    <>  indent 2 (pretty resourcesPlan)
-    <>  hardline
-    <>  text "resourcesSocket:"
-    <+> pretty resourcesSocket
-    <>  hardline
-    <>  text "resourcesDataDir:"
-    <+> pretty resourcesDataDir
-
--- | Make the 'resourcesDataDir' 'CPermanent' so it will not
---   get cleaned up.
-makeResourcesDataDirPermanent :: Resources -> Resources
-makeResourcesDataDirPermanent r = r
-  { resourcesDataDir = makePermanent $ resourcesDataDir r
-  }
-
 -- | The high level options for overriding default behavior.
 data Config = Config
   { plan    :: Plan
@@ -607,6 +575,38 @@ cleanupConfig :: Resources -> IO ()
 cleanupConfig Resources {..} = do
   cleanupSocketConfig resourcesSocket
   cleanupDirectoryType resourcesDataDir
+
+-- | 'Resources' holds a description of the temporary folders (if there are any)
+--   and includes the final 'CompletePlan' that can be used with 'startPlan'.
+--   See 'setupConfig' for an example of how to create a 'Resources'.
+data Resources = Resources
+  { resourcesPlan    :: CompletePlan
+  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's
+  , resourcesSocket  :: CompleteSocketClass
+  -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
+  --   as the socket location.
+  , resourcesDataDir :: CompleteDirectoryType
+  -- ^ The data directory. Used to track if a temporary directory was used.
+  }
+
+instance Pretty Resources where
+  pretty Resources {..}
+    =   text "resourcePlan:"
+    <>  softline
+    <>  indent 2 (pretty resourcesPlan)
+    <>  hardline
+    <>  text "resourcesSocket:"
+    <+> pretty resourcesSocket
+    <>  hardline
+    <>  text "resourcesDataDir:"
+    <+> pretty resourcesDataDir
+
+-- | Make the 'resourcesDataDir' 'CPermanent' so it will not
+--   get cleaned up.
+makeResourcesDataDirPermanent :: Resources -> Resources
+makeResourcesDataDirPermanent r = r
+  { resourcesDataDir = makePermanent $ resourcesDataDir r
+  }
 -------------------------------------------------------------------------------
 -- Config Generation
 -------------------------------------------------------------------------------
