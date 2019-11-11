@@ -471,6 +471,7 @@ data Config = Config
   , port    :: Last (Maybe Int)
   -- ^ A monoid for using an existing port (via 'Just' 'PORT_NUMBER') or
   -- requesting a free port (via a 'Nothing')
+  , temporaryDirectory :: Last (Maybe FilePath)
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config
@@ -491,6 +492,10 @@ instance Pretty Config where
     <> pretty dataDirectory
     <> hardline
     <> text "port:" <+> pretty (getLast port)
+    <> hardline
+    <> text "dataDirectory:"
+    <> softline
+    <> pretty (getLast temporaryDirectory)
 
 -- | Create a 'Plan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@) using a
@@ -873,30 +878,30 @@ resourcesSocketL f_ampn (Resources x_ampo x_ampp x_ampq)
 
 -- | Lens for 'dataDirectory'
 dataDirectoryL :: Lens' Config DirectoryType
-dataDirectoryL f_amyD (Config x_amyE x_amyF x_amyG x_amyH)
-  = fmap (\ y_amyI -> Config x_amyE x_amyF y_amyI x_amyH)
-      (f_amyD x_amyG)
+dataDirectoryL f (config@Config{..})
+  = fmap (\ x -> config { dataDirectory = x } )
+      (f dataDirectory)
 {-# INLINE dataDirectoryL #-}
 
 -- | Lens for 'plan'
 planL :: Lens' Config Plan
-planL f_amyJ (Config x_amyK x_amyL x_amyM x_amyN)
-  = fmap (\ y_amyO -> Config y_amyO x_amyL x_amyM x_amyN)
-      (f_amyJ x_amyK)
+planL f (config@Config{..})
+  = fmap (\ x -> config { plan = x } )
+      (f plan)
 {-# INLINE planL #-}
 
 -- | Lens for 'port'
 configPortL :: Lens' Config (Last (Maybe Int))
-configPortL f_amyP (Config x_amyQ x_amyR x_amyS x_amyT)
-  = fmap (Config x_amyQ x_amyR x_amyS)
-      (f_amyP x_amyT)
+configPortL f (config@Config{..})
+  = fmap (\ x -> config { port = x } )
+      (f port)
 {-# INLINE configPortL #-}
 
 -- | Lens for 'socketClass'
 socketClassL :: Lens' Config SocketClass
-socketClassL f_amyV (Config x_amyW x_amyX x_amyY x_amyZ)
-  = fmap (\ y_amz0 -> Config x_amyW y_amz0 x_amyY x_amyZ)
-      (f_amyV x_amyX)
+socketClassL f (config@Config{..})
+  = fmap (\ x -> config { socketClass = x } )
+      (f socketClass)
 {-# INLINE socketClassL #-}
 
 -- | Lens for 'indexBased'
