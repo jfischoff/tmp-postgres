@@ -70,6 +70,7 @@ module Database.Postgres.Temp
   , toConnectionString
   , toConnectionOptions
   , toDataDirectory
+  , toTemporaryDirectory
   , makeDataDirPermanent
   -- * Monoidial Configuration Types
   -- ** 'Config'
@@ -79,7 +80,7 @@ module Database.Postgres.Temp
   , planL
   , socketClassL
   , dataDirectoryL
-  , configPortL
+  , portL
   -- ** 'Plan'
   , Plan (..)
   -- *** 'Plan' lenses

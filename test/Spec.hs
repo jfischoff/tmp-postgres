@@ -70,9 +70,10 @@ customConfigWork action = do
       expectedDuration = "100ms"
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
 
-  it "returns the right client options for the plan" $ do
+  it "returns the right client options for the plan" $ withTempDirectory "/tmp" "tmp-postgres-spec" $ \tmpDir -> do
     let customPlan = mempty
-          { plan = mempty
+          { temporaryDirectory = pure tmpDir
+          , plan = mempty
               { postgresPlan = mempty
                   { connectionOptions = mempty
                       { Client.user     = pure expectedUser
@@ -109,6 +110,8 @@ customConfigWork action = do
     -- hmm maybe I should provide lenses
     let combinedResources = defaultConfig <> customPlan
 
+    initialFiles <- listDirectory tmpDir
+
     action combinedResources $ \db@DB {..} -> do
       bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
         [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
@@ -122,6 +125,8 @@ customConfigWork action = do
       Client.dbname actualOptions `shouldBe` pure expectedDbName
       Client.password actualOptions `shouldBe` pure expectedPassword
       lines actualPostgresConfig `shouldContain` defaultPostgresConfig <> [extraConfig]
+
+    listDirectory tmpDir `shouldReturn` initialFiles
 
 invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
 invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ do
@@ -174,14 +179,6 @@ withAnyPlan = do
         \conn -> PG.query_ conn "SELECT 1"
 
     one `shouldBe` (1 :: Int)
-
-{-
-  Reenable after temp files are configurable #41
-  it "cleans up temp files" $ \(Runner runner) -> do
-    initialFiles <- listDirectory "/tmp"
-    runner $ const $ pure ()
-    listDirectory "/tmp" `shouldReturn` initialFiles
- -}
 
 -- This assumes that the directory is initially empty
 withInitDbEmptyInitially :: SpecWith Runner

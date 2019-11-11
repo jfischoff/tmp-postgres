@@ -264,9 +264,15 @@ instance Monoid DirectoryType where
 
 -- | Either create a'CTemporary' directory or do nothing to a 'CPermanent'
 --   one.
-setupDirectoryType :: String -> DirectoryType -> IO CompleteDirectoryType
-setupDirectoryType p = \case
-  Temporary -> CTemporary <$> createTempDirectory "/tmp" p
+setupDirectoryType
+  :: String
+  -- ^ Temporary directory configuration
+  -> String
+  -- ^ Directory pattern
+  -> DirectoryType
+  -> IO CompleteDirectoryType
+setupDirectoryType tempDir pat = \case
+  Temporary -> CTemporary <$> createTempDirectory tempDir pat
   Permanent x  -> pure $ CPermanent x
 
 -- Either create a temporary directory or do nothing
@@ -350,12 +356,17 @@ instance Monoid SocketClass where
 -- | Turn a 'SocketClass' to a 'CompleteSocketClass'. If the 'IpSocket' is
 --   'Nothing' default to \"127.0.0.1\". If the is a 'UnixSocket'
 --    optionally create a temporary directory if configured to do so.
-setupSocketClass :: SocketClass -> IO CompleteSocketClass
-setupSocketClass theClass = case theClass of
+setupSocketClass
+  :: String
+  -- ^ Temporary directory
+  -> SocketClass
+  -- ^ The type of socket
+  -> IO CompleteSocketClass
+setupSocketClass tempDir theClass = case theClass of
   IpSocket mIp -> pure $ CIpSocket $ fromMaybe "127.0.0.1" $
     getLast mIp
   UnixSocket mFilePath ->
-    CUnixSocket <$> setupDirectoryType "tmp-postgres-socket" mFilePath
+    CUnixSocket <$> setupDirectoryType tempDir "tmp-postgres-socket" mFilePath
 
 -- | Cleanup the UNIX socket temporary directory if one was created.
 cleanupSocketConfig :: CompleteSocketClass -> IO ()
@@ -458,38 +469,6 @@ hasInitDb Plan {..} = isJust initDbConfig
 hasCreateDb :: Plan -> Bool
 hasCreateDb Plan {..} = isJust createDbConfig
 
--- | 'Resources' holds a description of the temporary folders (if there are any)
---   and includes the final 'CompletePlan' that can be used with 'startPlan'.
---   See 'setupConfig' for an example of how to create a 'Resources'.
-data Resources = Resources
-  { resourcesPlan    :: CompletePlan
-  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's
-  , resourcesSocket  :: CompleteSocketClass
-  -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
-  --   as the socket location.
-  , resourcesDataDir :: CompleteDirectoryType
-  -- ^ The data directory. Used to track if a temporary directory was used.
-  }
-
-instance Pretty Resources where
-  pretty Resources {..}
-    =   text "resourcePlan:"
-    <>  softline
-    <>  indent 2 (pretty resourcesPlan)
-    <>  hardline
-    <>  text "resourcesSocket:"
-    <+> pretty resourcesSocket
-    <>  hardline
-    <>  text "resourcesDataDir:"
-    <+> pretty resourcesDataDir
-
--- | Make the 'resourcesDataDir' 'CPermanent' so it will not
---   get cleaned up.
-makeResourcesDataDirPermanent :: Resources -> Resources
-makeResourcesDataDirPermanent r = r
-  { resourcesDataDir = makePermanent $ resourcesDataDir r
-  }
-
 -- | The high level options for overriding default behavior.
 data Config = Config
   { plan    :: Plan
@@ -503,6 +482,9 @@ data Config = Config
   , port    :: Last (Maybe Int)
   -- ^ A monoid for using an existing port (via 'Just' 'PORT_NUMBER') or
   -- requesting a free port (via a 'Nothing')
+  , temporaryDirectory :: Last FilePath
+  -- ^ The directory used to create other temporary directories. Defaults
+  --   to \"/tmp\".
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config
@@ -523,6 +505,10 @@ instance Pretty Config where
     <> pretty dataDirectory
     <> hardline
     <> text "port:" <+> pretty (getLast port)
+    <> hardline
+    <> text "dataDirectory:"
+    <> softline
+    <> pretty (getLast temporaryDirectory)
 
 -- | Create a 'Plan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@) using a
@@ -586,10 +572,11 @@ setupConfig
 setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
+  let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
   resourcesSocket <- ContT $ bracketOnError
-    (setupSocketClass socketClass) cleanupSocketConfig
+    (setupSocketClass resourcesTemporaryDir socketClass) cleanupSocketConfig
   resourcesDataDir <- ContT $ bracketOnError
-    (setupDirectoryType "tmp-postgres-data" dataDirectory) cleanupDirectoryType
+    (setupDirectoryType resourcesTemporaryDir "tmp-postgres-data" dataDirectory) cleanupDirectoryType
   let hostAndDir = toPlan
         (hasInitDb plan)
         (hasCreateDb plan)
@@ -607,6 +594,41 @@ cleanupConfig :: Resources -> IO ()
 cleanupConfig Resources {..} = do
   cleanupSocketConfig resourcesSocket
   cleanupDirectoryType resourcesDataDir
+
+-- | 'Resources' holds a description of the temporary folders (if there are any)
+--   and includes the final 'CompletePlan' that can be used with 'startPlan'.
+--   See 'setupConfig' for an example of how to create a 'Resources'.
+data Resources = Resources
+  { resourcesPlan    :: CompletePlan
+  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's
+  , resourcesSocket  :: CompleteSocketClass
+  -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
+  --   as the socket location.
+  , resourcesDataDir :: CompleteDirectoryType
+  -- ^ The data directory. Used to track if a temporary directory was used.
+  , resourcesTemporaryDir :: FilePath
+  -- ^ The directory where other temporary directories are created.
+  --   Usually \"/tmp\".
+  }
+
+instance Pretty Resources where
+  pretty Resources {..}
+    =   text "resourcePlan:"
+    <>  softline
+    <>  indent 2 (pretty resourcesPlan)
+    <>  hardline
+    <>  text "resourcesSocket:"
+    <+> pretty resourcesSocket
+    <>  hardline
+    <>  text "resourcesDataDir:"
+    <+> pretty resourcesDataDir
+
+-- | Make the 'resourcesDataDir' 'CPermanent' so it will not
+--   get cleaned up.
+makeResourcesDataDirPermanent :: Resources -> Resources
+makeResourcesDataDirPermanent r = r
+  { resourcesDataDir = makePermanent $ resourcesDataDir r
+  }
 -------------------------------------------------------------------------------
 -- Config Generation
 -------------------------------------------------------------------------------
@@ -852,51 +874,51 @@ postgresPlanL
 
 -- | Lens for 'resourcesDataDir'
 resourcesDataDirL :: Lens' Resources CompleteDirectoryType
-resourcesDataDirL f_ampd (Resources x_ampe x_ampf x_ampg)
-  = fmap (Resources x_ampe x_ampf)
-      (f_ampd x_ampg)
+resourcesDataDirL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesDataDir = x })
+      (f resourcesDataDir)
 {-# INLINE resourcesDataDirL #-}
 
 -- | Lens for 'resourcesPlan'
 resourcesPlanL :: Lens' Resources CompletePlan
-resourcesPlanL f_ampi (Resources x_ampj x_ampk x_ampl)
-  = fmap (\ y_ampm -> Resources y_ampm x_ampk x_ampl)
-      (f_ampi x_ampj)
+resourcesPlanL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesPlan = x })
+      (f resourcesPlan)
 {-# INLINE resourcesPlanL #-}
 
 -- | Lens for 'resourcesSocket'
 resourcesSocketL :: Lens' Resources CompleteSocketClass
-resourcesSocketL f_ampn (Resources x_ampo x_ampp x_ampq)
-  = fmap (\ y_ampr -> Resources x_ampo y_ampr x_ampq)
-      (f_ampn x_ampp)
+resourcesSocketL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesSocket = x })
+      (f resourcesSocket)
 {-# INLINE resourcesSocketL #-}
 
 -- | Lens for 'dataDirectory'
 dataDirectoryL :: Lens' Config DirectoryType
-dataDirectoryL f_amyD (Config x_amyE x_amyF x_amyG x_amyH)
-  = fmap (\ y_amyI -> Config x_amyE x_amyF y_amyI x_amyH)
-      (f_amyD x_amyG)
+dataDirectoryL f (config@Config{..})
+  = fmap (\ x -> config { dataDirectory = x } )
+      (f dataDirectory)
 {-# INLINE dataDirectoryL #-}
 
 -- | Lens for 'plan'
 planL :: Lens' Config Plan
-planL f_amyJ (Config x_amyK x_amyL x_amyM x_amyN)
-  = fmap (\ y_amyO -> Config y_amyO x_amyL x_amyM x_amyN)
-      (f_amyJ x_amyK)
+planL f (config@Config{..})
+  = fmap (\ x -> config { plan = x } )
+      (f plan)
 {-# INLINE planL #-}
 
 -- | Lens for 'port'
-configPortL :: Lens' Config (Last (Maybe Int))
-configPortL f_amyP (Config x_amyQ x_amyR x_amyS x_amyT)
-  = fmap (Config x_amyQ x_amyR x_amyS)
-      (f_amyP x_amyT)
-{-# INLINE configPortL #-}
+portL :: Lens' Config (Last (Maybe Int))
+portL f (config@Config{..})
+  = fmap (\ x -> config { port = x } )
+      (f port)
+{-# INLINE portL #-}
 
 -- | Lens for 'socketClass'
 socketClassL :: Lens' Config SocketClass
-socketClassL f_amyV (Config x_amyW x_amyX x_amyY x_amyZ)
-  = fmap (\ y_amz0 -> Config x_amyW y_amz0 x_amyY x_amyZ)
-      (f_amyV x_amyX)
+socketClassL f (config@Config{..})
+  = fmap (\ x -> config { socketClass = x } )
+      (f socketClass)
 {-# INLINE socketClassL #-}
 
 -- | Lens for 'indexBased'
