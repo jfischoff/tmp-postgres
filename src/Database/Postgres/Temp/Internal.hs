@@ -20,7 +20,7 @@ import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the
---   final 'CompletePlan' that was used to start @initdb@, @createdb@ and
+--   final plan used to start @initdb@, @createdb@ and
 --   @postgres@. See 'toConnectionString' for converting a 'DB' to
 --   postgresql connection string.
 data DB = DB
@@ -223,7 +223,7 @@ Based on the value of 'socketClass' a \"postgresql.conf\" is created with
    listen_addresses = \'IP_ADDRESS\'
  @
 
- if it is 'CIpSocket'. If is 'CUnixSocket' then the lines
+ if it is 'IpSocket'. If is 'UnixSocket' then the lines
 
  @
    listen_addresses = ''
