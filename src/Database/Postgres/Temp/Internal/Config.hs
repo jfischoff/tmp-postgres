@@ -264,9 +264,15 @@ instance Monoid DirectoryType where
 
 -- | Either create a'CTemporary' directory or do nothing to a 'CPermanent'
 --   one.
-setupDirectoryType :: String -> DirectoryType -> IO CompleteDirectoryType
-setupDirectoryType p = \case
-  Temporary -> CTemporary <$> createTempDirectory "/tmp" p
+setupDirectoryType
+  :: String
+  -- ^ Temporary directory configuration
+  -> String
+  -- ^ Directory pattern
+  -> DirectoryType
+  -> IO CompleteDirectoryType
+setupDirectoryType tempDir pat = \case
+  Temporary -> CTemporary <$> createTempDirectory tempDir pat
   Permanent x  -> pure $ CPermanent x
 
 -- Either create a temporary directory or do nothing
@@ -350,12 +356,17 @@ instance Monoid SocketClass where
 -- | Turn a 'SocketClass' to a 'CompleteSocketClass'. If the 'IpSocket' is
 --   'Nothing' default to \"127.0.0.1\". If the is a 'UnixSocket'
 --    optionally create a temporary directory if configured to do so.
-setupSocketClass :: SocketClass -> IO CompleteSocketClass
-setupSocketClass theClass = case theClass of
+setupSocketClass
+  :: String
+  -- ^ Temporary directory
+  -> SocketClass
+  -- ^ The type of socket
+  -> IO CompleteSocketClass
+setupSocketClass tempDir theClass = case theClass of
   IpSocket mIp -> pure $ CIpSocket $ fromMaybe "127.0.0.1" $
     getLast mIp
   UnixSocket mFilePath ->
-    CUnixSocket <$> setupDirectoryType "tmp-postgres-socket" mFilePath
+    CUnixSocket <$> setupDirectoryType tempDir "tmp-postgres-socket" mFilePath
 
 -- | Cleanup the UNIX socket temporary directory if one was created.
 cleanupSocketConfig :: CompleteSocketClass -> IO ()
@@ -471,7 +482,9 @@ data Config = Config
   , port    :: Last (Maybe Int)
   -- ^ A monoid for using an existing port (via 'Just' 'PORT_NUMBER') or
   -- requesting a free port (via a 'Nothing')
-  , temporaryDirectory :: Last (Maybe FilePath)
+  , temporaryDirectory :: Last FilePath
+  -- ^ The directory used to create other temporary directories. Defaults
+  --   to \"/tmp\".
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config
@@ -559,10 +572,11 @@ setupConfig
 setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
+  let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
   resourcesSocket <- ContT $ bracketOnError
-    (setupSocketClass socketClass) cleanupSocketConfig
+    (setupSocketClass resourcesTemporaryDir socketClass) cleanupSocketConfig
   resourcesDataDir <- ContT $ bracketOnError
-    (setupDirectoryType "tmp-postgres-data" dataDirectory) cleanupDirectoryType
+    (setupDirectoryType resourcesTemporaryDir "tmp-postgres-data" dataDirectory) cleanupDirectoryType
   let hostAndDir = toPlan
         (hasInitDb plan)
         (hasCreateDb plan)
@@ -592,6 +606,9 @@ data Resources = Resources
   --   as the socket location.
   , resourcesDataDir :: CompleteDirectoryType
   -- ^ The data directory. Used to track if a temporary directory was used.
+  , resourcesTemporaryDir :: FilePath
+  -- ^ The directory where other temporary directories are created.
+  --   Usually \"/tmp\".
   }
 
 instance Pretty Resources where
@@ -857,23 +874,23 @@ postgresPlanL
 
 -- | Lens for 'resourcesDataDir'
 resourcesDataDirL :: Lens' Resources CompleteDirectoryType
-resourcesDataDirL f_ampd (Resources x_ampe x_ampf x_ampg)
-  = fmap (Resources x_ampe x_ampf)
-      (f_ampd x_ampg)
+resourcesDataDirL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesDataDir = x })
+      (f resourcesDataDir)
 {-# INLINE resourcesDataDirL #-}
 
 -- | Lens for 'resourcesPlan'
 resourcesPlanL :: Lens' Resources CompletePlan
-resourcesPlanL f_ampi (Resources x_ampj x_ampk x_ampl)
-  = fmap (\ y_ampm -> Resources y_ampm x_ampk x_ampl)
-      (f_ampi x_ampj)
+resourcesPlanL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesPlan = x })
+      (f resourcesPlan)
 {-# INLINE resourcesPlanL #-}
 
 -- | Lens for 'resourcesSocket'
 resourcesSocketL :: Lens' Resources CompleteSocketClass
-resourcesSocketL f_ampn (Resources x_ampo x_ampp x_ampq)
-  = fmap (\ y_ampr -> Resources x_ampo y_ampr x_ampq)
-      (f_ampn x_ampp)
+resourcesSocketL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesSocket = x })
+      (f resourcesSocket)
 {-# INLINE resourcesSocketL #-}
 
 -- | Lens for 'dataDirectory'

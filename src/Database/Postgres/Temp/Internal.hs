@@ -73,6 +73,10 @@ makeDataDirPermanent :: DB -> DB
 makeDataDirPermanent db = db
   { dbResources = makeResourcesDataDirPermanent $ dbResources db
   }
+
+-- | Get the directory that is used to create other temporary directories
+toTemporaryDirectory :: DB -> FilePath
+toTemporaryDirectory = resourcesTemporaryDir . dbResources
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------

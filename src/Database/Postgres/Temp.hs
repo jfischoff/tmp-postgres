@@ -70,6 +70,7 @@ module Database.Postgres.Temp
   , toConnectionString
   , toConnectionOptions
   , toDataDirectory
+  , toTemporaryDirectory
   , makeDataDirPermanent
   -- * Monoidial Configuration Types
   -- ** 'Config'
