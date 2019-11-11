@@ -78,47 +78,47 @@ module Database.Postgres.Temp
     -- *** 'Config' Lenses
   , configPlanL
   , configSocketL
-  , configDataDirL
+  , dataDirectoryL
   , configPortL
   -- ** 'Plan'
   , Plan (..)
   -- *** 'Plan' lenses
-  , partialPlanConfigL
-  , partialPlanCreateDbL
-  , partialPlanDataDirectoryL
-  , partialPlanInitDbL
+  , postgresConfigFileL
+  , createDbConfigL
+  , dataDirectoryStringL
+  , initDbConfigL
   , partialPlanLoggerL
-  , partialPlanPostgresL
+  , postgresPlanL
   -- ** 'PostgresPlan'
   , PostgresPlan (..)
   -- *** 'PostgresPlan' lenses
-  , partialPostgresPlanClientConfigL
-  , partialPostgresPlanProcessConfigL
+  , connectionOptionsL
+  , postgresConfigL
   -- ** 'ProcessConfig'
   , ProcessConfig (..)
   -- *** 'ProcessConfig' Lenses
-  , partialProcessConfigCmdLineL
-  , partialProcessConfigEnvVarsL
-  , partialProcessConfigStdErrL
-  , partialProcessConfigStdInL
-  , partialProcessConfigStdOutL
+  , commandLineL
+  , environmentVariablesL
+  , stdErrL
+  , stdInL
+  , stdOutL
   -- ** 'EnvVars'
   , EnvVars (..)
   -- *** 'EnvVars' Lenses
-  , partialEnvVarsInheritL
-  , partialEnvVarsSpecificL
+  , inheritL
+  , specificL
   -- ** 'CommandLineArgs'
   , CommandLineArgs (..)
   -- *** 'CommandLineArgs' Lenses
-  , partialCommandLineArgsIndexBasedL
-  , partialCommandLineArgsKeyBasedL
+  , indexBasedL
+  , keyBasedL
   -- ** 'DirectoryType'
   , DirectoryType (..)
   -- ** 'SocketClass'
   , SocketClass (..)
   -- ** 'Logger'
   , Logger
-  -- * Internal events passed to the 'partialPlanLogger' .
+  -- * Internal events passed to the 'logger' .
   , Event (..)
     -- * Errors
   , StartError (..)

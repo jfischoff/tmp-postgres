@@ -26,10 +26,19 @@ import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Internal events for debugging
 data Event
-  = StartPostgres
+  = StartPlan String
+  -- ^ The first event. This useful for debugging
+  --   what is actual passed to the @initdb@, @createdb@ and
+  --   @postgres@.
+  | StartPostgres
+  -- ^ The second event. Postgres is about to get called
   | WaitForDB
-  | StartPlan String
+  -- ^ The third event. Postgres started. We are not about to
+  -- setup a reconnect loop (racing with a process checker)
   | TryToConnect
+  -- ^ The fourth event and (possibly all subsequent events).
+  -- We are looping trying to successfully connect to the @postgres@
+  -- process.
   deriving (Show, Eq, Ord)
 
 -- | A list of failures that can occur when starting. This is not

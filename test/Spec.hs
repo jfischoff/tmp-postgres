@@ -31,8 +31,8 @@ main = hspec spec
 
 fromCreateDb :: Maybe ProcessConfig -> Config
 fromCreateDb createDb = mempty
-  { configPlan = mempty
-      { partialPlanCreateDb = createDb
+  { plan = mempty
+      { createDbConfig = createDb
       }
   }
 
@@ -72,38 +72,38 @@ customConfigWork action = do
 
   it "returns the right client options for the plan" $ do
     let customPlan = mempty
-          { configPlan = mempty
-              { partialPlanPostgres = mempty
-                  { partialPostgresPlanClientConfig = mempty
+          { plan = mempty
+              { postgresPlan = mempty
+                  { connectionOptions = mempty
                       { Client.user     = pure expectedUser
                       , Client.password = pure expectedPassword
                       , Client.dbname   = pure expectedDbName
                       }
                   }
-              , partialPlanInitDb = pure standardProcessConfig
-                  { partialProcessConfigCmdLine = mempty
-                      { partialCommandLineArgsKeyBased =
+              , initDbConfig = pure standardProcessConfig
+                  { commandLine = mempty
+                      { keyBased =
                           Map.singleton "--username=" $ Just "user-name"
                       }
-                  , partialProcessConfigEnvVars = mempty
-                      { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password"
-                      , partialEnvVarsInherit = pure True
+                  , environmentVariables = mempty
+                      { specific = Map.singleton "PGPASSWORD" "password"
+                      , inherit = pure True
                       }
                   }
-              , partialPlanCreateDb = pure standardProcessConfig
-                { partialProcessConfigCmdLine = mempty
-                  { partialCommandLineArgsKeyBased =
+              , createDbConfig = pure standardProcessConfig
+                { commandLine = mempty
+                  { keyBased =
                       Map.singleton "--username=" $ Just "user-name"
-                  , partialCommandLineArgsIndexBased =
+                  , indexBased =
                       Map.singleton 0 expectedDbName
                   }
-                , partialProcessConfigEnvVars =
+                , environmentVariables =
                     mempty
-                      { partialEnvVarsSpecific = Map.singleton "PGPASSWORD" "password"
-                      , partialEnvVarsInherit = pure True
+                      { specific = Map.singleton "PGPASSWORD" "password"
+                      , inherit = pure True
                       }
                 }
-              , partialPlanConfig = [extraConfig]
+              , postgresConfigFile = [extraConfig]
               }
           }
     -- hmm maybe I should provide lenses
@@ -126,8 +126,8 @@ customConfigWork action = do
 invalidConfigFailsQuickly :: (Config -> IO ()) -> Spec
 invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ do
   let customPlan = mempty
-        { configPlan = mempty
-            { partialPlanConfig =
+        { plan = mempty
+            { postgresConfigFile =
                 [ "log_directory = /this/does/not/exist"
                 , "logging_collector = true"
                 ]
@@ -203,11 +203,11 @@ createDbThrowsIfTheDbExists = describe "createdb" $
 spec :: Spec
 spec = parallel $ do
   let defaultIpPlan = defaultConfig
-        { configSocket = PIpSocket $ Last Nothing
+        { socketClass = IpSocket $ Last Nothing
         }
 
       specificHostIpPlan = defaultConfig
-        { configSocket = PIpSocket $ pure "localhost"
+        { socketClass = IpSocket $ pure "localhost"
         }
 
   describe "start" $ do
@@ -217,8 +217,8 @@ spec = parallel $ do
     let startAction plan = bracket (either throwIO pure =<< startConfig plan) stop pure
     throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
     invalidConfigFailsQuickly $ void . startAction
-    customConfigWork $ \plan@Config{..} f ->
-      bracket (either throwIO pure =<< startConfig plan) stop f
+    customConfigWork $ \config@Config{..} f ->
+      bracket (either throwIO pure =<< startConfig config) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
@@ -277,8 +277,8 @@ spec = parallel $ do
 
     let invalidCreateDbPlan = defaultConfig <> fromCreateDb
           ( pure $ standardProcessConfig
-              { partialProcessConfigCmdLine = mempty
-                { partialCommandLineArgsIndexBased =
+              { commandLine = mempty
+                { indexBased =
                     Map.singleton 0 "template1"
                 }
               }
@@ -287,10 +287,10 @@ spec = parallel $ do
       createDbThrowsIfTheDbExists
 
     let noCreateTemplate1 = mempty
-          { configPlan = mempty
-              { partialPlanCreateDb = Nothing
-              , partialPlanPostgres = mempty
-                  { partialPostgresPlanClientConfig = mempty
+          { plan = mempty
+              { createDbConfig = Nothing
+              , postgresPlan = mempty
+                  { connectionOptions = mempty
                     { Client.dbname = pure "template1"
                     }
                   }
@@ -320,7 +320,7 @@ spec = parallel $ do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
         let nonEmptyFolderPlan = defaultConfig
-              { configDataDir = PPermanent dirPath
+              { dataDirectory = Permanent dirPath
               }
             startAction = bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ const $ pure ()
 
@@ -329,9 +329,9 @@ spec = parallel $ do
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)
         let nonEmptyFolderPlan = defaultConfig
-              { configDataDir = PPermanent dirPath
-              , configPlan = (configPlan defaultConfig)
-                  { partialPlanInitDb = Nothing
+              { dataDirectory = Permanent dirPath
+              , plan = (plan defaultConfig)
+                  { initDbConfig = Nothing
                   }
               }
         bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ \db -> do
@@ -342,8 +342,8 @@ spec = parallel $ do
           one `shouldBe` (1 :: Int)
 
     let justBackupResources = mempty
-          { configPlan = mempty
-              { partialPlanConfig =
+          { plan = mempty
+              { postgresConfigFile =
                   [ "wal_level=replica"
                   , "archive_mode=on"
                   , "max_wal_senders=2"

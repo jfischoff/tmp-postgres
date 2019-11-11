@@ -118,17 +118,17 @@ Alternatively you can eschew 'defaultConfig' altogether, however
 your @postgres@ might start and run faster if you use
 'defaultConfig'.
 
-'defaultConfig' also sets the 'partialPlanInitDb' to
+'defaultConfig' also sets the 'initDbConfig' to
 'pure' 'standardProcessConfig' and
-'partialPostgresPlanProcessConfig' to 'standardProcessConfig'.
+'postgresConfig' to 'standardProcessConfig'.
 
 To append additional lines to \"postgresql.conf\" file create a
 custom 'Config' like the following.
 
  @
   custom = defaultConfig <> mempty
-    { configPlan = mempty
-      { partialPlanConfig =
+    { plan = mempty
+      { postgresConfigFile =
           [ "wal_level = replica"
           , "archive_mode = on"
           , "max_wal_senders = 2"
@@ -142,7 +142,7 @@ custom 'Config' like the following.
 Or using the provided lenses and your favorite lens library
 
  @
-  custom = defaultConfig & 'configPlanL' . 'partialPlanConfigL' <>~
+  custom = defaultConfig & 'configPlanL' . 'postgresConfigFile' <>~
     [ "wal_level = replica"
     , "archive_mode = on"
     , "max_wal_senders = 2"
@@ -159,17 +159,17 @@ Or using the provided lenses and your favorite lens library
 -}
 defaultConfig :: Config
 defaultConfig = mempty
-  { configPlan = mempty
-    { partialPlanLogger = pure mempty
-    , partialPlanConfig = defaultPostgresConfig
-    , partialPlanCreateDb = Nothing
-    , partialPlanInitDb = pure standardProcessConfig
-      { partialProcessConfigCmdLine = mempty
-          { partialCommandLineArgsKeyBased = Map.singleton "--no-sync" Nothing
+  { plan = mempty
+    { logger = pure mempty
+    , postgresConfigFile = defaultPostgresConfig
+    , createDbConfig = Nothing
+    , initDbConfig = pure standardProcessConfig
+      { commandLine = mempty
+          { keyBased = Map.singleton "--no-sync" Nothing
           }
       }
-    , partialPlanPostgres = mempty
-        { partialPostgresPlanProcessConfig = standardProcessConfig
+    , postgresPlan = mempty
+        { postgresConfig = standardProcessConfig
         }
     }
   }
@@ -180,8 +180,8 @@ defaultConfig = mempty
 
 @
 defaultPostgresConf extra = defaultConfig <> mempty
-  { configPlan = mempty
-    { partialPlanConfig = extra
+  { plan = mempty
+    { postgresConfigFile = extra
     }
   }
 @
@@ -189,8 +189,8 @@ defaultPostgresConf extra = defaultConfig <> mempty
 -}
 defaultPostgresConf :: [String] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
-  { configPlan = mempty
-    { partialPlanConfig = extra
+  { plan = mempty
+    { postgresConfigFile = extra
     }
   }
 
@@ -256,7 +256,7 @@ which is given a 'DB' it can use to connect
 to (see 'toConnectionString' or 'postgresProcessClientOptions').
 All of the database resources are automatically cleaned up on
 completion even in the face of exceptions.
-Based on the value of 'configSocket' a \"postgresql.conf\" is created with
+Based on the value of 'socketClass' a \"postgresql.conf\" is created with
 
  @
    listen_addresses = \'IP_ADDRESS\'
@@ -299,11 +299,11 @@ optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
   let generated = optionsToConfig opts
       startingConfig =
-        if partialPlanCreateDb (configPlan generated) == mempty
+        if createDbConfig (plan generated) == mempty
           then defaultConfig
           else defaultConfig <> mempty
-            { configPlan = mempty
-              { partialPlanCreateDb = pure standardProcessConfig
+            { plan = mempty
+              { createDbConfig = pure standardProcessConfig
               }
             }
   in startingConfig <> generated
