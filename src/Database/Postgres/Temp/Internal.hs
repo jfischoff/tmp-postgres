@@ -6,7 +6,7 @@ identifiers that are used for testing but are not exported.
 module Database.Postgres.Temp.Internal where
 
 import Database.Postgres.Temp.Internal.Core
-import Database.Postgres.Temp.Internal.Partial
+import Database.Postgres.Temp.Internal.Config
 
 import           Control.Exception
 import           Control.Monad (void)

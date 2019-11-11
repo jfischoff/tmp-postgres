@@ -55,7 +55,7 @@ data StartError
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
   | CompletePlanFailed String [String]
-  -- ^ The 'Database.Postgres.Temp.Partial.Plan' was missing info and a complete 'CompletePlan' could
+  -- ^ The 'Database.Postgres.Temp.Config.Plan' was missing info and a complete 'CompletePlan' could
   --   not be created.
   deriving (Show, Eq, Ord, Typeable)
 

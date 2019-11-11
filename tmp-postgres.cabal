@@ -19,7 +19,7 @@ library
   exposed-modules: Database.Postgres.Temp
                  , Database.Postgres.Temp.Internal
                  , Database.Postgres.Temp.Internal.Core
-                 , Database.Postgres.Temp.Internal.Partial
+                 , Database.Postgres.Temp.Internal.Config
   default-extensions:
       ApplicativeDo
     , DeriveFunctor

@@ -125,4 +125,4 @@ module Database.Postgres.Temp
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
-import Database.Postgres.Temp.Internal.Partial
+import Database.Postgres.Temp.Internal.Config

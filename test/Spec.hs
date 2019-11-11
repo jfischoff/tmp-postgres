@@ -1,6 +1,6 @@
 import Test.Hspec
 import Database.Postgres.Temp.Internal.Core
-import Database.Postgres.Temp.Internal.Partial
+import Database.Postgres.Temp.Internal.Config
 import Database.Postgres.Temp.Internal
 import Control.Exception
 import System.IO.Error
