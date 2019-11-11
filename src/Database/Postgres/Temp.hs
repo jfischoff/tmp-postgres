@@ -102,9 +102,9 @@ module Database.Postgres.Temp
   , stdErrL
   , stdInL
   , stdOutL
-  -- ** 'EnvVars'
-  , EnvVars (..)
-  -- *** 'EnvVars' Lenses
+  -- ** 'EnvironmentVariables'
+  , EnvironmentVariables (..)
+  -- *** 'EnvironmentVariables' Lenses
   , inheritL
   , specificL
   -- ** 'CommandLineArgs'
