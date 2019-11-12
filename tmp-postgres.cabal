@@ -33,6 +33,7 @@ library
     , RecordWildCards
     , ScopedTypeVariables
     , TemplateHaskell
+    , TupleSections
     , ViewPatterns
   build-depends: base >= 4.6 && < 5
                , ansi-wl-pprint

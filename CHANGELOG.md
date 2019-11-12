@@ -24,3 +24,4 @@ Changelog for tmp-postgres
   Rename partialPlanLoggerL to loggerL
   Add temporaryDirectoryL
   #31 A silent defaults
+  #20 Include stderr in errors

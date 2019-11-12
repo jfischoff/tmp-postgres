@@ -198,7 +198,8 @@ createDbCreatesTheDb dbName = describe "createdb " $
 createDbThrowsIfTheDbExists :: SpecWith Runner
 createDbThrowsIfTheDbExists = describe "createdb" $
   it "throws if the db is not there" $ \(Runner runner) ->
-    runner (const $ pure ()) `shouldThrow` (== CreateDbFailed (ExitFailure 1))
+    runner (const $ pure ()) `shouldThrow` (\(CreateDbFailed theOut theErr code) -> do
+          code == ExitFailure 1 && length theErr > 0 && theOut == "")
 
 spec :: Spec
 spec = do
@@ -333,7 +334,8 @@ spec = do
               }
             startAction = bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ const $ pure ()
 
-        startAction `shouldThrow` (== InitDbFailed (ExitFailure 1))
+        startAction `shouldThrow` (\(InitDbFailed theOut theErr code) -> do
+          code == ExitFailure 1 && length theOut > 0 && length theErr > 0)
 
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)

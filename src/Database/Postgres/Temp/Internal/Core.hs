@@ -7,11 +7,12 @@ See 'startPlan' for more details.
 module Database.Postgres.Temp.Internal.Core where
 
 import           Control.Concurrent (threadDelay)
-import           Control.Concurrent.Async (race_)
+import           Control.Concurrent.Async (race_, withAsync)
 import           Control.Exception
 import           Control.Monad (forever, (>=>))
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Foldable (for_)
+import           Data.IORef
 import           Data.Monoid
 import           Data.String
 import           Data.Typeable
@@ -49,10 +50,18 @@ data StartError
   = StartPostgresFailed ExitCode
   -- ^ @postgres@ failed before a connection succeeded. Most likely this
   --   is due to invalid configuration
-  | InitDbFailed ExitCode
+  | InitDbFailed
+    { startErrorStdOut   :: String
+    , startErrorStdErr   :: String
+    , startErrorExitCode :: ExitCode
+    }
   -- ^ @initdb@ failed. This can be from invalid configuration or using a
   --   non-empty data directory
-  | CreateDbFailed ExitCode
+  | CreateDbFailed
+    { startErrorStdOut   :: String
+    , startErrorStdErr   :: String
+    , startErrorExitCode :: ExitCode
+    }
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
   | CompletePlanFailed String [String]
@@ -66,7 +75,6 @@ instance Exception StartError
 -- | A way to log internal 'Event's
 type Logger = Event -> IO ()
 
--- TODO. Add a Retrying Event
 -- | @postgres@ is not ready until we are able to successfully connect.
 --   'waitForDB' attempts to connect over and over again and returns
 --   after the first successful connection.
@@ -78,6 +86,20 @@ waitForDB logger options = do
   try (bracket startAction PG.close mempty) >>= \case
     Left (_ :: IOError) -> threadDelay 10000 >> waitForDB logger options
     Right () -> return ()
+
+-- Only useful if we believe the output is finite
+teeHandle :: Handle -> (Handle -> IO a) -> IO (a, String)
+teeHandle orig f =
+  bracket createPipe (\(x, y) -> hClose x >> hClose y) $ \(readEnd, writeEnd) -> do
+    outputRef <- newIORef []
+
+    let readerLoop = forever $ do
+          theLine <- hGetLine readEnd
+          modifyIORef outputRef (<>theLine)
+          hPutStrLn orig theLine
+
+    res <- withAsync readerLoop $ \_ -> f writeEnd
+    (res,) <$> readIORef outputRef
 
 -- | 'CompleteProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
@@ -134,6 +156,22 @@ executeProcess
   -- ^ Process config
   -> IO ExitCode
 executeProcess name = startProcess name >=> waitForProcess
+
+-- | Start a process and block until it finishes return the 'ExitCode' and the
+--   stderr output.
+executeProcessAndTee
+  :: String
+  -- ^ Process name
+  -> CompleteProcessConfig
+  -- ^ Process config
+  -> IO (ExitCode, String, String)
+executeProcessAndTee name config = fmap (\((x, y), z) -> (x, z, y)) $
+  teeHandle (completeProcessConfigStdOut config) $ \newOut ->
+    teeHandle (completeProcessConfigStdErr config) $ \newErr ->
+      executeProcess name $ config
+        { completeProcessConfigStdErr = newErr
+        , completeProcessConfigStdOut = newOut
+        }
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
@@ -292,8 +330,8 @@ throwIfNotSuccess f = \case
 startPlan :: CompletePlan -> IO PostgresProcess
 startPlan plan@CompletePlan {..} = do
   completePlanLogger $ StartPlan $ show $ pretty plan
-  for_ completePlanInitDb  $ executeProcess "initdb" >=>
-    throwIfNotSuccess InitDbFailed
+  for_ completePlanInitDb $ executeProcessAndTee "initdb" >=>
+    \(res, stdOut, stdErr) -> throwIfNotSuccess (InitDbFailed stdOut stdErr) res
 
   -- We must provide a config file before we can start postgres.
   writeFile (completePlanDataDirectory <> "/postgresql.conf") completePlanConfig
@@ -302,10 +340,11 @@ startPlan plan@CompletePlan {..} = do
         completePlanConnectionTimeout completePlanLogger completePlanPostgres
 
   bracketOnError startAction stopPostgresProcess $ \result -> do
-    for_ completePlanCreateDb $  executeProcess "createdb" >=>
-      throwIfNotSuccess CreateDbFailed
+    for_ completePlanCreateDb $ executeProcessAndTee "createdb" >=>
+      \(res, stdOut, stdErr) -> throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
 
     pure result
+
 
 -- | Stop the @postgres@ process. See 'stopPostgresProcess' for more details.
 stopPlan :: PostgresProcess -> IO ExitCode
