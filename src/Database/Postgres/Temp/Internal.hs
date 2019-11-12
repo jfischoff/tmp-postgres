@@ -190,6 +190,12 @@ defaultPostgresConf extra = defaultConfig <> mempty
   }
 @
 
+or with lenses
+
+@
+defaultPostgresConf extra = defaultConfig & planL . postgresConfigFile <>~ extra
+@
+
 -}
 defaultPostgresConf :: [String] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
