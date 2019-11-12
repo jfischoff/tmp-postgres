@@ -22,6 +22,7 @@ import           System.IO
 import           System.Posix.Signals (sigINT, signalProcess)
 import           System.Process
 import           System.Process.Internals
+import           System.Timeout
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Internal events for debugging
@@ -57,6 +58,7 @@ data StartError
   | CompletePlanFailed String [String]
   -- ^ The 'Database.Postgres.Temp.Config.Plan' was missing info and a complete 'CompletePlan' could
   --   not be created.
+  | ConnectionTimedOut
   deriving (Show, Eq, Ord, Typeable)
 
 instance Exception StartError
@@ -205,8 +207,8 @@ stopPostgresProcess PostgresProcess{..} = do
 -- | Start the @postgres@ process and block until a successful connection
 --   occurs. A separate thread we continously check to see if the @postgres@
 --   process has crashed.
-startPostgresProcess :: Logger -> CompletePostgresPlan -> IO PostgresProcess
-startPostgresProcess logger CompletePostgresPlan {..} = do
+startPostgresProcess :: Int -> Logger -> CompletePostgresPlan -> IO PostgresProcess
+startPostgresProcess time logger CompletePostgresPlan {..} = do
   logger StartPostgres
 
   let startAction = PostgresProcess completePostgresPlanClientOptions
@@ -215,11 +217,6 @@ startPostgresProcess logger CompletePostgresPlan {..} = do
   -- Start postgres and stop if an exception occurs
   bracketOnError startAction stopPostgresProcess $
     \result@PostgresProcess {..} -> do
-      -- A helper to check if the process has died
-      let checkForCrash = do
-            mExitCode <- getProcessExitCode postgresProcessHandle
-            for_ mExitCode (throwIO . StartPostgresFailed)
-
       logger WaitForDB
       -- We assume that 'template1' exist and make connection
       -- options to test if postgres is ready.
@@ -227,9 +224,17 @@ startPostgresProcess logger CompletePostgresPlan {..} = do
             { Client.dbname = pure "template1"
             }
 
-      -- Block until a connection succeeds or postgres crashes
-      waitForDB logger options
-        `race_` forever (checkForCrash >> threadDelay 100000)
+           -- A helper to check if the process has died
+          checkForCrash = do
+            mExitCode <- getProcessExitCode postgresProcessHandle
+            for_ mExitCode (throwIO . StartPostgresFailed)
+
+          timeoutAndThrow = timeout time (waitForDB logger options) >>= \case
+            Just () -> pure ()
+            Nothing -> throwIO ConnectionTimedOut
+
+      -- Block until a connection succeeds, postgres crashes or we timeout
+      timeoutAndThrow `race_` forever (checkForCrash >> threadDelay 100000)
 
       -- Postgres is now ready so return
       return result
@@ -243,12 +248,13 @@ startPostgresProcess logger CompletePostgresPlan {..} = do
 --   are valid. 'CompletePlan's are used internally but are exposed if the higher
 --   level plan generation is not sufficent.
 data CompletePlan = CompletePlan
-  { completePlanLogger        :: Logger
-  , completePlanInitDb        :: Maybe CompleteProcessConfig
-  , completePlanCreateDb      :: Maybe CompleteProcessConfig
-  , completePlanPostgres      :: CompletePostgresPlan
-  , completePlanConfig        :: String
-  , completePlanDataDirectory :: FilePath
+  { completePlanLogger            :: Logger
+  , completePlanInitDb            :: Maybe CompleteProcessConfig
+  , completePlanCreateDb          :: Maybe CompleteProcessConfig
+  , completePlanPostgres          :: CompletePostgresPlan
+  , completePlanConfig            :: String
+  , completePlanDataDirectory     :: FilePath
+  , completePlanConnectionTimeout :: Int
   }
 
 instance Pretty CompletePlan where
@@ -292,7 +298,8 @@ startPlan plan@CompletePlan {..} = do
   -- We must provide a config file before we can start postgres.
   writeFile (completePlanDataDirectory <> "/postgresql.conf") completePlanConfig
 
-  let startAction = startPostgresProcess completePlanLogger completePlanPostgres
+  let startAction = startPostgresProcess
+        completePlanConnectionTimeout completePlanLogger completePlanPostgres
 
   bracketOnError startAction stopPostgresProcess $ \result -> do
     for_ completePlanCreateDb $  executeProcess "createdb" >=>

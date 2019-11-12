@@ -18,3 +18,8 @@ Changelog for tmp-postgres
 
 1.9.0.2
   Documentation fixes
+
+1.10.0.0
+  #58 Add connection timeout
+  Rename partialPlanLoggerL to loggerL
+  Add temporaryDirectoryL

@@ -82,6 +82,7 @@ module Database.Postgres.Temp
   , socketClassL
   , dataDirectoryL
   , portL
+  , connectionTimeoutL
   -- ** 'Plan'
   , Plan (..)
   -- *** 'Plan' lenses
@@ -89,7 +90,7 @@ module Database.Postgres.Temp
   , createDbConfigL
   , dataDirectoryStringL
   , initDbConfigL
-  , partialPlanLoggerL
+  , loggerL
   , postgresPlanL
   -- ** 'PostgresPlan'
   , PostgresPlan (..)

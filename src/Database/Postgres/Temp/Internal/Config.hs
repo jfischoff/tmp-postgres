@@ -421,6 +421,9 @@ data Plan = Plan
   , postgresPlan :: PostgresPlan
   , postgresConfigFile :: [String]
   , dataDirectoryString :: Last String
+  , connectionTimeout :: Last Int
+  -- ^ Max time to spend attempting to connection to @postgres@.
+  --   Time is in microseconds.
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Plan
@@ -445,6 +448,8 @@ instance Pretty Plan where
     <> indent 2 (vsep $ map text postgresConfigFile)
     <> hardline
     <> text "dataDirectoryString:" <+> pretty (getLast dataDirectoryString)
+    <> hardline
+    <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
 
 -- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
@@ -459,6 +464,8 @@ completePlan envs Plan {..} = runErrors $ do
   let completePlanConfig = unlines postgresConfigFile
   completePlanDataDirectory <- getOption "dataDirectoryString"
     dataDirectoryString
+  completePlanConnectionTimeout <- getOption "connectionTimeout"
+    connectionTimeout
 
   pure CompletePlan {..}
 
@@ -805,75 +812,53 @@ postgresConfigL
 
 -- | Lens for 'postgresConfigFile'
 postgresConfigFileL :: Lens' Plan [String]
-postgresConfigFileL
-  f_amcw
-  (Plan x_amcx x_amcy x_amcz x_amcA x_amcB x_amcC)
-  = fmap
-       (\ y_amcD
-          -> Plan x_amcx x_amcy x_amcz x_amcA y_amcD
-               x_amcC)
-      (f_amcw x_amcB)
+postgresConfigFileL f (plan@Plan{..})
+  = fmap (\x -> plan { postgresConfigFile = x })
+      (f postgresConfigFile)
 {-# INLINE postgresConfigFileL #-}
 
 -- | Lens for 'createDbConfig'
 createDbConfigL ::
   Lens' Plan (Maybe ProcessConfig)
-createDbConfigL
-  f_amcE
-  (Plan x_amcF x_amcG x_amcH x_amcI x_amcJ x_amcK)
-  = fmap
-       (\ y_amcL
-          -> Plan x_amcF x_amcG y_amcL x_amcI x_amcJ
-               x_amcK)
-      (f_amcE x_amcH)
+createDbConfigL f (plan@Plan{..})
+  = fmap (\x -> plan { createDbConfig = x })
+      (f createDbConfig)
 {-# INLINE createDbConfigL #-}
 
 -- | Lens for 'dataDirectoryString'
 dataDirectoryStringL :: Lens' Plan (Last String)
-dataDirectoryStringL
-  f_amcM
-  (Plan x_amcN x_amcO x_amcP x_amcQ x_amcR x_amcS)
-  = fmap
-       (Plan x_amcN x_amcO x_amcP x_amcQ x_amcR)
-      (f_amcM x_amcS)
+dataDirectoryStringL f (plan@Plan{..})
+  = fmap (\x -> plan { dataDirectoryString = x })
+      (f dataDirectoryString)
 {-# INLINE dataDirectoryStringL #-}
 
 -- | Lens for 'initDbConfig'
-initDbConfigL ::
-  Lens' Plan (Maybe ProcessConfig)
-initDbConfigL
-  f_amcU
-  (Plan x_amcV x_amcW x_amcX x_amcY x_amcZ x_amd0)
-  = fmap
-       (\ y_amd1
-          -> Plan x_amcV y_amd1 x_amcX x_amcY x_amcZ
-               x_amd0)
-      (f_amcU x_amcW)
+initDbConfigL :: Lens' Plan (Maybe ProcessConfig)
+initDbConfigL f (plan@Plan{..})
+  = fmap (\x -> plan { initDbConfig = x })
+      (f initDbConfig)
 {-# INLINE initDbConfigL #-}
 
 -- | Lens for 'logger'
-partialPlanLoggerL :: Lens' Plan (Last Logger)
-partialPlanLoggerL
-  f_amd2
-  (Plan x_amd3 x_amd4 x_amd5 x_amd6 x_amd7 x_amd8)
-  = fmap
-       (\ y_amd9
-          -> Plan y_amd9 x_amd4 x_amd5 x_amd6 x_amd7
-               x_amd8)
-      (f_amd2 x_amd3)
-{-# INLINE partialPlanLoggerL #-}
+loggerL :: Lens' Plan (Last Logger)
+loggerL f (plan@Plan{..})
+  = fmap (\x -> plan { logger = x })
+      (f logger)
+{-# INLINE loggerL #-}
 
 -- | Lens for 'postgresPlan'
 postgresPlanL :: Lens' Plan PostgresPlan
-postgresPlanL
-  f_amda
-  (Plan x_amdb x_amdc x_amdd x_amde x_amdf x_amdg)
-  = fmap
-       (\ y_amdh
-          -> Plan x_amdb x_amdc x_amdd y_amdh x_amdf
-               x_amdg)
-      (f_amda x_amde)
+postgresPlanL f (plan@Plan{..})
+  = fmap (\x -> plan { postgresPlan = x })
+      (f postgresPlan)
 {-# INLINE postgresPlanL #-}
+
+-- | Lens for 'connectionTimeout'
+connectionTimeoutL :: Lens' Plan (Last Int)
+connectionTimeoutL f (plan@Plan{..})
+  = fmap (\x -> plan { connectionTimeout = x })
+      (f connectionTimeout)
+{-# INLINE connectionTimeoutL #-}
 
 -- | Lens for 'resourcesDataDir'
 resourcesDataDirL :: Lens' Resources CompleteDirectoryType
@@ -923,6 +908,13 @@ socketClassL f (config@Config{..})
   = fmap (\ x -> config { socketClass = x } )
       (f socketClass)
 {-# INLINE socketClassL #-}
+
+-- | Lens for 'socketClass'
+temporaryDirectoryL :: Lens' Config (Last FilePath)
+temporaryDirectoryL f (config@Config{..})
+  = fmap (\ x -> config { temporaryDirectory = x } )
+      (f temporaryDirectory)
+{-# INLINE temporaryDirectoryL #-}
 
 -- | Lens for 'indexBased'
 indexBasedL ::
