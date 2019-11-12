@@ -301,7 +301,7 @@ withConfig extra f = bracket (startConfig extra) (either mempty stop) $
 {-| Default expectation safe interface. Equivalent to
 
  @
-   'with' = withConfig' 'defaultConfig'
+   'with' = 'withConfig' 'defaultConfig'
  @
 
 -}
