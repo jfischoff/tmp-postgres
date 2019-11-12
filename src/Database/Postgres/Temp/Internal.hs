@@ -290,12 +290,12 @@ Exception safe database create with options. See 'startConfig' for more
 details. Calls 'stop' even in the face of exceptions.
 -}
 withConfig :: Config
-         -- ^ @extraConfiguration@. Combined with the generated 'Config'. See
+         -- ^ @extra@. 'Config' combined with the generated 'Config'. See
          -- 'startConfig' for more info
          -> (DB -> IO a)
          -- ^ @action@ continuation
          -> IO (Either StartError a)
-withConfig plan f = bracket (startConfig plan) (either mempty stop) $
+withConfig extra f = bracket (startConfig extra) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
 {-| Default expectation safe interface. Equivalent to
