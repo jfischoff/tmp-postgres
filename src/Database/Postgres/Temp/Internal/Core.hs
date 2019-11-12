@@ -33,7 +33,7 @@ data Event
   | StartPostgres
   -- ^ The second event. Postgres is about to get called
   | WaitForDB
-  -- ^ The third event. Postgres started. We are not about to
+  -- ^ The third event. Postgres started. We are now about to
   -- setup a reconnect loop (racing with a process checker)
   | TryToConnect
   -- ^ The fourth event and (possibly all subsequent events).
