@@ -98,7 +98,7 @@ The default configuration. This will create a database called \"postgres\"
    via @initdb@ (it's default behavior).
    It will create a temporary directory for the data and a temporary directory
  for a unix socket on a random port.
- Additionally it will use append the following onto the \"postgresql.conf\"
+ Additionally it will use the following \"postgresql.conf\"
  which is optimized for performance.
 
  @
