@@ -35,6 +35,7 @@ import           System.Environment
 import           System.IO
 import           System.IO.Error
 import           System.IO.Temp (createTempDirectory)
+import           System.IO.Unsafe (unsafePerformIO)
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc
@@ -188,6 +189,22 @@ standardProcessConfig = mempty
   , stdIn  = pure stdin
   , stdOut = pure stdout
   , stdErr = pure stderr
+  }
+
+devNull :: Handle
+devNull = unsafePerformIO (openFile "/dev/null" WriteMode)
+{-# NOINLINE devNull #-}
+
+-- | 'silentProcessConfig' sets the handles to \"/dev/null\" and
+--   inherits the environment variables from the calling process
+silentProcessConfig :: ProcessConfig
+silentProcessConfig = mempty
+  { environmentVariables = mempty
+      { inherit = pure True
+      }
+  , stdIn  = pure devNull
+  , stdOut = pure devNull
+  , stdErr = pure devNull
   }
 
 -- A helper to add more info to all the error messages.

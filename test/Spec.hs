@@ -81,7 +81,7 @@ customConfigWork action = do
                       , Client.dbname   = pure expectedDbName
                       }
                   }
-              , initDbConfig = pure standardProcessConfig
+              , initDbConfig = pure silentProcessConfig
                   { commandLine = mempty
                       { keyBased =
                           Map.singleton "--username=" $ Just "user-name"
@@ -91,7 +91,7 @@ customConfigWork action = do
                       , inherit = pure True
                       }
                   }
-              , createDbConfig = pure standardProcessConfig
+              , createDbConfig = pure silentProcessConfig
                 { commandLine = mempty
                   { keyBased =
                       Map.singleton "--username=" $ Just "user-name"
@@ -108,7 +108,7 @@ customConfigWork action = do
               }
           }
     -- hmm maybe I should provide lenses
-    let combinedResources = defaultConfig <> customPlan
+    let combinedResources = silentConfig <> customPlan
 
     initialFiles <- listDirectory tmpDir
 
@@ -138,7 +138,7 @@ invalidConfigFailsQuickly action = it "quickly fails with an invalid option" $ d
                 ]
             }
         }
-  timeout 5000000 (action $ defaultConfig <> customPlan) `shouldThrow`
+  timeout 5000000 (action $ silentConfig <> customPlan) `shouldThrow`
     (== StartPostgresFailed (ExitFailure 1))
 
 
@@ -202,11 +202,11 @@ createDbThrowsIfTheDbExists = describe "createdb" $
 
 spec :: Spec
 spec = do
-  let defaultIpPlan = defaultConfig
+  let defaultIpPlan = silentConfig
         { socketClass = IpSocket $ Last Nothing
         }
 
-      specificHostIpPlan = defaultConfig
+      specificHostIpPlan = silentConfig
         { socketClass = IpSocket $ pure "localhost"
         }
 
@@ -215,7 +215,7 @@ spec = do
     throwsIfInitDbIsNotOnThePath startAction
   describe "startConfig" $ do
     let startAction plan = bracket (either throwIO pure =<< startConfig plan) stop pure
-    throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
+    throwsIfInitDbIsNotOnThePath $ startAction silentConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \config@Config{..} f ->
       bracket (either throwIO pure =<< startConfig config) stop f
@@ -226,8 +226,7 @@ spec = do
     let startAction plan = either throwIO pure =<<
           withConfig plan pure
 
-    throwsIfInitDbIsNotOnThePath $ startAction defaultConfig
---    throwsIfCreateDbIsNotOnThePath $ startAction defaultConfig
+    throwsIfInitDbIsNotOnThePath $ startAction silentConfig
     invalidConfigFailsQuickly $ void . startAction
     customConfigWork $ \plan f -> either throwIO pure =<<
       withConfig plan f
@@ -275,8 +274,8 @@ spec = do
           [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
           actualDuration `shouldBe` expectedDuration
 
-    let invalidCreateDbPlan = defaultConfig <> fromCreateDb
-          ( pure $ standardProcessConfig
+    let invalidCreateDbPlan = silentConfig <> fromCreateDb
+          ( pure $ silentProcessConfig
               { commandLine = mempty
                 { indexBased =
                     Map.singleton 0 "template1"
@@ -316,7 +315,7 @@ spec = do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig planFromCustomUserDbConnection) stop f) $
       someStandardTests "fancy"
 
-    let immediantlyTimeout = defaultConfig <> mempty
+    let immediantlyTimeout = silentConfig <> mempty
           { plan = mempty
               { connectionTimeout = pure 0
               }
@@ -329,7 +328,7 @@ spec = do
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
-        let nonEmptyFolderPlan = defaultConfig
+        let nonEmptyFolderPlan = silentConfig
               { dataDirectory = Permanent dirPath
               }
             startAction = bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ const $ pure ()
@@ -338,9 +337,9 @@ spec = do
 
       it "works if on non-empty if initdb is disabled" $ \dirPath -> do
         throwIfNotSuccess id =<< system ("initdb " <> dirPath)
-        let nonEmptyFolderPlan = defaultConfig
+        let nonEmptyFolderPlan = silentConfig
               { dataDirectory = Permanent dirPath
-              , plan = (plan defaultConfig)
+              , plan = (plan silentConfig)
                   { initDbConfig = Nothing
                   }
               }
@@ -362,7 +361,7 @@ spec = do
                   ]
               }
           }
-        backupResources = defaultConfig <> justBackupResources
+        backupResources = silentConfig <> justBackupResources
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig backupResources) stop f) $
       it "can support backup and restore" $ withRunner $ \db@DB {..} -> do
         let dataDir = toFilePath (resourcesDataDir dbResources)

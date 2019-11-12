@@ -205,6 +205,18 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 
+-- | The same as 'defaultConfig' but all the handles are set to \"/dev/null\".
+--   See 'silentProcessConfig' as well.
+silentConfig :: Config
+silentConfig = defaultConfig <> mempty
+  { plan = mempty
+    { initDbConfig = pure silentProcessConfig
+    , postgresPlan = mempty
+        { postgresConfig = silentProcessConfig
+        }
+    }
+  }
+
 {-|
 
 Create zero or more temporary resources and use them to make a 'Config'.

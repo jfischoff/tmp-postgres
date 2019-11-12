@@ -72,6 +72,8 @@ module Database.Postgres.Temp
   , defaultConfig
   , defaultPostgresConf
   , standardProcessConfig
+  , silentConfig
+  , silentProcessConfig
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
   -- ** 'Config'
