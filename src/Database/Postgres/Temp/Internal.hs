@@ -164,7 +164,8 @@ Or using the provided lenses and your favorite lens library
 defaultConfig :: Config
 defaultConfig = mempty
   { plan = mempty
-    { logger = pure mempty
+    { connectionTimeout = pure (60 * 1000000) -- 1 minute
+    , logger = pure mempty
     , postgresConfigFile = defaultPostgresConfig
     , createDbConfig = Nothing
     , initDbConfig = pure standardProcessConfig
@@ -276,10 +277,11 @@ stopPostgres = stopPostgresProcess . dbPostgresProcess
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
-  let plan = resourcesPlan dbResources
-  bracketOnError (startPostgresProcess (completePlanLogger plan) $ completePlanPostgres plan)
-    stopPostgresProcess $ \result ->
-      pure $ db { dbPostgresProcess = result }
+  let CompletePlan{..} = resourcesPlan dbResources
+      startAction = startPostgresProcess completePlanConnectionTimeout completePlanLogger
+        completePlanPostgres
+  bracketOnError startAction stopPostgresProcess $ \result ->
+    pure $ db { dbPostgresProcess = result }
 
 -- | Reload the configuration file without shutting down. Calls
 --   @pg_reload_conf()@.

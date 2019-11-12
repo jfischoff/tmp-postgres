@@ -316,6 +316,16 @@ spec = do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig planFromCustomUserDbConnection) stop f) $
       someStandardTests "fancy"
 
+    let immediantlyTimeout = defaultConfig <> mempty
+          { plan = mempty
+              { connectionTimeout = pure 0
+              }
+          }
+
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig immediantlyTimeout) stop f) $
+      it "should timeout" $ \(Runner runner) ->
+        runner (const $ pure ()) `shouldThrow` (== ConnectionTimedOut)
+
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
