@@ -23,3 +23,4 @@ Changelog for tmp-postgres
   #58 Add connection timeout
   Rename partialPlanLoggerL to loggerL
   Add temporaryDirectoryL
+  #31 A silent defaults
