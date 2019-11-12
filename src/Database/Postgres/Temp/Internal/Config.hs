@@ -136,8 +136,7 @@ completeCommandLineArgs CommandLineArgs {..}
        (Map.toList keyBased)
   <> takeWhileInSequence (Map.toList indexBased)
 
--- | The monoidial version of 'ProcessConfig'. Used to combine overrides with
---   defaults when creating a 'ProcessConfig'.
+-- | Process configuration
 data ProcessConfig = ProcessConfig
   { environmentVariables :: EnvironmentVariables
   -- ^ A monoid for combine environment variables or replacing them.
@@ -239,9 +238,9 @@ makePermanent = \case
   CTemporary x -> CPermanent x
   x -> x
 
--- | The monoidial version of 'CompleteDirectoryType'. Used to combine overrides with
---   defaults when creating a 'CompleteDirectoryType'. The monoid instance treats
---   'Temporary' as 'mempty' and takes the last 'Permanent' value.
+-- | Used to specify a 'Temporary' folder that is automatically
+--   cleaned up or a 'Permanent' folder which is not
+--   automatically cleaned up.
 data DirectoryType
   = Permanent FilePath
   -- ^ A permanent file that should not be generated.
@@ -254,11 +253,13 @@ instance Pretty DirectoryType where
     Permanent x -> text "CPermanent" <+> pretty x
     Temporary   -> text "CTemporary"
 
+-- | Takes the last 'Permanent' value.
 instance Semigroup DirectoryType where
   x <> y = case (x, y) of
     (a, Temporary     ) -> a
     (_, a@Permanent {}) -> a
 
+-- | 'Temporary' as 'mempty'
 instance Monoid DirectoryType where
   mempty = Temporary
 
@@ -275,7 +276,8 @@ setupDirectoryType tempDir pat = \case
   Temporary -> CTemporary <$> createTempDirectory tempDir pat
   Permanent x  -> pure $ CPermanent x
 
--- Either create a temporary directory or do nothing
+-- Remove a temporary directory and ignore errors
+-- about it not being there.
 rmDirIgnoreErrors :: FilePath -> IO ()
 rmDirIgnoreErrors mainDir = do
   let ignoreDirIsMissing e
@@ -329,8 +331,7 @@ socketClassToHost = \case
   CUnixSocket dir -> toFilePath dir
 
 -- | The monoidial version of 'CompleteSocketClass'. Used to combine overrides with
---   defaults when creating a 'CompleteSocketClass'. The monoid instance treats
---   'UnixSocket mempty' as 'mempty' and combines the
+--   defaults when creating a 'CompleteSocketClass'. The monoid instance  and combines the
 data SocketClass
   = IpSocket (Last String)
   -- ^ The monoid for combining IP address configuration
@@ -343,6 +344,8 @@ instance Pretty SocketClass where
     IpSocket x -> "CIpSocket:" <+> pretty (getLast x)
     UnixSocket x -> "CUnixSocket" <+> pretty x
 
+-- | Last 'IpSocket' wins. 'UnixSocket' 'DirectoryType' as
+--   'mappend'ed together.
 instance Semigroup SocketClass where
   x <> y = case (x, y) of
     (IpSocket   a, IpSocket b) -> IpSocket $ a <> b
@@ -350,6 +353,7 @@ instance Semigroup SocketClass where
     (UnixSocket _, a@(IpSocket _)) -> a
     (UnixSocket a, UnixSocket b) -> UnixSocket $ a <> b
 
+-- | Treats 'UnixSocket mempty' as 'mempty'
 instance Monoid SocketClass where
  mempty = UnixSocket mempty
 
@@ -409,8 +413,7 @@ completePostgresPlan envs PostgresPlan {..} = runErrors $ do
 -------------------------------------------------------------------------------
 -- Plan
 -------------------------------------------------------------------------------
--- | The monoidial version of 'CompletePlan'. Used to combine overrides with defaults
---   when creating a plan.
+-- | Describe how to run @initdb@, @createdb@ and @postgres@
 data Plan = Plan
   { logger :: Last Logger
   , initDbConfig :: Maybe ProcessConfig
