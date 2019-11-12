@@ -21,8 +21,8 @@ import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and postgres connection information. The 'DB' also includes the
 --   final plan used to start @initdb@, @createdb@ and
---   @postgres@. See 'toConnectionString' for converting a 'DB' to
---   postgresql connection string.
+--   @postgres@. See 'toConnectionString' or 'toConnectionOptions'
+--   for converting a 'DB' to postgresql connection string.
 data DB = DB
   { dbResources :: Resources
   -- ^ Temporary resources and the final 'CompletePlan'.

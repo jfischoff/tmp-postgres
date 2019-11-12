@@ -48,31 +48,32 @@ module Database.Postgres.Temp
   -- * Exception safe interface
     with
   , withConfig
+  , withRestart
   -- * Separate start and stop interface.
   , start
   , startConfig
   , stop
+  , restart
+  , stopPostgres
+  -- * Main resource handle
+  , DB
+  -- ** 'DB' accessors
+  , toConnectionString
+  , toConnectionOptions
+  , toDataDirectory
+  , toTemporaryDirectory
+  -- ** 'DB' mutators
+  , makeDataDirPermanent
+  , reloadConfig
+  -- ** 'DB' debugging
+  , prettyPrintDB
+  -- * Configuration
+  -- ** Defaults
   , defaultConfig
   , defaultPostgresConf
   , standardProcessConfig
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
-  -- * Starting and Stopping postgres without removing the temporary directory
-  , restart
-  , stopPostgres
-  , withRestart
-  -- * Reloading the config
-  , reloadConfig
-  -- * Main resource handle
-  , DB
-  -- ** 'DB' manipulation
-  , prettyPrintDB
-  , toConnectionString
-  , toConnectionOptions
-  , toDataDirectory
-  , toTemporaryDirectory
-  , makeDataDirPermanent
-  -- * Monoidial Configuration Types
   -- ** 'Config'
   , Config (..)
   , prettyPrintConfig
