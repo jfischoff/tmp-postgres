@@ -17,6 +17,7 @@ tested-with: GHC ==8.6.5
 library
   hs-source-dirs: src
   exposed-modules: Database.Postgres.Temp
+                 , Database.Postgres.Temp.Config
                  , Database.Postgres.Temp.Internal
                  , Database.Postgres.Temp.Internal.Core
                  , Database.Postgres.Temp.Internal.Config

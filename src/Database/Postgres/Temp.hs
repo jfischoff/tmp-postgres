@@ -67,6 +67,8 @@ module Database.Postgres.Temp
   , reloadConfig
   -- ** 'DB' debugging
   , prettyPrintDB
+  -- * Errors
+  , StartError (..)
   -- * Configuration
   -- ** Defaults
   , defaultConfig
@@ -76,58 +78,11 @@ module Database.Postgres.Temp
   , silentProcessConfig
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
-    -- * Internal events passed to the 'logger' .
-  , Event (..)
-    -- * Errors
-  , StartError (..)
   -- ** 'Config'
-  , Config (..)
-  , prettyPrintConfig
-    -- *** 'Config' Lenses
-  , planL
-  , socketClassL
-  , dataDirectoryL
-  , portL
-  , connectionTimeoutL
-  -- ** 'Plan'
-  , Plan (..)
-  -- *** 'Plan' lenses
-  , postgresConfigFileL
-  , createDbConfigL
-  , dataDirectoryStringL
-  , initDbConfigL
-  , loggerL
-  , postgresPlanL
-  -- ** 'PostgresPlan'
-  , PostgresPlan (..)
-  -- *** 'PostgresPlan' lenses
-  , connectionOptionsL
-  , postgresConfigL
-  -- ** 'ProcessConfig'
-  , ProcessConfig (..)
-  -- *** 'ProcessConfig' Lenses
-  , commandLineL
-  , environmentVariablesL
-  , stdErrL
-  , stdInL
-  , stdOutL
-  -- ** 'EnvironmentVariables'
-  , EnvironmentVariables (..)
-  -- *** 'EnvironmentVariables' Lenses
-  , inheritL
-  , specificL
-  -- ** 'CommandLineArgs'
-  , CommandLineArgs (..)
-  -- *** 'CommandLineArgs' Lenses
-  , indexBasedL
-  , keyBasedL
-  -- ** 'DirectoryType'
-  , DirectoryType (..)
-  -- ** 'SocketClass'
-  , SocketClass (..)
-  -- ** 'Logger'
-  , Logger
+  , module Database.Postgres.Temp.Config
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
+import Database.Postgres.Temp.Config
 import Database.Postgres.Temp.Internal.Config
+  (standardProcessConfig, silentProcessConfig)
