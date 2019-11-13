@@ -131,8 +131,8 @@ custom 'Config' like the following.
 
  @
   custom = defaultConfig <> mempty
-    { plan = mempty
-      { postgresConfigFile =
+    { 'plan' = mempty
+      { 'postgresConfigFile' =
           [ "wal_level = replica"
           , "archive_mode = on"
           , "max_wal_senders = 2"
@@ -146,7 +146,7 @@ custom 'Config' like the following.
 Or using the provided lenses and your favorite lens library
 
  @
-  custom = defaultConfig & 'planL' . 'postgresConfigFile' <>~
+  custom = defaultConfig & 'planL' . 'postgresConfigFile' '<>~'
     [ "wal_level = replica"
     , "archive_mode = on"
     , "max_wal_senders = 2"
@@ -184,9 +184,9 @@ defaultConfig = mempty
    \"postgresql.conf\" lines. Equivalent to
 
 @
-defaultPostgresConf extra = defaultConfig <> mempty
-  { plan = mempty
-    { postgresConfigFile = extra
+'defaultPostgresConf' extra = 'defaultConfig' <> mempty
+  { 'plan' = mempty
+    { 'postgresConfigFile' = extra
     }
   }
 @
@@ -194,7 +194,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
 or with lenses
 
 @
-defaultPostgresConf extra = defaultConfig & planL . postgresConfigFile <>~ extra
+'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFile' '<>~' extra
 @
 
 -}
@@ -205,7 +205,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 
--- | The same as 'defaultConfig' but all the handles are set to \"/dev/null\".
+-- | The same as 'defaultConfig' but all the handles are set to \"\/dev\/null\".
 --   See 'silentProcessConfig' as well.
 silentConfig :: Config
 silentConfig = defaultConfig <> mempty
