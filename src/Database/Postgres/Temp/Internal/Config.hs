@@ -509,7 +509,7 @@ data Config = Config
   -- ^ Override the default 'CompleteSocketClass' by setting this.
   , dataDirectory :: DirectoryType
   -- ^ Override the default temporary data directory by passing in
-  -- 'CPermanent DIRECTORY'
+  -- 'Permanent' @DIRECTORY@
   , port    :: Last (Maybe Int)
   -- ^ A monoid for using an existing port (via 'Just' @PORT_NUMBER@) or
   -- requesting a free port (via a 'Nothing')
