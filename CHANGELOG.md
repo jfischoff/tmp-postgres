@@ -25,3 +25,7 @@ Changelog for tmp-postgres
   Add temporaryDirectoryL
   #31 A silent defaults
   #20 Include stderr in errors
+
+1.11.0.0
+  #90 Extend generated config to provide default Handles and connection timeout.
+  #81 Create public Config module for better documentation organization.
