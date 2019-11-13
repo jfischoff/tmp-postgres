@@ -122,9 +122,7 @@ Alternatively you can eschew 'defaultConfig' altogether, however
 your @postgres@ might start and run faster if you use
 'defaultConfig'.
 
-'defaultConfig' also sets the 'initDbConfig' to
-'pure' 'standardProcessConfig' and
-'postgresConfig' to 'standardProcessConfig'.
+The 'defaultConfig' also disables the logging of internal 'Event's.
 
 To append additional lines to \"postgresql.conf\" file create a
 custom 'Config' like the following.
@@ -164,18 +162,14 @@ Or using the provided lenses and your favorite lens library
 defaultConfig :: Config
 defaultConfig = mempty
   { plan = mempty
-    { connectionTimeout = pure (60 * 1000000) -- 1 minute
-    , logger = pure mempty
+    { logger = pure mempty
     , postgresConfigFile = defaultPostgresConfig
     , createDbConfig = Nothing
-    , initDbConfig = pure standardProcessConfig
+    , initDbConfig = pure mempty
       { commandLine = mempty
-          { keyBased = Map.singleton "--no-sync" Nothing
-          }
-      }
-    , postgresPlan = mempty
-        { postgresConfig = standardProcessConfig
+        { keyBased = Map.singleton "--no-sync" Nothing
         }
+      }
     }
   }
 
@@ -254,6 +248,14 @@ Based on the value of 'socketClass' a \"postgresql.conf\" is created with
  @
 
 are added.
+
+Additionally the @generated@ `Config` also does the following:
+* Sets a `connectionTimeout` of one minute.
+* Logs internal `Event`s.
+* Sets the processes to use the standard input and output handles.
+* Sets the 'dataDirectoryString' to file path generated from 'dataDirectory'
+
+All of these values can be overrided by the @extra@ config.
 
 -}
 startConfig :: Config

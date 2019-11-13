@@ -558,8 +558,10 @@ toPlan
 toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
   { postgresConfigFile = socketClassToConfig socketClass
   , dataDirectoryString = pure dataDirectoryString
+  , connectionTimeout = pure (60 * 1000000) -- 1 minute
+  , logger = pure print
   , postgresPlan = mempty
-      { postgresConfig = mempty
+      { postgresConfig = standardProcessConfig
           { commandLine = mempty
               { keyBased = Map.fromList
                   [ ("-p", Just $ show port)
@@ -574,7 +576,7 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
           }
       }
   , createDbConfig = if makeCreateDb
-      then pure $ mempty
+      then pure $ standardProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList $
                 socketClassToHostFlag socketClass <>
@@ -583,7 +585,7 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
         }
       else Nothing
   , initDbConfig = if makeInitDb
-      then pure $ mempty
+      then pure $ standardProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList
                 [("--pgdata=", Just dataDirectoryString)]
