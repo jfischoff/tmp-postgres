@@ -374,7 +374,7 @@ instance Semigroup SocketClass where
     (UnixSocket _, a@(IpSocket _)) -> a
     (UnixSocket a, UnixSocket b) -> UnixSocket $ a <> b
 
--- | Treats 'UnixSocket mempty' as 'mempty'
+-- | Treats 'UnixSocket' 'mempty' as 'mempty'
 instance Monoid SocketClass where
  mempty = UnixSocket mempty
 
