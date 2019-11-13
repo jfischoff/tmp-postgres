@@ -62,7 +62,7 @@ module Database.Postgres.Temp
   , toConnectionOptions
   , toDataDirectory
   , toTemporaryDirectory
-  -- ** 'DB' mutators
+  -- ** 'DB' modifiers
   , makeDataDirPermanent
   , reloadConfig
   -- ** 'DB' debugging
@@ -76,6 +76,10 @@ module Database.Postgres.Temp
   , silentProcessConfig
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
+    -- * Internal events passed to the 'logger' .
+  , Event (..)
+    -- * Errors
+  , StartError (..)
   -- ** 'Config'
   , Config (..)
   , prettyPrintConfig
@@ -123,10 +127,6 @@ module Database.Postgres.Temp
   , SocketClass (..)
   -- ** 'Logger'
   , Logger
-  -- * Internal events passed to the 'logger' .
-  , Event (..)
-    -- * Errors
-  , StartError (..)
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
