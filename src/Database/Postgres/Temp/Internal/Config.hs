@@ -347,8 +347,12 @@ socketClassToHost = \case
   CIpSocket ip    -> ip
   CUnixSocket dir -> toFilePath dir
 
--- | The monoidial version of 'CompleteSocketClass'. Used to combine overrides with
---   defaults when creating a 'CompleteSocketClass'. The monoid instance  and combines the
+-- | 'SocketClass' is used to specify how @postgres@ should listen for connections
+--   The two main options are a `IpSocket` which takes a hostname or IP address.
+--   if not is given the default it "127.0.0.1". Alternatively one can
+--   specify 'UnixSocket' for a UNIX domain socket. If a directory is
+--   specified the socket will live in that folder. Otherwise a
+--   temporary folder will get created for the socket.
 data SocketClass
   = IpSocket (Last String)
   -- ^ The monoid for combining IP address configuration
