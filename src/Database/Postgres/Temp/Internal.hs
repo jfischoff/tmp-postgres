@@ -256,6 +256,7 @@ Based on the value of 'socketClass' a \"postgresql.conf\" is created with
 are added.
 
 Additionally the @generated@ `Config` also does the following:
+
 * Sets a `connectionTimeout` of one minute.
 * Logs internal `Event`s.
 * Sets the processes to use the standard input and output handles.
@@ -414,7 +415,8 @@ Use the current database as a template and make a copy. Give the
 copy a random name.
 
 Copying a database from a template can be faster than creating a new
-@postgres@ and migrating a database from scratch.
+@postgres@ and migrating a database from scratch. In artifical benchmarks
+it appears to be about 2x faster.
 
 To use the current database as a template all connections to the database
 must be terminated first.

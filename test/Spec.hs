@@ -306,6 +306,21 @@ spec = do
     before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig specificHostIpPlan) stop f) $
       someStandardTests "postgres"
 
+    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig silentConfig) stop f) $
+      it "withNewDb works" $ withRunner $ \db -> do
+        bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
+          \conn -> do
+            _ <- PG.execute_ conn "CREATE TABLE foo ( id int );"
+            void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1);"
+
+        void $ withNewDb db $ \newDb -> do
+          one <- fmap (PG.fromOnly . head) $
+            bracket (PG.connectPostgreSQL $ toConnectionString newDb ) PG.close $
+              \conn -> PG.query_ conn "SELECT id FROM foo"
+
+          one `shouldBe` (1 :: Int)
+
+
     thePort <- runIO getFreePort
     let planFromCustomUserDbConnection = optionsToDefaultConfig mempty
           { Client.dbname = pure "fancy"
