@@ -67,6 +67,7 @@ test-suite test
                      , postgres-options
                      , postgresql-simple
                      , process
+                     , random
                      , temporary
                      , tmp-postgres
                      , unix

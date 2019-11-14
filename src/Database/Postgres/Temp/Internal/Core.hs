@@ -67,8 +67,13 @@ data StartError
   | CompletePlanFailed String [String]
   -- ^ The 'Database.Postgres.Temp.Config.Plan' was missing info and a complete 'CompletePlan' could
   --   not be created.
+  | CompleteProcessConfigFailed String [String]
+  -- ^ The 'Database.Postgres.Temp.Config.ProcessConfig' was missing info and a
+  -- 'CompleteProcessConfig' could not be created.
   | ConnectionTimedOut
-  deriving (Show, Eq, Ord, Typeable)
+  -- ^ Timed out waiting for @postgres@ to accept a connection
+  | DeleteDbError PG.SqlError
+  deriving (Show, Eq, Typeable)
 
 instance Exception StartError
 
@@ -322,6 +327,13 @@ throwIfNotSuccess f = \case
   ExitSuccess -> pure ()
   e -> throwIO $ f e
 
+-- | Call 'createdb' and tee the output to return if there is an
+--   an exception. Throws 'CreateDbFailed'.
+executeCreateDb :: CompleteProcessConfig -> IO ()
+executeCreateDb config = do
+  (res, stdOut, stdErr) <- executeProcessAndTee "createdb" config
+  throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
+
 -- | 'startPlan' optionally calls @initdb@, optionally calls @createdb@ and
 --   unconditionally calls @postgres@.
 --   Additionally it writes a \"postgresql.conf\" and does not return until
@@ -340,8 +352,7 @@ startPlan plan@CompletePlan {..} = do
         completePlanConnectionTimeout completePlanLogger completePlanPostgres
 
   bracketOnError startAction stopPostgresProcess $ \result -> do
-    for_ completePlanCreateDb $ executeProcessAndTee "createdb" >=>
-      \(res, stdOut, stdErr) -> throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
+    for_ completePlanCreateDb executeCreateDb
 
     pure result
 

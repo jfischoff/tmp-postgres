@@ -13,9 +13,14 @@ import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
 import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
+import           Data.Maybe
+import           Data.Monoid
+import           Data.String
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
+import           System.Environment
 import           System.Exit (ExitCode(..))
+import           System.Random
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
@@ -363,3 +368,112 @@ prettyPrintConfig = show . pretty
 -- | Display a 'DB'
 prettyPrintDB :: DB -> String
 prettyPrintDB = show . pretty
+
+-------------------------------------------------------------------------------
+-- withNewDb
+-------------------------------------------------------------------------------
+-- Drop the db if it exists. Terminates all connections to the db first.
+dropDbIfExists :: Client.Options -> String -> IO ()
+dropDbIfExists options dbName = do
+  let theConnectionString = Client.toConnectionString options
+      dropDbQuery = fromString $ unlines
+        [ "SELECT pg_terminate_backend(pid)"
+        , "FROM pg_stat_activity"
+        , "WHERE datname='" <> dbName <> "';"
+        , "DROP DATABASE IF EXISTS " <> dbName
+        ]
+
+  mapException DeleteDbError $
+    bracket (PG.connectPostgreSQL theConnectionString) PG.close $
+      \conn -> void $ PG.execute_ conn dropDbQuery
+
+{-|
+Use the current database as a template and make a copy. Give the
+copy a random name.
+
+Equivalent to:
+
+@
+ 'withNewDb' = 'withNewDbConfig' mempty
+@
+
+See 'withNewDbConfig' for more details.
+-}
+withNewDb
+  :: DB
+  -- ^ The original 'DB' handle. The connection options database
+  --   is used as the template for the @generated@ 'ProcessConfig'
+  -> (DB -> IO a)
+  -- ^ The modified 'DB' handle that has the new database name
+  --   in it's connection options.
+  -> IO (Either StartError a)
+withNewDb = withNewDbConfig mempty
+
+{-|
+Use the current database as a template and make a copy. Give the
+copy a random name.
+
+To use the current database as a template all connections to the database
+must be terminated first.
+
+To override the arguments passed to @createdb@ one can pass in @extra@
+'ProcessConfig'. The @combined@ process is created by 'mappend'ed the
+@generated@ with the @extra@ 'ProcessConfig', e.g.
+
+@
+   combined = generated '<>' extra
+@
+
+The current implementation has a few known issues.
+
+If a connection is made between the termination command and the @createdb@
+call the @createdb@ call will fail.
+
+Additionally the generated name is 32 character random name of characters
+\"a\" to \"z\". It is possible, although unlikeily that a duplicate
+database name could be generated and this would also cause a failure.
+-}
+withNewDbConfig
+  :: ProcessConfig
+  -- ^ @extra@ @createdb@ 'ProcessConfig'
+  -> DB
+  -- ^ The original 'DB' handle. The connection options database
+  --   is used as the template for the @generated@ 'ProcessConfig'
+  -> (DB -> IO a)
+  -- ^ The modified 'DB' handle that has the new database name
+  --   in it's connection options.
+  -> IO (Either StartError a)
+withNewDbConfig extra db f = try $ do
+  stdGen <- getStdGen
+  let oldOptions@Client.Options {..} = toConnectionOptions db
+      theDbName = fromMaybe "postgres" $ getLast dbname
+      newDbName = take 32 $ randomRs ('a', 'z') stdGen
+      newOptions = oldOptions
+        { Client.dbname = pure newDbName
+        }
+      template1Options = oldOptions
+        { Client.dbname = pure "template1"
+        }
+      generated = standardProcessConfig
+        { commandLine = mempty
+          { keyBased = Map.fromList
+              [ ("-T " , Just theDbName)
+              , ("-h " , Just $ fromMaybe "127.0.0.1" $ getLast host)
+              , ("-p ", Just $ maybe "5432" show $ getLast port)
+              ]
+          , indexBased = Map.singleton 0 newDbName
+          }
+        }
+      combined = generated <> extra
+      newDb = db
+        { dbPostgresProcess = (dbPostgresProcess db)
+            { postgresProcessClientOptions = newOptions
+            }
+        }
+  envs <- getEnvironment
+  final <- case completeProcessConfig envs combined of
+    Left errs -> throwIO $ CompleteProcessConfigFailed (show $ pretty combined) errs
+    Right x -> pure x
+  terminateConnections oldOptions
+  bracket_ (executeCreateDb final) (dropDbIfExists template1Options newDbName) $
+    f newDb
