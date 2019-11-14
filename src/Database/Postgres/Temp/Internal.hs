@@ -228,18 +228,6 @@ The final config is built by
    generated '<>' extra
  @
 
-Returns a 'DB' that requires cleanup. `startConfig` should be
-used with a `bracket` and 'stop', e.g.
-
- @
-   `withConfig` :: `Config` -> (`DB` -> IO a) -> IO (Either `StartError` a)
-   'withConfig' plan f = `bracket` (`startConfig` plan) (either mempty `stop`) $
-      either (pure . Left) (fmap Right . f)
- @
-
-or just use 'withConfig'. If you are calling 'startConfig' you
-probably want 'withConfig' anyway.
-
 Based on the value of 'socketClass' a \"postgresql.conf\" is created with
 
  @
@@ -263,6 +251,18 @@ Additionally the @generated@ `Config` also does the following:
 * Sets the 'dataDirectoryString' to file path generated from 'dataDirectory'
 
 All of these values can be overrided by the @extra@ config.
+
+The returned 'DB' requires cleanup. `startConfig` should be
+used with a `bracket` and 'stop', e.g.
+
+ @
+   `withConfig` :: `Config` -> (`DB` -> IO a) -> IO (Either `StartError` a)
+   'withConfig' plan f = `bracket` (`startConfig` plan) (either mempty `stop`) $
+      either (pure . Left) (fmap Right . f)
+ @
+
+or just use 'withConfig'. If you are calling 'startConfig' you
+probably want 'withConfig' anyway.
 
 -}
 startConfig :: Config
