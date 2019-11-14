@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.11.0.0
+version:             1.12.0.0
 synopsis: Start and stop a temporary postgres
 description: Start and stop a temporary postgres. See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
@@ -47,6 +47,7 @@ library
                , postgres-options >= 0.2.0.0
                , postgresql-simple
                , process >= 1.2.0.0
+               , random
                , temporary
                , transformers
                , unix
@@ -93,7 +94,24 @@ benchmark benchmark
   ghc-options: -O2 -Wall
   build-depends: base
     , criterion
+    , postgres-options
+    , postgresql-simple
     , tmp-postgres
+  default-extensions:
+      ApplicativeDo
+    , DeriveFunctor
+    , DeriveGeneric
+    , DerivingStrategies
+    , DerivingVia
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
+    , OverloadedStrings
+    , RankNTypes
+    , RecordWildCards
+    , ScopedTypeVariables
+    , TemplateHaskell
+    , TupleSections
+    , ViewPatterns
 
 source-repository head
   type:     git

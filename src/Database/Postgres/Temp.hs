@@ -49,6 +49,8 @@ module Database.Postgres.Temp
     with
   , withConfig
   , withRestart
+  , withNewDb
+  , withNewDbConfig
   -- * Separate start and stop interface.
   , start
   , startConfig
