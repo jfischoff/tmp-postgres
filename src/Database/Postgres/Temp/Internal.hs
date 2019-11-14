@@ -374,7 +374,7 @@ prettyPrintDB = show . pretty
 -------------------------------------------------------------------------------
 -- withNewDb
 -------------------------------------------------------------------------------
--- Drop the db if it exists. Terminates all connections to the db first.
+-- | Drop the db if it exists. Terminates all connections to the db first.
 dropDbIfExists :: Client.Options -> String -> IO ()
 dropDbIfExists options dbName = do
   let theConnectionString = Client.toConnectionString options
