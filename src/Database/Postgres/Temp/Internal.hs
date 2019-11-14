@@ -413,6 +413,9 @@ withNewDb = withNewDbConfig mempty
 Use the current database as a template and make a copy. Give the
 copy a random name.
 
+Copying a database from a template can be faster than creating a new
+@postgres@ and migrating a database from scratch.
+
 To use the current database as a template all connections to the database
 must be terminated first.
 
