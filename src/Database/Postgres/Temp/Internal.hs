@@ -8,6 +8,7 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
+import           Control.Concurrent.Async
 import           Control.Exception
 import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
@@ -376,12 +377,11 @@ prettyPrintDB = show . pretty
 dropDbIfExists :: Client.Options -> String -> IO ()
 dropDbIfExists options dbName = do
   let theConnectionString = Client.toConnectionString options
-      dropDbQuery = fromString $ unlines
-        [ "SELECT pg_terminate_backend(pid)"
-        , "FROM pg_stat_activity"
-        , "WHERE datname='" <> dbName <> "';"
-        , "DROP DATABASE IF EXISTS " <> dbName
-        ]
+      dropDbQuery = fromString $ "DROP DATABASE IF EXISTS " <> dbName <> ";"
+
+  terminateConnections $ options
+    { Client.dbname = pure dbName
+    }
 
   mapException DeleteDbError $
     bracket (PG.connectPostgreSQL theConnectionString) PG.close $
@@ -460,8 +460,8 @@ withNewDbConfig extra db f = try $ do
       generated = standardProcessConfig
         { commandLine = mempty
           { keyBased = Map.fromList
-              [ ("-T " , Just theDbName)
-              , ("-h " , Just $ fromMaybe "127.0.0.1" $ getLast host)
+              [ ("-T", Just theDbName)
+              , ("-h", Just $ fromMaybe "127.0.0.1" $ getLast host)
               , ("-p ", Just $ maybe "5432" show $ getLast port)
               ]
           , indexBased = Map.singleton 0 newDbName
@@ -478,5 +478,5 @@ withNewDbConfig extra db f = try $ do
     Left errs -> throwIO $ CompleteProcessConfigFailed (show $ pretty combined) errs
     Right x -> pure x
   terminateConnections oldOptions
-  bracket_ (executeCreateDb final) (dropDbIfExists template1Options newDbName) $
+  bracket_ (wait =<< asyncWithUnmask (\unmask -> unmask (executeCreateDb final))) (dropDbIfExists template1Options newDbName) $
     f newDb

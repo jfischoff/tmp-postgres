@@ -47,6 +47,7 @@ library
                , postgres-options >= 0.2.0.0
                , postgresql-simple
                , process >= 1.2.0.0
+               , random
                , temporary
                , transformers
                , unix
@@ -67,7 +68,6 @@ test-suite test
                      , postgres-options
                      , postgresql-simple
                      , process
-                     , random
                      , temporary
                      , tmp-postgres
                      , unix
@@ -94,7 +94,24 @@ benchmark benchmark
   ghc-options: -O2 -Wall
   build-depends: base
     , criterion
+    , postgres-options
+    , postgresql-simple
     , tmp-postgres
+  default-extensions:
+      ApplicativeDo
+    , DeriveFunctor
+    , DeriveGeneric
+    , DerivingStrategies
+    , DerivingVia
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
+    , OverloadedStrings
+    , RankNTypes
+    , RecordWildCards
+    , ScopedTypeVariables
+    , TemplateHaskell
+    , TupleSections
+    , ViewPatterns
 
 source-repository head
   type:     git

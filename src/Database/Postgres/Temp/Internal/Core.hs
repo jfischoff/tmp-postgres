@@ -219,17 +219,19 @@ instance Pretty PostgresProcess where
 terminateConnections :: Client.Options-> IO ()
 terminateConnections options = do
   let theConnectionString = Client.toConnectionString options
+        { Client.dbname = pure "template1"
+        }
       terminationQuery = fromString $ unlines
         [ "SELECT pg_terminate_backend(pid)"
         , "FROM pg_stat_activity"
         , "WHERE datname=?;"
         ]
   e <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $
-    \conn -> PG.execute conn terminationQuery
+    \conn -> PG.query conn terminationQuery
       [getLast $ Client.dbname options]
   case e of
     Left (_ :: IOError) -> pure ()
-    Right _ -> pure ()
+    Right (_ :: [PG.Only Bool]) -> pure ()
 
 -- | Stop the @postgres@ process after attempting to terminate all the
 --   connections.
