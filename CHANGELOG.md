@@ -29,3 +29,9 @@ Changelog for tmp-postgres
 1.11.0.0
   #90 Extend generated config to provide default Handles and connection timeout.
   #81 Create public Config module for better documentation organization.
+
+1.12.0.0
+  #64 Add the 'withNewDB' and 'withNewDBConfig' functions
+
+1.12.0.1
+  Documentation fixes
