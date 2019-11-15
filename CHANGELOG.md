@@ -35,3 +35,6 @@ Changelog for tmp-postgres
 
 1.12.0.1
   Documentation fixes
+
+1.13.0.0
+  #108 'startNewDBConfig' functions added and related
