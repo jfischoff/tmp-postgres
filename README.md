@@ -12,7 +12,7 @@ Here is an example using the expection safe 'with' function:
 with $ \db -> bracket
   (connectPostgreSQL (toConnectionString db))
   close $
-  \conn -> PG.execute_ conn "CREATE TABLE foo (id int)"
+  \conn -> execute_ conn "CREATE TABLE foo (id int)"
 ```
 
 To extend or override the defaults use `withConfig` (or `startConfig`).
