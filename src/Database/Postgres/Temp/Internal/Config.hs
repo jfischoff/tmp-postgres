@@ -580,7 +580,8 @@ instance Pretty Config where
 
 -- | Create a 'Plan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan
---   that is combined with the @extra@ plan from 'startConfig'.
+--   that is combined with the @extra@ plan from
+--   'Database.Postgres.Temp.startConfig'.
 toPlan
   :: Bool
   -- ^ Make @initdb@ options
@@ -665,6 +666,12 @@ cleanupConfig :: Resources -> IO ()
 cleanupConfig Resources {..} = do
   cleanupSocketConfig resourcesSocket
   cleanupDirectoryType resourcesDataDir
+
+-- | Display a 'Config'.
+--
+--   @since 1.12.0.0
+prettyPrintConfig :: Config -> String
+prettyPrintConfig = show . pretty
 
 -- | 'Resources' holds a description of the temporary folders (if there are any)
 --   and includes the final 'CompletePlan' that can be used with 'startPlan'.

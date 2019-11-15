@@ -63,4 +63,3 @@ module Database.Postgres.Temp.Config
   ) where
 import Database.Postgres.Temp.Internal.Config
 import Database.Postgres.Temp.Internal.Core
-import Database.Postgres.Temp.Internal

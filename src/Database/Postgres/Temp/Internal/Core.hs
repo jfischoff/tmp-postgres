@@ -335,7 +335,7 @@ throwIfNotSuccess f = \case
   ExitSuccess -> pure ()
   e -> throwIO $ f e
 
--- | Call 'createdb' and tee the output to return if there is an
+-- | Call @createdb@ and tee the output to return if there is an
 --   an exception. Throws 'CreateDbFailed'.
 executeCreateDb :: CompleteProcessConfig -> IO ()
 executeCreateDb config = do

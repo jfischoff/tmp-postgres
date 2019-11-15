@@ -4,10 +4,8 @@ by @Database.Postgres.Temp@. Additionally it includes some
 identifiers that are used for testing but are not exported.
 -}
 module Database.Postgres.Temp.Internal where
-
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
-
 import           Control.Concurrent.Async
 import           Control.Exception
 import           Control.Monad (void)
@@ -401,12 +399,6 @@ optionsToDefaultConfig opts@Client.Options {..} =
 -------------------------------------------------------------------------------
 -- Pretty Printing
 -------------------------------------------------------------------------------
--- | Display a 'Config'.
---
---   @since 1.12.0.0
-prettyPrintConfig :: Config -> String
-prettyPrintConfig = show . pretty
-
 -- | Display a 'DB'.
 --
 --   @since 1.12.0.0
