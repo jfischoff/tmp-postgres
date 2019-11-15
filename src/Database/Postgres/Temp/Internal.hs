@@ -267,7 +267,7 @@ probably want 'withConfig' anyway.
 -}
 startConfig :: Config
           -- ^ @extra@ configuration that is 'mappend'ed last to the generated `Config`.
-          -- @generated <> extra@
+          -- @generated@ '<>' @extra@
           -> IO (Either StartError DB)
 startConfig extra = try $ evalContT $ do
   dbResources@Resources {..} <-
