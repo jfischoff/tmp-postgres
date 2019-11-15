@@ -597,10 +597,10 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
 
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
--- 'Plan' from 'toPlan' with the @extraConfig@ passed in.
+-- 'Plan' from 'toPlan' with the @extra@ 'Config' passed in.
 setupConfig
   :: Config
-  -- ^ @extraConfig@ to 'mappend' after the default config
+  -- ^ @extra@ 'Config' to 'mappend' after the @generated@ 'Config'
   -> IO Resources
 setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
