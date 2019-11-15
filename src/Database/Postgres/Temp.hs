@@ -80,7 +80,7 @@ module Database.Postgres.Temp
   , silentProcessConfig
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
-  -- ** 'Config'
+  -- ** Configuration Types
   , module Database.Postgres.Temp.Config
   ) where
 import Database.Postgres.Temp.Internal
