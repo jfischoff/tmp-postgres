@@ -402,7 +402,8 @@ See 'withNewDbConfig' for more details.
 -}
 withNewDb
   :: DB
-  -- ^ The original 'DB' handle. The connection options database
+  -- ^ The original 'DB' handle. The database name specified in the
+  --   connection options
   --   is used as the template for the @generated@ 'ProcessConfig'
   -> (DB -> IO a)
   -- ^ The modified 'DB' handle that has the new database name
@@ -442,7 +443,8 @@ withNewDbConfig
   :: ProcessConfig
   -- ^ @extra@ @createdb@ 'ProcessConfig'
   -> DB
-  -- ^ The original 'DB' handle. The connection options database
+  -- ^ The original 'DB' handle. The database name specified in the
+  --   connection options
   --   is used as the template for the @generated@ 'ProcessConfig'
   -> (DB -> IO a)
   -- ^ The modified 'DB' handle that has the new database name
