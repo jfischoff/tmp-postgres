@@ -6,7 +6,6 @@ identifiers that are used for testing but are not exported.
 module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
-import           Control.Concurrent.Async
 import           Control.Exception
 import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
@@ -434,7 +433,7 @@ Equivalent to:
  'withNewDb' = 'withNewDbConfig' mempty
 @
 
-See 'withNewDbConfig' for more details.
+See 'startNewDbConfig' for more details.
 
 @since 1.12.0.0
 -}
@@ -448,6 +447,51 @@ withNewDb
   --   in it's connection options.
   -> IO (Either StartError a)
 withNewDb = withNewDbConfig mempty
+
+{-|
+Exception safe version of 'startNewDbConfig'. Creates a
+temporary database using the current database as a template.
+
+See 'startNewDbConfig' for more details.
+
+@since 1.12.0.0
+-}
+withNewDbConfig
+  :: ProcessConfig
+  -- ^ @extra@ @createdb@ 'ProcessConfig'.
+  -> DB
+  -- ^ The original 'DB' handle. The database name specified in the
+  --   connection options
+  --   is used as the template for the @generated@ 'ProcessConfig'.
+  -> (DB -> IO a)
+  -- ^ The modified 'DB' handle that has the new database name
+  --   in it's connection options.
+  -> IO (Either StartError a)
+withNewDbConfig extra db f =
+  bracket (startNewDbConfig extra db) (either mempty stopNewDb) $
+    either (pure . Left) (fmap Right . f)
+
+{-|
+Use the current database as a template and make a copy. Give the
+copy a random name.
+
+Equivalent to:
+
+@
+ 'startNewDb' = 'startNewDbConfig' mempty
+@
+
+See 'startNewDbConfig' for more details.
+
+@since 1.13.0.0
+-}
+startNewDb
+  :: DB
+  -- ^ The original 'DB' handle. The database name specified in the
+  --   connection options
+  --   is used as the template for the @generated@ 'ProcessConfig'.
+  -> IO (Either StartError DB)
+startNewDb = startNewDbConfig mempty
 
 {-|
 Use the current database as a template and make a copy. Give the
@@ -477,29 +521,29 @@ Additionally the generated name is 32 character random name of characters
 \"a\" to \"z\". It is possible, although unlikeily that a duplicate
 database name could be generated and this would also cause a failure.
 
-@since 1.12.0.0
+'startNewDbConfig' requires cleanup so it best to use a 'bracket' along
+with 'stopNewDb'. This is equivalient to 'withNewDbConfig'.
+
+The only reason to use 'startNewDbConfig' over 'withNewDbConfig' is
+if you are unable to use 'withNewDbConfig' for some reason.
+
+@since 1.13.0.0
 -}
-withNewDbConfig
+startNewDbConfig
   :: ProcessConfig
   -- ^ @extra@ @createdb@ 'ProcessConfig'.
   -> DB
   -- ^ The original 'DB' handle. The database name specified in the
   --   connection options
   --   is used as the template for the @generated@ 'ProcessConfig'.
-  -> (DB -> IO a)
-  -- ^ The modified 'DB' handle that has the new database name
-  --   in it's connection options.
-  -> IO (Either StartError a)
-withNewDbConfig extra db f = try $ do
+  -> IO (Either StartError DB)
+startNewDbConfig extra db = try $ do
   stdGen <- getStdGen
   let oldOptions@Client.Options {..} = toConnectionOptions db
       theDbName = fromMaybe "postgres" $ getLast dbname
       newDbName = take 32 $ randomRs ('a', 'z') stdGen
       newOptions = oldOptions
         { Client.dbname = pure newDbName
-        }
-      template1Options = oldOptions
-        { Client.dbname = pure "template1"
         }
       generated = standardProcessConfig
         { commandLine = mempty
@@ -522,5 +566,22 @@ withNewDbConfig extra db f = try $ do
     Left errs -> throwIO $ CompleteProcessConfigFailed (show $ pretty combined) errs
     Right x -> pure x
   terminateConnections oldOptions
-  bracket_ (wait =<< asyncWithUnmask (\unmask -> unmask (executeCreateDb final))) (dropDbIfExists template1Options newDbName) $
-    f newDb
+  executeCreateDb final
+  pure newDb
+
+-- | Cleanup the temporary database created by 'startNewDbConfig'
+--   or 'startNewDb'.
+--
+--   @since 1.13.0.0
+stopNewDb :: DB -> IO ()
+stopNewDb db = do
+  let oldOptions@Client.Options{..} = toConnectionOptions db
+  -- This should not happen.
+  newDbName <- maybe
+    (throwIO $ userError "stopNewDb: missing db name!")
+    pure $
+    getLast dbname
+  let template1Options = oldOptions
+        { Client.dbname = pure "template1"
+        }
+  dropDbIfExists template1Options newDbName

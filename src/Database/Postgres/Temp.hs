@@ -57,6 +57,9 @@ module Database.Postgres.Temp
   , stop
   , restart
   , stopPostgres
+  , startNewDb
+  , startNewDbConfig
+  , stopNewDb
   -- * Main resource handle
   , DB
   -- ** 'DB' accessors
