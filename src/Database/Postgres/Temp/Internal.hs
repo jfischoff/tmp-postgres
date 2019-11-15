@@ -29,6 +29,8 @@ import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 --   final plan used to start @initdb@, @createdb@ and
 --   @postgres@. See 'toConnectionString' or 'toConnectionOptions'
 --   for converting a 'DB' to postgresql connection string.
+--
+--   @since 1.12.0.0
 data DB = DB
   { dbResources :: Resources
   -- ^ Temporary resources and the final 'CompletePlan'.
@@ -48,12 +50,16 @@ instance Pretty DB where
 
 -- | Convert a 'DB' to a connection string. Alternatively one can access the
 --   'Client.Options' using 'toConnectionOptions'.
+--
+--   @since 1.12.0.0
 toConnectionString :: DB -> ByteString
 toConnectionString
   = Client.toConnectionString
   . toConnectionOptions
 
 -- | Convert a 'DB' to a connection 'Client.Options' type.
+--
+--   @since 1.12.0.0
 toConnectionOptions :: DB -> Client.Options
 toConnectionOptions
   = postgresProcessClientOptions
@@ -61,6 +67,8 @@ toConnectionOptions
 
 -- | Access the data directory. This was either generated or
 --   specified explicitly when creating the 'Config'
+--
+--   @since 1.12.0.0
 toDataDirectory :: DB -> FilePath
 toDataDirectory =  toFilePath . resourcesDataDir . dbResources
 
@@ -74,6 +82,8 @@ need to setup your own bracket like
     bracket (fmap 'makeDataDirPermanent' 'start') (either mempty 'stop')
  @
 
+
+@since 1.12.0.0
 -}
 makeDataDirPermanent :: DB -> DB
 makeDataDirPermanent db = db
@@ -81,12 +91,16 @@ makeDataDirPermanent db = db
   }
 
 -- | Get the directory that is used to create other temporary directories
+--
+--   @since 1.12.0.0
 toTemporaryDirectory :: DB -> FilePath
 toTemporaryDirectory = resourcesTemporaryDir . dbResources
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
 -- | Default postgres options
+--
+--   @since 1.12.0.0
 defaultPostgresConfig :: [String]
 defaultPostgresConfig =
   [ "shared_buffers = 12MB"
@@ -164,6 +178,9 @@ Or using the provided lenses and your favorite lens library:
 
  As an alternative to using 'defaultConfig' one could create a
  config from connections parameters using 'optionsToDefaultConfig'.
+
+
+@since 1.12.0.0
 -}
 defaultConfig :: Config
 defaultConfig = mempty
@@ -197,6 +214,7 @@ or with lenses:
 'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFile' '<>~' extra
 @
 
+@since 1.12.0.0
 -}
 defaultPostgresConf :: [String] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
@@ -207,6 +225,8 @@ defaultPostgresConf extra = defaultConfig <> mempty
 
 -- | The same as 'defaultConfig' but all the handles are set to @/dev/null@.
 --   See 'silentProcessConfig' as well.
+--
+--   @since 1.12.0.0
 silentConfig :: Config
 silentConfig = defaultConfig <> mempty
   { plan = mempty
@@ -264,6 +284,7 @@ used with a `bracket` and 'stop', e.g.
 or just use 'withConfig'. If you are calling 'startConfig' you
 probably want 'withConfig' anyway.
 
+@since 1.12.0.0
 -}
 startConfig :: Config
           -- ^ @extra@ configuration that is 'mappend'ed last to the generated `Config`.
@@ -278,11 +299,15 @@ startConfig extra = try $ evalContT $ do
 
 -- | Default start behavior. Equivalent to calling 'startConfig' with the
 --   'defaultConfig'.
+--
+--   @since 1.12.0.0
 start :: IO (Either StartError DB)
 start = startConfig defaultConfig
 
 -- | Stop the @postgres@ process and cleanup any temporary resources that
 --   might have been created.
+--
+--   @since 1.12.0.0
 stop :: DB -> IO ()
 stop DB {..} = do
   void $ stopPostgresProcess dbPostgresProcess
@@ -291,10 +316,14 @@ stop DB {..} = do
 -- | Only stop the @postgres@ process but leave any temporary resources.
 --   Useful for testing backup strategies when used in conjunction with
 --   'restart' or 'withRestart'.
+--
+--   @since 1.12.0.0
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
 
 -- | Restart the @postgres@ from 'DB' using the prior 'Plan'.
+--
+--   @since 1.12.0.0
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
@@ -306,6 +335,8 @@ restart db@DB{..} = try $ do
 
 -- | Reload the configuration file without shutting down. Calls
 --   @pg_reload_conf()@.
+--
+--   @since 1.12.0.0
 reloadConfig :: DB -> IO ()
 reloadConfig db =
   bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn ->
@@ -317,6 +348,8 @@ reloadConfig db =
 {-|
 Exception safe database create with options. See 'startConfig' for more
 details. Calls 'stop' even in the face of exceptions.
+
+@since 1.12.0.0
 -}
 withConfig :: Config
          -- ^ @extra@. 'Config' combined with the generated 'Config'. See
@@ -333,6 +366,7 @@ withConfig extra f = bracket (startConfig extra) (either mempty stop) $
    'with' = 'withConfig' 'defaultConfig'
  @
 
+@since 1.12.0.0
 -}
 with :: (DB -> IO a)
      -- ^ @action@ continuation.
@@ -340,6 +374,8 @@ with :: (DB -> IO a)
 with = withConfig defaultConfig
 
 -- | Exception safe version of 'restart'.
+--
+--   @since 1.12.0.0
 withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)
 withRestart db f = bracket (restart db) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
@@ -347,6 +383,8 @@ withRestart db f = bracket (restart db) (either mempty stop) $
 -- | Attempt to create a 'Config' from a 'Client.Options'. Useful if you
 --   want to create a database owned by a specific user you will also login
 --   with among other use cases.
+--
+--   @since 1.12.0.0
 optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
   let generated = optionsToConfig opts
@@ -364,10 +402,14 @@ optionsToDefaultConfig opts@Client.Options {..} =
 -- Pretty Printing
 -------------------------------------------------------------------------------
 -- | Display a 'Config'.
+--
+--   @since 1.12.0.0
 prettyPrintConfig :: Config -> String
 prettyPrintConfig = show . pretty
 
 -- | Display a 'DB'.
+--
+--   @since 1.12.0.0
 prettyPrintDB :: DB -> String
 prettyPrintDB = show . pretty
 
@@ -375,6 +417,8 @@ prettyPrintDB = show . pretty
 -- withNewDb
 -------------------------------------------------------------------------------
 -- | Drop the db if it exists. Terminates all connections to the db first.
+--
+--   @since 1.12.0.0
 dropDbIfExists :: Client.Options -> String -> IO ()
 dropDbIfExists options dbName = do
   let theConnectionString = Client.toConnectionString options
@@ -399,6 +443,8 @@ Equivalent to:
 @
 
 See 'withNewDbConfig' for more details.
+
+@since 1.12.0.0
 -}
 withNewDb
   :: DB
@@ -438,6 +484,8 @@ call the @createdb@ call will fail.
 Additionally the generated name is 32 character random name of characters
 \"a\" to \"z\". It is possible, although unlikeily that a duplicate
 database name could be generated and this would also cause a failure.
+
+@since 1.12.0.0
 -}
 withNewDbConfig
   :: ProcessConfig

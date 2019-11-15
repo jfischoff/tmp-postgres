@@ -27,6 +27,8 @@ import           System.Timeout
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 -- | Internal events for debugging
+--
+--   @since 1.12.0.0
 data Event
   = StartPlan String
   -- ^ The first event. This useful for debugging
@@ -46,6 +48,8 @@ data Event
 -- | A list of failures that can occur when starting. This is not
 --   and exhaustive list but covers the errors that the system
 --   catches for the user.
+--
+--   @since 1.12.0.0
 data StartError
   = StartPostgresFailed ExitCode
   -- ^ @postgres@ failed before a connection succeeded. Most likely this
@@ -78,6 +82,8 @@ data StartError
 instance Exception StartError
 
 -- | A way to log internal 'Event's
+--
+--   @since 1.12.0.0
 type Logger = Event -> IO ()
 
 -- | @postgres@ is not ready until we are able to successfully connect.
