@@ -195,7 +195,7 @@ devNull :: Handle
 devNull = unsafePerformIO (openFile "/dev/null" WriteMode)
 {-# NOINLINE devNull #-}
 
--- | 'silentProcessConfig' sets the handles to \"\/dev\/null\" and
+-- | 'silentProcessConfig' sets the handles to @/dev/null@ and
 --   inherits the environment variables from the calling process
 silentProcessConfig :: ProcessConfig
 silentProcessConfig = mempty

@@ -205,7 +205,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 
--- | The same as 'defaultConfig' but all the handles are set to \"\/dev\/null\".
+-- | The same as 'defaultConfig' but all the handles are set to @/dev/null@.
 --   See 'silentProcessConfig' as well.
 silentConfig :: Config
 silentConfig = defaultConfig <> mempty
