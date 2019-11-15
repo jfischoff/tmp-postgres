@@ -47,7 +47,7 @@ instance Pretty DB where
     <> indent 2 (pretty dbPostgresProcess)
 
 -- | Convert a 'DB' to a connection string. Alternatively one can access the
---   'Client.Options' using 'toConnectionOptions'
+--   'Client.Options' using 'toConnectionOptions'.
 toConnectionString :: DB -> ByteString
 toConnectionString
   = Client.toConnectionString
@@ -147,7 +147,7 @@ custom 'Config' like the following.
     }
  @
 
-Or using the provided lenses and your favorite lens library
+Or using the provided lenses and your favorite lens library:
 
  @
   custom = defaultConfig & 'planL' . 'postgresConfigFile' '<>~'
@@ -163,7 +163,7 @@ Or using the provided lenses and your favorite lens library
  is a helper to do this.
 
  As an alternative to using 'defaultConfig' one could create a
- config from connections parameters using 'optionsToDefaultConfig'
+ config from connections parameters using 'optionsToDefaultConfig'.
 -}
 defaultConfig :: Config
 defaultConfig = mempty
@@ -181,7 +181,7 @@ defaultConfig = mempty
 
 {-|
 'mappend' the 'defaultConfig' with a 'Config' that provides additional
-   \"postgresql.conf\" lines. Equivalent to
+   \"postgresql.conf\" lines. Equivalent to:
 
 @
 'defaultPostgresConf' extra = 'defaultConfig' <> mempty
@@ -191,7 +191,7 @@ defaultConfig = mempty
   }
 @
 
-or with lenses
+or with lenses:
 
 @
 'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFile' '<>~' extra
@@ -228,13 +228,13 @@ The final config is built by
    generated '<>' extra
  @
 
-Based on the value of 'socketClass' a \"postgresql.conf\" is created with
+Based on the value of 'socketClass' a \"postgresql.conf\" is created with:
 
  @
    listen_addresses = \'IP_ADDRESS\'
  @
 
- if it is 'IpSocket'. If is 'UnixSocket' then the lines
+ if it is 'IpSocket'. If is 'UnixSocket' then the lines:
 
  @
    listen_addresses = ''
@@ -248,7 +248,7 @@ Additionally the @generated@ `Config` also does the following:
 * Sets a `connectionTimeout` of one minute.
 * Logs internal `Event`s.
 * Sets the processes to use the standard input and output handles.
-* Sets the 'dataDirectoryString' to file path generated from 'dataDirectory'
+* Sets the 'dataDirectoryString' to file path generated from 'dataDirectory'.
 
 All of these values can be overrided by the @extra@ config.
 
@@ -267,7 +267,7 @@ probably want 'withConfig' anyway.
 -}
 startConfig :: Config
           -- ^ @extra@ configuration that is 'mappend'ed last to the generated `Config`.
-          -- @generated@ '<>' @extra@
+          -- @generated@ '<>' @extra@.
           -> IO (Either StartError DB)
 startConfig extra = try $ evalContT $ do
   dbResources@Resources {..} <-
@@ -277,7 +277,7 @@ startConfig extra = try $ evalContT $ do
   pure DB {..}
 
 -- | Default start behavior. Equivalent to calling 'startConfig' with the
---   'defaultConfig'
+--   'defaultConfig'.
 start :: IO (Either StartError DB)
 start = startConfig defaultConfig
 
@@ -294,7 +294,7 @@ stop DB {..} = do
 stopPostgres :: DB -> IO ExitCode
 stopPostgres = stopPostgresProcess . dbPostgresProcess
 
--- | Restart the @postgres@ from 'DB' using the prior 'Plan'
+-- | Restart the @postgres@ from 'DB' using the prior 'Plan'.
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
@@ -320,9 +320,9 @@ details. Calls 'stop' even in the face of exceptions.
 -}
 withConfig :: Config
          -- ^ @extra@. 'Config' combined with the generated 'Config'. See
-         -- 'startConfig' for more info
+         -- 'startConfig' for more info.
          -> (DB -> IO a)
-         -- ^ @action@ continuation
+         -- ^ @action@ continuation.
          -> IO (Either StartError a)
 withConfig extra f = bracket (startConfig extra) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
@@ -339,7 +339,7 @@ with :: (DB -> IO a)
      -> IO (Either StartError a)
 with = withConfig defaultConfig
 
--- | Exception safe version of 'restart'
+-- | Exception safe version of 'restart'.
 withRestart :: DB -> (DB -> IO a) -> IO (Either StartError a)
 withRestart db f = bracket (restart db) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
@@ -367,7 +367,7 @@ optionsToDefaultConfig opts@Client.Options {..} =
 prettyPrintConfig :: Config -> String
 prettyPrintConfig = show . pretty
 
--- | Display a 'DB'
+-- | Display a 'DB'.
 prettyPrintDB :: DB -> String
 prettyPrintDB = show . pretty
 
@@ -441,11 +441,11 @@ database name could be generated and this would also cause a failure.
 -}
 withNewDbConfig
   :: ProcessConfig
-  -- ^ @extra@ @createdb@ 'ProcessConfig'
+  -- ^ @extra@ @createdb@ 'ProcessConfig'.
   -> DB
   -- ^ The original 'DB' handle. The database name specified in the
   --   connection options
-  --   is used as the template for the @generated@ 'ProcessConfig'
+  --   is used as the template for the @generated@ 'ProcessConfig'.
   -> (DB -> IO a)
   -- ^ The modified 'DB' handle that has the new database name
   --   in it's connection options.

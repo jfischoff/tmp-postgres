@@ -74,7 +74,7 @@ instance Pretty EnvironmentVariables where
 
 -- | Combine the current environment
 --   (if indicated by 'inherit')
---   with 'specific'
+--   with 'specific'.
 completeEnvironmentVariables
   :: [(String, String)]
   -> EnvironmentVariables
@@ -130,7 +130,7 @@ takeWhileInSequence ((0, x):xs) = x : go 0 xs where
     | otherwise = []
 takeWhileInSequence _ = []
 
--- | This convert the 'CommandLineArgs' to '
+-- | This convert the 'CommandLineArgs' to '[String]'.
 completeCommandLineArgs :: CommandLineArgs -> [String]
 completeCommandLineArgs CommandLineArgs {..}
   =  map (\(name, mvalue) -> maybe name (name <>) mvalue)
@@ -143,13 +143,13 @@ data ProcessConfig = ProcessConfig
   -- ^ A monoid for combine environment variables or replacing them.
   --   for the maps the 'Dual' monoid is used. So the last key wins.
   , commandLine :: CommandLineArgs
-  -- ^ A monoid for combine command line Args or replacing them
+  -- ^ A monoid for combine command line Args or replacing them.
   , stdIn :: Last Handle
-  -- ^ A monoid for configuring the standard input 'Handle'
+  -- ^ A monoid for configuring the standard input 'Handle'.
   , stdOut :: Last Handle
-  -- ^ A monoid for configuring the standard output 'Handle'
+  -- ^ A monoid for configuring the standard output 'Handle'.
   , stdErr :: Last Handle
-  -- ^ A monoid for configuring the standard error 'Handle'
+  -- ^ A monoid for configuring the standard error 'Handle'.
   }
   deriving stock (Generic, Eq, Show)
   deriving Semigroup via GenericSemigroup ProcessConfig
@@ -196,7 +196,7 @@ devNull = unsafePerformIO (openFile "/dev/null" WriteMode)
 {-# NOINLINE devNull #-}
 
 -- | 'silentProcessConfig' sets the handles to @/dev/null@ and
---   inherits the environment variables from the calling process
+--   inherits the environment variables from the calling process.
 silentProcessConfig :: ProcessConfig
 silentProcessConfig = mempty
   { environmentVariables = mempty
@@ -326,7 +326,7 @@ instance Pretty CompleteSocketClass where
     CIpSocket x   -> text "CIpSocket:" <+> pretty x
     CUnixSocket x -> text "CUnixSocket:" <+> pretty x
 
--- | Create the extra config lines for listening based on the 'CompleteSocketClass'
+-- | Create the extra config lines for listening based on the 'CompleteSocketClass'.
 socketClassToConfig :: CompleteSocketClass -> [String]
 socketClassToConfig = \case
   CIpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
@@ -341,7 +341,7 @@ socketClassToHostFlag :: CompleteSocketClass -> [(String, Maybe String)]
 socketClassToHostFlag x = [("-h", Just (socketClassToHost x))]
 
 -- | Get the IP address, host name or UNIX domain socket directory
---   as a 'String'
+--   as a 'String'.
 socketClassToHost :: CompleteSocketClass -> String
 socketClassToHost = \case
   CIpSocket ip    -> ip
@@ -355,9 +355,9 @@ socketClassToHost = \case
 --   temporary folder will get created for the socket.
 data SocketClass
   = IpSocket (Last String)
-  -- ^ The monoid for combining IP address configuration
+  -- ^ The monoid for combining IP address configuration.
   | UnixSocket DirectoryType
-  -- ^ The monoid for combining UNIX socket configuration
+  -- ^ The monoid for combining UNIX socket configuration.
     deriving stock (Show, Eq, Ord, Generic, Typeable)
 
 instance Pretty SocketClass where
@@ -374,7 +374,7 @@ instance Semigroup SocketClass where
     (UnixSocket _, a@(IpSocket _)) -> a
     (UnixSocket a, UnixSocket b) -> UnixSocket $ a <> b
 
--- | Treats 'UnixSocket' 'mempty' as 'mempty'
+-- | Treats 'UnixSocket' 'mempty' as 'mempty'.
 instance Monoid SocketClass where
  mempty = UnixSocket mempty
 
@@ -383,9 +383,9 @@ instance Monoid SocketClass where
 --    optionally create a temporary directory if configured to do so.
 setupSocketClass
   :: String
-  -- ^ Temporary directory
+  -- ^ Temporary directory.
   -> SocketClass
-  -- ^ The type of socket
+  -- ^ The type of socket.
   -> IO CompleteSocketClass
 setupSocketClass tempDir theClass = case theClass of
   IpSocket mIp -> pure $ CIpSocket $ fromMaybe "127.0.0.1" $
@@ -491,12 +491,12 @@ completePlan envs Plan {..} = runErrors $ do
   pure CompletePlan {..}
 
 -- Returns 'True' if the 'Plan' has a
--- 'Just' 'initDbConfig'
+-- 'Just' 'initDbConfig'.
 hasInitDb :: Plan -> Bool
 hasInitDb Plan {..} = isJust initDbConfig
 
 -- Returns 'True' if the 'Plan' has a
--- 'Just' 'createDbConfig'
+-- 'Just' 'createDbConfig'.
 hasCreateDb :: Plan -> Bool
 hasCreateDb Plan {..} = isJust createDbConfig
 
@@ -504,18 +504,18 @@ hasCreateDb Plan {..} = isJust createDbConfig
 data Config = Config
   { plan    :: Plan
   -- ^ Extend or replace any of the configuration used to create a final
-  --   'CompletePlan'
+  --   'CompletePlan'.
   , socketClass  :: SocketClass
   -- ^ Override the default 'CompleteSocketClass' by setting this.
   , dataDirectory :: DirectoryType
   -- ^ Override the default temporary data directory by passing in
-  -- 'Permanent' @DIRECTORY@
+  -- 'Permanent' @DIRECTORY@.
   , port    :: Last (Maybe Int)
   -- ^ A monoid for using an existing port (via 'Just' @PORT_NUMBER@) or
-  -- requesting a free port (via a 'Nothing')
+  -- requesting a free port (via a 'Nothing').
   , temporaryDirectory :: Last FilePath
   -- ^ The directory used to create other temporary directories. Defaults
-  --   to \"/tmp\".
+  --   to @/tmp@.
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config
@@ -542,7 +542,8 @@ instance Pretty Config where
     <> pretty (getLast temporaryDirectory)
 
 -- | Create a 'Plan' that sets the command line options of all processes
---   (@initdb@, @postgres@ and @createdb@) using a
+--   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan
+--   that is combined with the @extra@ plan from 'startConfig'.
 toPlan
   :: Bool
   -- ^ Make @initdb@ options
@@ -600,7 +601,7 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
 -- 'Plan' from 'toPlan' with the @extra@ 'Config' passed in.
 setupConfig
   :: Config
-  -- ^ @extra@ 'Config' to 'mappend' after the @generated@ 'Config'
+  -- ^ @extra@ 'Config' to 'mappend' after the @generated@ 'Config'.
   -> IO Resources
 setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
@@ -622,7 +623,7 @@ setupConfig Config {..} = evalContT $ do
       completePlan envs finalPlan
   pure Resources {..}
 
--- | Free the temporary resources created by 'setupConfig'
+-- | Free the temporary resources created by 'setupConfig'.
 cleanupConfig :: Resources -> IO ()
 cleanupConfig Resources {..} = do
   cleanupSocketConfig resourcesSocket
@@ -633,7 +634,7 @@ cleanupConfig Resources {..} = do
 --   See 'setupConfig' for an example of how to create a 'Resources'.
 data Resources = Resources
   { resourcesPlan    :: CompletePlan
-  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's
+  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's.
   , resourcesSocket  :: CompleteSocketClass
   -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
   --   as the socket location.
@@ -641,7 +642,7 @@ data Resources = Resources
   -- ^ The data directory. Used to track if a temporary directory was used.
   , resourcesTemporaryDir :: FilePath
   -- ^ The directory where other temporary directories are created.
-  --   Usually \"/tmp\".
+  --   Usually @/tmp.
   }
 
 instance Pretty Resources where
@@ -686,7 +687,7 @@ optionsToPlan opts@Client.Options {..}
   <> clientOptionsToPlan opts
 
 -- Wrap the 'Client.Options' in an appropiate
--- 'PostgresPlan'
+-- 'PostgresPlan'.
 clientOptionsToPlan :: Client.Options -> Plan
 clientOptionsToPlan opts = mempty
   { postgresPlan = mempty
@@ -694,7 +695,7 @@ clientOptionsToPlan opts = mempty
     }
   }
 
--- Create a 'Plan' given a user
+-- Create a 'Plan' given a user.
 userToPlan :: String -> Plan
 userToPlan user = mempty
   { createDbConfig = pure $ mempty
@@ -731,9 +732,9 @@ hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
 -- Lenses
 -- Most this code was generated with microlens-th
 -------------------------------------------------------------------------------
--- | Local Lens alias
+-- | Local Lens alias.
 type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
--- | Local Lens' alias
+-- | Local Lens' alias.
 type Lens' s a = Lens s s a a
 
 -- | Lens for 'inherit'
@@ -743,14 +744,14 @@ inheritL f_aj5e (EnvironmentVariables x_aj5f x_aj5g)
       (f_aj5e x_aj5f)
 {-# INLINE inheritL #-}
 
--- | Lens for 'specific'
+-- | Lens for 'specific'.
 specificL :: Lens' EnvironmentVariables (Map String String)
 specificL f_aj5i (EnvironmentVariables x_aj5j x_aj5k)
   = fmap (EnvironmentVariables x_aj5j)
       (f_aj5i x_aj5k)
 {-# INLINE specificL #-}
 
--- | Lens for 'commandLine'
+-- | Lens for 'commandLine'.
 commandLineL ::
   Lens' ProcessConfig CommandLineArgs
 commandLineL
@@ -763,7 +764,7 @@ commandLineL
       (f_allv x_allx)
 {-# INLINE commandLineL #-}
 
--- | Lens for 'environmentVariables'
+-- | Lens for 'environmentVariables'.
 environmentVariablesL ::
   Lens' ProcessConfig EnvironmentVariables
 environmentVariablesL
@@ -787,7 +788,7 @@ stdErrL
       (f_allJ x_allO)
 {-# INLINE stdErrL #-}
 
--- | Lens for 'stdIn'
+-- | Lens for 'stdIn'.
 stdInL ::
   Lens' ProcessConfig (Last Handle)
 stdInL
@@ -800,7 +801,7 @@ stdInL
       (f_allQ x_allT)
 {-# INLINE stdInL #-}
 
--- | Lens for 'stdOut'
+-- | Lens for 'stdOut'.
 stdOutL ::
   Lens' ProcessConfig (Last Handle)
 stdOutL
@@ -813,7 +814,7 @@ stdOutL
       (f_allX x_alm1)
 {-# INLINE stdOutL #-}
 
--- | Lens for 'connectionOptions'
+-- | Lens for 'connectionOptions'.
 connectionOptionsL ::
   Lens' PostgresPlan Client.Options
 connectionOptionsL
@@ -823,7 +824,7 @@ connectionOptionsL
       (f_am1y x_am1A)
 {-# INLINE connectionOptionsL #-}
 
--- | Lens for 'postgresConfig'
+-- | Lens for 'postgresConfig'.
 postgresConfigL ::
   Lens' PostgresPlan ProcessConfig
 postgresConfigL
@@ -833,14 +834,14 @@ postgresConfigL
       (f_am1C x_am1D)
 {-# INLINE postgresConfigL #-}
 
--- | Lens for 'postgresConfigFile'
+-- | Lens for 'postgresConfigFile'.
 postgresConfigFileL :: Lens' Plan [String]
 postgresConfigFileL f (plan@Plan{..})
   = fmap (\x -> plan { postgresConfigFile = x })
       (f postgresConfigFile)
 {-# INLINE postgresConfigFileL #-}
 
--- | Lens for 'createDbConfig'
+-- | Lens for 'createDbConfig'.
 createDbConfigL ::
   Lens' Plan (Maybe ProcessConfig)
 createDbConfigL f (plan@Plan{..})
@@ -848,21 +849,21 @@ createDbConfigL f (plan@Plan{..})
       (f createDbConfig)
 {-# INLINE createDbConfigL #-}
 
--- | Lens for 'dataDirectoryString'
+-- | Lens for 'dataDirectoryString'.
 dataDirectoryStringL :: Lens' Plan (Last String)
 dataDirectoryStringL f (plan@Plan{..})
   = fmap (\x -> plan { dataDirectoryString = x })
       (f dataDirectoryString)
 {-# INLINE dataDirectoryStringL #-}
 
--- | Lens for 'initDbConfig'
+-- | Lens for 'initDbConfig'.
 initDbConfigL :: Lens' Plan (Maybe ProcessConfig)
 initDbConfigL f (plan@Plan{..})
   = fmap (\x -> plan { initDbConfig = x })
       (f initDbConfig)
 {-# INLINE initDbConfigL #-}
 
--- | Lens for 'logger'
+-- | Lens for 'logger'.
 loggerL :: Lens' Plan (Last Logger)
 loggerL f (plan@Plan{..})
   = fmap (\x -> plan { logger = x })
@@ -883,63 +884,63 @@ connectionTimeoutL f (plan@Plan{..})
       (f connectionTimeout)
 {-# INLINE connectionTimeoutL #-}
 
--- | Lens for 'resourcesDataDir'
+-- | Lens for 'resourcesDataDir'.
 resourcesDataDirL :: Lens' Resources CompleteDirectoryType
 resourcesDataDirL f (resources@Resources {..})
   = fmap (\x -> resources { resourcesDataDir = x })
       (f resourcesDataDir)
 {-# INLINE resourcesDataDirL #-}
 
--- | Lens for 'resourcesPlan'
+-- | Lens for 'resourcesPlan'.
 resourcesPlanL :: Lens' Resources CompletePlan
 resourcesPlanL f (resources@Resources {..})
   = fmap (\x -> resources { resourcesPlan = x })
       (f resourcesPlan)
 {-# INLINE resourcesPlanL #-}
 
--- | Lens for 'resourcesSocket'
+-- | Lens for 'resourcesSocket'.
 resourcesSocketL :: Lens' Resources CompleteSocketClass
 resourcesSocketL f (resources@Resources {..})
   = fmap (\x -> resources { resourcesSocket = x })
       (f resourcesSocket)
 {-# INLINE resourcesSocketL #-}
 
--- | Lens for 'dataDirectory'
+-- | Lens for 'dataDirectory'.
 dataDirectoryL :: Lens' Config DirectoryType
 dataDirectoryL f (config@Config{..})
   = fmap (\ x -> config { dataDirectory = x } )
       (f dataDirectory)
 {-# INLINE dataDirectoryL #-}
 
--- | Lens for 'plan'
+-- | Lens for 'plan'.
 planL :: Lens' Config Plan
 planL f (config@Config{..})
   = fmap (\ x -> config { plan = x } )
       (f plan)
 {-# INLINE planL #-}
 
--- | Lens for 'port'
+-- | Lens for 'port'.
 portL :: Lens' Config (Last (Maybe Int))
 portL f (config@Config{..})
   = fmap (\ x -> config { port = x } )
       (f port)
 {-# INLINE portL #-}
 
--- | Lens for 'socketClass'
+-- | Lens for 'socketClass'.
 socketClassL :: Lens' Config SocketClass
 socketClassL f (config@Config{..})
   = fmap (\ x -> config { socketClass = x } )
       (f socketClass)
 {-# INLINE socketClassL #-}
 
--- | Lens for 'socketClass'
+-- | Lens for 'socketClass'.
 temporaryDirectoryL :: Lens' Config (Last FilePath)
 temporaryDirectoryL f (config@Config{..})
   = fmap (\ x -> config { temporaryDirectory = x } )
       (f temporaryDirectory)
 {-# INLINE temporaryDirectoryL #-}
 
--- | Lens for 'indexBased'
+-- | Lens for 'indexBased'.
 indexBasedL ::
   Lens' CommandLineArgs (Map Int String)
 indexBasedL
@@ -949,7 +950,7 @@ indexBasedL
       (f_amNr x_amNt)
 {-# INLINE indexBasedL #-}
 
--- | Lens for 'keyBased'
+-- | Lens for 'keyBased'.
 keyBasedL ::
   Lens' CommandLineArgs (Map String (Maybe String))
 keyBasedL
