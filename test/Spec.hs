@@ -24,10 +24,11 @@ import qualified Data.Map.Strict as Map
 main :: IO ()
 main = hspec spec
 
--- check coverage
--- Test using an existing domain socket
+withConfig' :: Config -> (DB -> IO a) -> IO a
+withConfig' config = either throwIO pure <=< withConfig config
 
--- Cleanup
+with' :: (DB -> IO a) -> IO a
+with' = either throwIO pure <=< with
 
 fromCreateDb :: Maybe ProcessConfig -> Config
 fromCreateDb createDb = mempty
@@ -211,15 +212,6 @@ spec = do
         { socketClass = IpSocket $ pure "localhost"
         }
 
-  describe "start" $ do
-    let startAction = bracket (either throwIO pure =<< start) stop (const $ pure ())
-    throwsIfInitDbIsNotOnThePath startAction
-  describe "startConfig" $ do
-    let startAction plan = bracket (either throwIO pure =<< startConfig plan) stop pure
-    throwsIfInitDbIsNotOnThePath $ startAction silentConfig
-    invalidConfigFailsQuickly $ void . startAction
-    customConfigWork $ \config@Config{..} f ->
-      bracket (either throwIO pure =<< startConfig config) stop f
   describe "with" $ do
     let startAction = either throwIO pure =<< with (const $ pure ())
     throwsIfInitDbIsNotOnThePath startAction
@@ -237,25 +229,15 @@ spec = do
         withInitDbEmptyInitially
         createDbCreatesTheDb dbName
 
-  describe "restart" $ do
-    let startAction f =
-          bracket (either throwIO pure
-            =<< restart
-            =<< either throwIO pure
-            =<< start) stop f
-    before (pure $ Runner startAction) $ do
-      someStandardTests "postgres"
-      defaultConfigShouldMatchDefaultPlan
-
   describe "withRestart" $ do
-    let startAction f = bracket (either throwIO pure =<< start) stop $ \db ->
+    let startAction f = with' $ \db ->
           either throwIO pure =<< withRestart db f
     before (pure $ Runner startAction) $ do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
 
   describe "start/stop" $ do
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< start) stop f) $ do
+    before (pure $ Runner with') $ do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
       it "stopPostgres cannot be connected to" $ withRunner $ \db -> do
@@ -283,7 +265,7 @@ spec = do
                 }
               }
           )
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig invalidCreateDbPlan) stop f) $
+    before (pure $ Runner $ either throwIO pure <=< withConfig invalidCreateDbPlan) $
       createDbThrowsIfTheDbExists
 
     let noCreateTemplate1 = mempty
@@ -297,16 +279,16 @@ spec = do
               }
           }
         noCreateDbPlan = defaultConfig <> noCreateTemplate1
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig noCreateDbPlan) stop f) $
+    before (pure $ Runner $ withConfig' noCreateDbPlan) $
       someStandardTests "template1"
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig defaultIpPlan) stop f) $
+    before (pure $ Runner $ withConfig' defaultIpPlan) $
       someStandardTests "postgres"
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig specificHostIpPlan) stop f) $
+    before (pure $ Runner $ withConfig' specificHostIpPlan) $
       someStandardTests "postgres"
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig silentConfig) stop f) $
+    before (pure $ Runner $ withConfig' silentConfig) $
       it "withNewDb works" $ withRunner $ \db -> do
         bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
           \conn -> do
@@ -328,7 +310,7 @@ spec = do
           , Client.port   = pure thePort
           }
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig planFromCustomUserDbConnection) stop f) $
+    before (pure $ Runner $ withConfig' planFromCustomUserDbConnection) $
       someStandardTests "fancy"
 
     let immediantlyTimeout = silentConfig <> mempty
@@ -337,7 +319,7 @@ spec = do
               }
           }
 
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig immediantlyTimeout) stop f) $
+    before (pure $ Runner $ withConfig' immediantlyTimeout) $
       it "should timeout" $ \(Runner runner) ->
         runner (const $ pure ()) `shouldThrow` (== ConnectionTimedOut)
 
@@ -347,7 +329,7 @@ spec = do
         let nonEmptyFolderPlan = silentConfig
               { dataDirectory = Permanent dirPath
               }
-            startAction = bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ const $ pure ()
+            startAction = withConfig' nonEmptyFolderPlan $ const $ pure ()
 
         startAction `shouldThrow` (\(InitDbFailed theOut theErr code) -> do
           code == ExitFailure 1 && length theOut > 0 && length theErr > 0)
@@ -360,7 +342,7 @@ spec = do
                   { initDbConfig = Nothing
                   }
               }
-        bracket (either throwIO pure =<< startConfig nonEmptyFolderPlan) stop $ \db -> do
+        withConfig' nonEmptyFolderPlan $ \db -> do
           one <- fmap (PG.fromOnly . head) $
             bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $
               \conn -> PG.query_ conn "SELECT 1"
@@ -379,7 +361,7 @@ spec = do
               }
           }
         backupResources = silentConfig <> justBackupResources
-    before (pure $ Runner $ \f -> bracket (either throwIO pure =<< startConfig backupResources) stop f) $
+    before (pure $ Runner $ withConfig' backupResources) $
       it "can support backup and restore" $ withRunner $ \db@DB {..} -> do
         let dataDir = toFilePath (resourcesDataDir dbResources)
         appendFile (dataDir ++ "/pg_hba.conf") $ "local replication all trust"
