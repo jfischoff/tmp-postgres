@@ -20,7 +20,7 @@ import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           System.Exit (ExitCode(..))
 import           System.IO
-import           System.Posix.Signals (sigINT, signalProcess)
+import           System.Posix.Signals (sigQUIT, signalProcess)
 import           System.Process
 import           System.Process.Internals
 import           System.Timeout
@@ -244,12 +244,9 @@ terminateConnections options = do
 stopPostgresProcess :: PostgresProcess -> IO ExitCode
 stopPostgresProcess PostgresProcess{..} = do
   withProcessHandle postgresProcessHandle $ \case
-    OpenHandle p   -> do
-      -- try to terminate the connects first. If we can't terminate still
-      -- keep shutting down
-      terminateConnections postgresProcessClientOptions
-
-      signalProcess sigINT p
+    OpenHandle p   ->
+      -- Call for "immedidate shutdown"
+      signalProcess sigQUIT p
     OpenExtHandle {} -> pure () -- TODO log windows is not supported
     ClosedHandle _ -> return ()
 

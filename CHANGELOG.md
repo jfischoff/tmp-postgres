@@ -1,7 +1,7 @@
 Changelog for tmp-postgres
 
 1.7.1.0
-  #35 Add Lenses for configuration
+  #35 Add Lenses for configuration.
 
 1.8.0.0
   Get rid of `Partial` prefix. Add a `Complete` prefix to the internal configuration types.
@@ -10,31 +10,32 @@ Changelog for tmp-postgres
   Order the Event type creation time.
 
 1.9.0.0
-  #41 Configurable temporary directory
-  #59 Change EnvVars to EnvironmentVariables
+  #41 Configurable temporary directory.
+  #59 Change EnvVars to EnvironmentVariables.
 
 1.9.0.1
-  Documentation fixes
+  Documentation fixes.
 
 1.9.0.2
-  Documentation fixes
+  Documentation fixes.
 
 1.10.0.0
-  #58 Add connection timeout
-  Rename partialPlanLoggerL to loggerL
-  Add temporaryDirectoryL
-  #31 A silent defaults
-  #20 Include stderr in errors
+  #58 Add connection timeout.
+  Rename partialPlanLoggerL to loggerL.
+  Add temporaryDirectoryL.
+  #31 A silent defaults.
+  #20 Include stderr in errors.
 
 1.11.0.0
   #90 Extend generated config to provide default Handles and connection timeout.
   #81 Create public Config module for better documentation organization.
 
 1.12.0.0
-  #64 Add the 'withNewDB' and 'withNewDBConfig' functions
+  #64 Add the 'withNewDB' and 'withNewDBConfig' functions.
 
 1.12.0.1
   Documentation fixes
 
 1.13.0.0
-  #108 'startNewDBConfig' functions added and related
+  #108 'startNewDBConfig' functions added and related.
+  #113 Faster shutdown using SIGQUIT and removed manual session termination.
