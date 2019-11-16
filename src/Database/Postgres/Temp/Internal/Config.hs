@@ -761,14 +761,18 @@ userToPlan user = mempty
 
 -- Adds a @createdb@ ProcessPlan with the argument
 -- as the database name.
+-- It does nothing if the db names are "template1" or
+-- "postgres"
 dbnameToPlan :: String -> Plan
-dbnameToPlan dbName = mempty
-  { createDbConfig = pure $ mempty
-    { commandLine = mempty
-      { indexBased = Map.singleton 0 dbName
+dbnameToPlan dbName
+  | dbName == "template1" || dbName == "postgres" = mempty
+  | otherwise = mempty
+    { createDbConfig = pure $ mempty
+      { commandLine = mempty
+        { indexBased = Map.singleton 0 dbName
+        }
       }
     }
-  }
 
 -- Adds the 'PGPASSWORD' to both @initdb@ and @createdb@
 passwordToPlan :: String -> Plan

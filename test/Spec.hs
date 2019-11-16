@@ -283,7 +283,7 @@ spec = do
 -- TODO
 -- combine this test with another plan
 -- tests that the dbName can be specified in the options
---
+-- This is covered by optionsToDefaultConfig test
     let noCreateTemplate1 = mempty
           { plan = mempty
               { createDbConfig = Nothing
