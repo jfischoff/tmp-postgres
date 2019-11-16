@@ -21,9 +21,12 @@ defaultIpConfig = silentConfig
   { socketClass = IpSocket $ Last Nothing
   }
 
+-- TODO add check of actual host
 specificHostIpConfig ::Config
 specificHostIpConfig = silentConfig
   { socketClass = IpSocket $ pure "localhost"
   }
 
 -- TODO make specific unix socket plan
+
+-- extraConfig ::
