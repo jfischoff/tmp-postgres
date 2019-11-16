@@ -20,6 +20,7 @@ import Control.Concurrent
 import Data.Monoid
 import Network.Socket.Free (getFreePort)
 import qualified Data.Map.Strict as Map
+import Plans ()
 
 main :: IO ()
 main = hspec spec
@@ -67,7 +68,9 @@ defaultConfigShouldMatchDefaultPlan =
         }
       )
 
-
+--
+-- This is basically the optionsToDefaultConfig but also tests custom postgresql.conf values
+-- Simplify and only test the custom conf and it can be combined with another test
 customConfigWork :: (Config -> (DB -> IO ()) -> IO ()) -> Spec
 customConfigWork action = do
   let expectedDbName = "thedb"
@@ -75,10 +78,6 @@ customConfigWork action = do
       expectedUser = "user-name"
       expectedDuration = "100ms"
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
-
---
--- This is basically the optionsToDefaultConfig but also tests custom postgresql.conf values
---
 
   it "returns the right client options for the plan" $ withTempDirectory "/tmp" "tmp-postgres-spec" $ \tmpDir -> do
     let customPlan = mempty
