@@ -280,24 +280,6 @@ spec = do
     before (pure $ Runner $ either throwIO pure <=< withConfig invalidCreateDbPlan) $
       createDbThrowsIfTheDbExists
 
--- TODO
--- combine this test with another plan
--- tests that the dbName can be specified in the options
--- This is covered by optionsToDefaultConfig test
-    let noCreateTemplate1 = mempty
-          { plan = mempty
-              { createDbConfig = Nothing
-              , postgresPlan = mempty
-                  { connectionOptions = mempty
-                    { Client.dbname = pure "template1"
-                    }
-                  }
-              }
-          }
-        noCreateDbPlan = defaultConfig <> noCreateTemplate1
-    before (pure $ Runner $ withConfig' noCreateDbPlan) $
-      someStandardTests "template1"
-
 --
 -- Test the default IpSocket plan. Can be combined.
 --
