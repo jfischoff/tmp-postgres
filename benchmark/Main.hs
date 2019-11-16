@@ -43,11 +43,11 @@ main = defaultMain
   [ --bench "with" $ whnfIO $ with $ const $ pure ()
   --, bench "withConfig no --no-sync" $ whnfIO $
   --    withConfig defaultConfigDefaultInitDb $ const $ pure ()
-  --, bench "withConfig silent" $ whnfIO $
-  --    withConfig silentConfig $ const $ pure ()
-    bench "with migrate 10x" $ whnfIO $ replicateM 10 $ with $ \db ->
-      migrateDb db >> testQuery db
-  , bench "withNewDb migrate 10x" $ whnfIO $ with $ \db -> do
-      migrateDb db
-      replicateM 10 $ withNewDb db testQuery
+  bench "withConfig silent" $ whnfIO $
+      withConfig silentConfig $ const $ pure ()
+  --  bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig silent $ \db ->
+  --    migrateDb db >> testQuery db
+  --, bench "withNewDb migrate 10x" $ whnfIO $ withConfig silent $ \db -> do
+  --    migrateDb db
+  --    replicateM 10 $ withNewDb db testQuery
   ]

@@ -732,6 +732,7 @@ optionsToPlan :: Client.Options -> Plan
 optionsToPlan opts@Client.Options {..}
   =  maybe mempty dbnameToPlan (getLast dbname)
   <> maybe mempty userToPlan (getLast user)
+  <> maybe mempty passwordToPlan (getLast password)
   <> clientOptionsToPlan opts
 
 -- Wrap the 'Client.Options' in an appropiate
@@ -765,6 +766,21 @@ dbnameToPlan dbName = mempty
   { createDbConfig = pure $ mempty
     { commandLine = mempty
       { indexBased = Map.singleton 0 dbName
+      }
+    }
+  }
+
+-- Adds the 'PGPASSWORD' to both @initdb@ and @createdb@
+passwordToPlan :: String -> Plan
+passwordToPlan password = mempty
+  { initDbConfig = pure mempty
+    { environmentVariables = mempty
+      { specific = Map.singleton "PGPASSWORD" password
+      }
+    }
+  , createDbConfig = pure mempty
+    { environmentVariables = mempty
+      { specific = Map.singleton "PGPASSWORD" password
       }
     }
   }

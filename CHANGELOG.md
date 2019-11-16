@@ -38,4 +38,7 @@ Changelog for tmp-postgres
 
 1.13.0.0
   #108 'startNewDBConfig' functions added and related.
+
+1.13.1.0
   #113 Faster shutdown using SIGQUIT and removed manual session termination.
+  #115 Add password support to optionsToDefaultConfig

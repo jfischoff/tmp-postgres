@@ -245,7 +245,7 @@ stopPostgresProcess :: PostgresProcess -> IO ExitCode
 stopPostgresProcess PostgresProcess{..} = do
   withProcessHandle postgresProcessHandle $ \case
     OpenHandle p   ->
-      -- Call for "immedidate shutdown"
+      -- Call for "Immediate shutdown"
       signalProcess sigQUIT p
     OpenExtHandle {} -> pure () -- TODO log windows is not supported
     ClosedHandle _ -> return ()

@@ -42,6 +42,10 @@ newtype Runner =  Runner (forall a. (DB -> IO a) -> IO a)
 withRunner :: (DB -> IO ()) -> Runner -> IO ()
 withRunner g (Runner f) = f g
 
+--
+-- TODO this test should only use the public interface
+--
+
 defaultConfigShouldMatchDefaultPlan :: SpecWith Runner
 defaultConfigShouldMatchDefaultPlan =
   it "default options should match default plan" $ withRunner $ \DB{..} -> do
@@ -63,6 +67,7 @@ defaultConfigShouldMatchDefaultPlan =
         }
       )
 
+
 customConfigWork :: (Config -> (DB -> IO ()) -> IO ()) -> Spec
 customConfigWork action = do
   let expectedDbName = "thedb"
@@ -70,6 +75,10 @@ customConfigWork action = do
       expectedUser = "user-name"
       expectedDuration = "100ms"
       extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
+
+--
+-- This is basically the optionsToDefaultConfig but also tests custom postgresql.conf values
+--
 
   it "returns the right client options for the plan" $ withTempDirectory "/tmp" "tmp-postgres-spec" $ \tmpDir -> do
     let customPlan = mempty
@@ -212,9 +221,6 @@ spec = do
         { socketClass = IpSocket $ pure "localhost"
         }
 
-  describe "with" $ do
-    let startAction = either throwIO pure =<< with (const $ pure ())
-    throwsIfInitDbIsNotOnThePath startAction
   describe "withConfig" $ do
     let startAction plan = either throwIO pure =<<
           withConfig plan pure
@@ -235,6 +241,10 @@ spec = do
     before (pure $ Runner startAction) $ do
       someStandardTests "postgres"
       defaultConfigShouldMatchDefaultPlan
+
+--
+-- TODO these can be combined
+--
 
   describe "start/stop" $ do
     before (pure $ Runner with') $ do
@@ -257,6 +267,9 @@ spec = do
           [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
           actualDuration `shouldBe` expectedDuration
 
+--
+--  Keep this test. Invalid createdb options test
+--
     let invalidCreateDbPlan = silentConfig <> fromCreateDb
           ( pure $ silentProcessConfig
               { commandLine = mempty
@@ -268,6 +281,10 @@ spec = do
     before (pure $ Runner $ either throwIO pure <=< withConfig invalidCreateDbPlan) $
       createDbThrowsIfTheDbExists
 
+-- TODO
+-- combine this test with another plan
+-- tests that the dbName can be specified in the options
+--
     let noCreateTemplate1 = mempty
           { plan = mempty
               { createDbConfig = Nothing
@@ -282,11 +299,22 @@ spec = do
     before (pure $ Runner $ withConfig' noCreateDbPlan) $
       someStandardTests "template1"
 
+--
+-- Test the default IpSocket plan. Can be combined.
+--
     before (pure $ Runner $ withConfig' defaultIpPlan) $
       someStandardTests "postgres"
 
+-- Specific IpSocket plan
+-- Can be combined
+--
     before (pure $ Runner $ withConfig' specificHostIpPlan) $
       someStandardTests "postgres"
+
+--
+-- This test is okay but can be combine with other tests
+-- and should use withNewDbConf mempty instead
+-- also need to test that I can make a specific database name
 
     before (pure $ Runner $ withConfig' silentConfig) $
       it "withNewDb works" $ withRunner $ \db -> do
@@ -302,17 +330,31 @@ spec = do
 
           one `shouldBe` (1 :: Int)
 
+--
+-- This is a optionsToDefaultConfig test
+-- It is missing the host options of both
+-- a socket and ip address based
+--
 
     thePort <- runIO getFreePort
     let planFromCustomUserDbConnection = optionsToDefaultConfig mempty
-          { Client.dbname = pure "fancy"
-          , Client.user   = pure "some_user"
-          , Client.port   = pure thePort
+          { Client.dbname   = pure "fancy"
+          , Client.user     = pure "some_user"
+          , Client.port     = pure thePort
+          , Client.password = pure "password"
+          , Client.host     = pure "localhost"
           }
 
     before (pure $ Runner $ withConfig' planFromCustomUserDbConnection) $
       someStandardTests "fancy"
 
+--
+-- end optionsToDefaultConfig test
+--
+
+--
+-- Keep this test -- small connection timeout works
+--
     let immediantlyTimeout = silentConfig <> mempty
           { plan = mempty
               { connectionTimeout = pure 0
@@ -322,7 +364,13 @@ spec = do
     before (pure $ Runner $ withConfig' immediantlyTimeout) $
       it "should timeout" $ \(Runner runner) ->
         runner (const $ pure ()) `shouldThrow` (== ConnectionTimedOut)
+--
+-- End this test
+--
 
+--
+-- Keep these tests
+--
     before (createTempDirectory "/tmp" "tmp-postgres-test") $ after rmDirIgnoreErrors $ do
       it "fails on non-empty data directory" $ \dirPath -> do
         writeFile (dirPath <> "/PG_VERSION") "1 million"
@@ -348,6 +396,10 @@ spec = do
               \conn -> PG.query_ conn "SELECT 1"
 
           one `shouldBe` (1 :: Int)
+
+--
+-- Backup "test"
+--
 
     let justBackupResources = mempty
           { plan = mempty
