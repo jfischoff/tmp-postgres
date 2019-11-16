@@ -381,7 +381,7 @@ withRestart db f = bracket (restart db) (either mempty stop) $
 --   want to create a database owned by a specific user you will also login
 --   with among other use cases.
 --
---   @since 1.12.0.0
+--   @since 1.13.1.0
 optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
   let generated = optionsToConfig opts

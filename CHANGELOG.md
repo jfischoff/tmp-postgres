@@ -42,3 +42,6 @@ Changelog for tmp-postgres
 1.13.1.0
   #113 Faster shutdown using SIGQUIT and removed manual session termination.
   #115 Add password support to optionsToDefaultConfig
+
+1.13.1.1
+  #116 Don't create postgres or template1 databases in optionsToDefaultConfig
