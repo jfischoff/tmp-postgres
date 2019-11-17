@@ -58,13 +58,14 @@ library
 test-suite test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
-  other-modules: Plans
-  main-is:             Spec.hs
+  main-is:             Main.hs
   build-depends:       base
                      , containers
                      , directory
+                     , generic-monoid
                      , hspec
                      , mtl
+                     , network
                      , port-utils
                      , postgres-options
                      , postgresql-simple
