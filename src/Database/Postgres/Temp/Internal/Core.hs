@@ -9,7 +9,7 @@ module Database.Postgres.Temp.Internal.Core where
 import           Control.Concurrent (threadDelay)
 import           Control.Concurrent.Async (race_, withAsync)
 import           Control.Exception
-import           Control.Monad (forever, (>=>))
+import           Control.Monad (forever, (>=>), unless)
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Foldable (for_)
 import           Data.IORef
@@ -18,6 +18,7 @@ import           Data.String
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
+import           System.Directory
 import           System.Exit (ExitCode(..))
 import           System.IO
 import           System.Posix.Signals (sigQUIT, signalProcess)
@@ -77,6 +78,9 @@ data StartError
   | ConnectionTimedOut
   -- ^ Timed out waiting for @postgres@ to accept a connection
   | DeleteDbError PG.SqlError
+  | EmptyDataDirectory
+  -- ^ This will happen if a 'Database.Postgres.Temp.Config.Plan' is missing a
+  --   'initDbConfig'.
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -349,6 +353,11 @@ startPlan plan@CompletePlan {..} = do
   completePlanLogger $ StartPlan $ show $ pretty plan
   for_ completePlanInitDb $ executeProcessAndTee "initdb" >=>
     \(res, stdOut, stdErr) -> throwIfNotSuccess (InitDbFailed stdOut stdErr) res
+
+  -- Try to give a better error if @initdb@ was not
+  -- configured to run.
+  versionFileExists <- doesFileExist $ completePlanDataDirectory <> "/PG_VERSION"
+  unless versionFileExists $ throwIO EmptyDataDirectory
 
   -- We must provide a config file before we can start postgres.
   writeFile (completePlanDataDirectory <> "/postgresql.conf") completePlanConfig

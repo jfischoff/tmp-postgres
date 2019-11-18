@@ -398,7 +398,7 @@ errorPaths = describe "fails when" $ do
           }
 
     withConfig dontTimeout (const $ pure ())
-      `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
+      `shouldReturn` Left EmptyDataDirectory
 
   it "initdb with non-empty data directory fails with InitDbFailed" $
     withTempDirectory "/tmp" "tmp-postgres-test" $ \dirPath -> do
