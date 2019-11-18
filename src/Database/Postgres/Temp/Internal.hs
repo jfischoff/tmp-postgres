@@ -220,14 +220,44 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 
--- | The same as 'defaultConfig' but all the handles are set to @/dev/null@.
---   See 'silentProcessConfig' as well.
---
---   @since 1.12.0.0
+
+--   @since 1.14.0.0
+silentPostgresConfig :: [String]
+silentPostgresConfig =
+  [ "shared_buffers = 12MB"
+  , "fsync = off"
+  , "synchronous_commit = off"
+  , "full_page_writes = off"
+  , "log_min_messages = PANIC"
+  , "log_min_error_statement = PANIC"
+  , "log_statement = none"
+  , "client_min_messages = ERROR"
+  ]
+
+{-|
+The similar to 'defaultConfig' but all the handles are set to @/dev/null@.
+and uses a @postgresql.conf@ which disables logging:
+
+ @
+   shared_buffers = 12MB
+   fsync = off
+   synchronous_commit = off
+   full_page_writes = off
+   log_min_messages = PANIC
+   log_min_error_statement = PANIC
+   log_statement = none
+   client_min_messages = ERROR
+ @
+
+See 'silentProcessConfig' as well.
+
+@since 1.14.0.0
+-}
 silentConfig :: Config
 silentConfig = defaultConfig <> mempty
   { plan = mempty
-    { initDbConfig = pure silentProcessConfig
+    { postgresConfigFile = silentPostgresConfig
+    , initDbConfig = pure silentProcessConfig
     , postgresPlan = mempty
         { postgresConfig = silentProcessConfig
         }
