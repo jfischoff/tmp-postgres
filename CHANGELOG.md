@@ -45,3 +45,6 @@ Changelog for tmp-postgres
 
 1.13.1.1
   #116 Don't create postgres or template1 databases in optionsToDefaultConfig
+
+1.13.1.2
+  #124 Respect database name in withNewDbConfig
