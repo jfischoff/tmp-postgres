@@ -537,11 +537,12 @@ startNewDbConfig
   --   connection options
   --   is used as the template for the @generated@ 'ProcessConfig'.
   -> IO (Either StartError DB)
-startNewDbConfig extra db = try $ do
+startNewDbConfig extra@ProcessConfig{..} db = try $ do
   stdGen <- getStdGen
   let oldOptions@Client.Options {..} = toConnectionOptions db
       theDbName = fromMaybe "postgres" $ getLast dbname
-      newDbName = take 32 $ randomRs ('a', 'z') stdGen
+      newDbName = fromMaybe (take 32 $ randomRs ('a', 'z') stdGen) $
+        Map.lookup 0 $ indexBased commandLine
       newOptions = oldOptions
         { Client.dbname = pure newDbName
         }
@@ -563,6 +564,7 @@ startNewDbConfig extra db = try $ do
         }
   envs <- getEnvironment
   final <- case completeProcessConfig envs combined of
+    -- Failure case does not look possible
     Left errs -> throwIO $ CompleteProcessConfigFailed (show $ pretty combined) errs
     Right x -> pure x
   terminateConnections oldOptions
