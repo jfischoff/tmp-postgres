@@ -1,6 +1,6 @@
 import           Control.Concurrent
 import           Control.Exception
-import           Control.Monad ((<=<), void)
+import           Control.Monad ((<=<), void, unless)
 import           Data.Function
 import qualified Data.Map.Strict as Map
 import           Data.Monoid
@@ -35,10 +35,19 @@ withNewDbConfig' :: ProcessConfig -> DB -> (DB -> IO a) -> IO a
 withNewDbConfig' config db = either throwIO pure <=<
   withNewDbConfig config db
 
+
+countPostgresProcesses :: IO Int
+countPostgresProcesses = do
+  -- TODO we should restrict to child process
+  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" ["postgres"] []
+
+  unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
+
+  pure $ length $ lines xs
+
 testSuccessfulConfigNoTmp :: ConfigAndAssertion -> IO ()
 testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
-  -- ensure the count of postgres processes that are child processes before is 0
-  -- for each exception location
+  initialPostgresCount <- countPostgresProcesses
   withConfig' cConfig $ \db -> do
     cAssert db
     -- check for a valid connection
@@ -47,7 +56,7 @@ testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
 
     one `shouldBe` (1 :: Int)
 
-  -- ensure the count of postgres processes that are child processes after is 0
+  countPostgresProcesses `shouldReturn` initialPostgresCount
 
 testSuccessfulConfig :: ConfigAndAssertion -> IO ()
 testSuccessfulConfig configAssert = do
