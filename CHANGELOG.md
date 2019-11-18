@@ -48,3 +48,6 @@ Changelog for tmp-postgres
 
 1.13.1.2
   #124 Respect database name in withNewDbConfig
+
+1.14.0.0
+  #126 Check for an empty data directory to give a better error message
