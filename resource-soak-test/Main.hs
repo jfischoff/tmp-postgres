@@ -16,9 +16,18 @@ withConn :: DB -> (PG.Connection -> IO a) -> IO a
 withConn db = bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close
 
 countPostgresProcesses :: IO Int
-countPostgresProcesses = do
+countPostgresProcesses = countProcesses "postgres"
+
+countInitdbProcesses :: IO Int
+countInitdbProcesses = countProcesses "initdb"
+
+countCreatedbProcesses :: IO Int
+countCreatedbProcesses = countProcesses "createdb"
+
+countProcesses :: String -> IO Int
+countProcesses processName = do
   -- TODO we should restrict to child process
-  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" ["postgres"] []
+  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" [processName] []
 
   unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
 
@@ -35,7 +44,10 @@ main = withTempDirectory "/tmp" "tmp-postgres-spec" $ \directoryPath ->
           }
 
     initialContents <- listDirectory directoryPath
-    initialCount <- countPostgresProcesses
+
+    initialPostgresCount <- countPostgresProcesses
+    initialInitdbCount <- countInitdbProcesses
+    initialCreatedbCount <- countCreatedbProcesses
 
     thread <- async $ withConfig theConfig $ flip withConn $ \conn -> forever $ do
       (_one :: Int) <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT 1"
@@ -47,15 +59,35 @@ main = withTempDirectory "/tmp" "tmp-postgres-spec" $ \directoryPath ->
     void $ waitCatch thread
 
     finalContents <- listDirectory directoryPath
-    finalCount <- countPostgresProcesses
+    finalPostgresCount <- countPostgresProcesses
+    finalInitdbCount <- countInitdbProcesses
+    finalCreatedbCount <- countCreatedbProcesses
 
-    unless (initialCount == finalCount) $
+    unless (initialPostgresCount == finalPostgresCount) $
       throwIO $ userError $ unlines
         [ "failed to clean up postgres"
         , "had"
-        , show initialCount
+        , show initialPostgresCount
         , "initially and now have"
-        , show finalCount
+        , show finalPostgresCount
+        ]
+
+    unless (initialInitdbCount == finalInitdbCount) $
+      throwIO $ userError $ unlines
+        [ "failed to clean up initdb"
+        , "had"
+        , show initialInitdbCount
+        , "initially and now have"
+        , show finalInitdbCount
+        ]
+
+    unless (initialCreatedbCount == finalCreatedbCount) $
+      throwIO $ userError $ unlines
+        [ "failed to clean up createdb"
+        , "had"
+        , show initialCreatedbCount
+        , "initially and now have"
+        , show finalCreatedbCount
         ]
 
     unless (initialContents == finalContents) $ do

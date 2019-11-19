@@ -36,11 +36,19 @@ withNewDbConfig' :: ProcessConfig -> DB -> (DB -> IO a) -> IO a
 withNewDbConfig' config db = either throwIO pure <=<
   withNewDbConfig config db
 
-
 countPostgresProcesses :: IO Int
-countPostgresProcesses = do
+countPostgresProcesses = countProcesses "postgres"
+
+countInitdbProcesses :: IO Int
+countInitdbProcesses = countProcesses "initdb"
+
+countCreatedbProcesses :: IO Int
+countCreatedbProcesses = countProcesses "createdb"
+
+countProcesses :: String -> IO Int
+countProcesses processName = do
   -- TODO we should restrict to child process
-  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" ["postgres"] []
+  (exitCode, xs, _) <-  readProcessWithExitCode "pgrep" [processName] []
 
   unless (exitCode == ExitSuccess || exitCode == ExitFailure 1) $ throwIO exitCode
 
@@ -49,6 +57,9 @@ countPostgresProcesses = do
 testSuccessfulConfigNoTmp :: ConfigAndAssertion -> IO ()
 testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
   initialPostgresCount <- countPostgresProcesses
+  initialInitdbCount <- countInitdbProcesses
+  initialCreatedbCount <- countCreatedbProcesses
+
   withConfig' cConfig $ \db -> do
     cAssert db
     -- check for a valid connection
@@ -58,6 +69,8 @@ testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
     one `shouldBe` (1 :: Int)
 
   countPostgresProcesses `shouldReturn` initialPostgresCount
+  countInitdbProcesses `shouldReturn` initialInitdbCount
+  countCreatedbProcesses `shouldReturn` initialCreatedbCount
 
 testSuccessfulConfig :: ConfigAndAssertion -> IO ()
 testSuccessfulConfig configAssert@ConfigAndAssertion{..} = do
