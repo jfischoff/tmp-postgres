@@ -118,3 +118,36 @@ benchmark benchmark
 source-repository head
   type:     git
   location: https://github.com/jfischoff/tmp-postgres
+
+executable soak-test
+  main-is: Main.hs
+  hs-source-dirs: resource-soak-test
+  default-language: Haskell2010
+  ghc-options: -O2 -Wall
+  build-depends: base
+    , async
+    , directory
+    , postgres-options
+    , postgresql-simple
+    , process
+    , temporary
+    , tmp-postgres
+  default-extensions:
+      ApplicativeDo
+    , DeriveFunctor
+    , DeriveGeneric
+    , DerivingStrategies
+    , DerivingVia
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
+    , OverloadedStrings
+    , RankNTypes
+    , RecordWildCards
+    , ScopedTypeVariables
+    , TemplateHaskell
+    , TupleSections
+    , ViewPatterns
+
+source-repository head
+  type:     git
+  location: https://github.com/jfischoff/tmp-postgres

@@ -327,6 +327,8 @@ rmDirIgnoreErrors mainDir = do
   let ignoreDirIsMissing e
         | isDoesNotExistError e = return ()
         | otherwise = throwIO e
+  -- I'm trying to prevent new files getting added
+  -- to the dir as I am deleting the files.
   removeDirectoryRecursive mainDir `catch` ignoreDirIsMissing
 
 -- | Either remove a 'CTemporary' directory or do nothing to a 'CPermanent'

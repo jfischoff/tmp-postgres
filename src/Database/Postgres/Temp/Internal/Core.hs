@@ -170,7 +170,8 @@ executeProcess
   -> CompleteProcessConfig
   -- ^ Process config
   -> IO ExitCode
-executeProcess name = startProcess name >=> waitForProcess
+executeProcess name conf =
+  bracket (startProcess name conf) terminateProcess waitForProcess
 
 -- | Start a process and block until it finishes return the 'ExitCode' and the
 --   stderr output.
