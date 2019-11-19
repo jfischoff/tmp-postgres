@@ -3,6 +3,7 @@ import           Control.Exception
 import           Control.Monad ((<=<), void, unless)
 import           Data.Function
 import qualified Data.Map.Strict as Map
+import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
 import qualified Data.Set as Set
@@ -59,10 +60,14 @@ testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
   countPostgresProcesses `shouldReturn` initialPostgresCount
 
 testSuccessfulConfig :: ConfigAndAssertion -> IO ()
-testSuccessfulConfig configAssert = do
+testSuccessfulConfig configAssert@ConfigAndAssertion{..} = do
   -- get the temp listing before
+  let tmpDir = fromMaybe (error "test is bad")
+        $ getLast $ temporaryDirectory cConfig
+  initialContents <- listDirectory tmpDir
   testSuccessfulConfigNoTmp configAssert
   -- get the temp listing after
+  listDirectory tmpDir `shouldReturn` initialContents
 
 testWithTemporaryDirectory :: ConfigAndAssertion -> (ConfigAndAssertion -> IO a) -> IO a
 testWithTemporaryDirectory x f =
