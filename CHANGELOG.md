@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.14.1.0
+  #122 Fix bug that would prevent temporary directory removal
+
 1.14.0.1
   #129 Fix resource leak in executeProcess
 
