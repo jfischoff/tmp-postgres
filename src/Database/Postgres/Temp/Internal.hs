@@ -4,8 +4,10 @@ by @Database.Postgres.Temp@. Additionally it includes some
 identifiers that are used for testing but are not exported.
 -}
 module Database.Postgres.Temp.Internal where
+
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
+
 import           Control.Exception
 import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
@@ -18,6 +20,7 @@ import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           System.Environment
 import           System.Exit (ExitCode(..))
+import           System.Process
 import           System.Random
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
@@ -613,3 +616,116 @@ stopNewDb db = do
         { Client.dbname = pure "template1"
         }
   dropDbIfExists template1Options newDbName
+
+-------------------------------------------------------------------------------
+-- initdb cache
+-------------------------------------------------------------------------------
+-- | Configuration for the @initdb@ data directory cache.
+data CacheConfig = CacheConfig
+  { cacheTemporaryDirectory :: FilePath
+  -- ^ Root temporary directory used if 'cacheDirectoryType' is set to
+  -- 'Temporary'. @\/tmp@ is a good default.
+  , cacheDirectoryType      :: DirectoryType
+  -- ^ Used to specify is a 'Permanent' or 'Temporary' directory should be
+  --   used. 'createDefaultCacheConfig' uses 'Permanent' @~\/.tmp-postgres@
+  --   by default.
+  , cacheUseCopyOnWrite     :: Bool
+  -- ^ Some operatoring system versions support flags for @cp@ that allow
+  --   \"copy on write\" which is about 2x faster. 'createDefaultCacheConfig'
+  --   attempts to determine if the @cp@ on the path supports copy on write
+  --   and sets this to 'True' if it does.
+  }
+
+{-|
+'createDefaultCacheConfig' attempts to determine if the @cp@ on the path
+supports \"copy on write\" flags and if it does, sets 'cacheUseCopyOnWrite'
+to 'True'.
+
+It sets 'cacheDirectoryType' to 'Permanent' @~\/.tmp-postgres@ and
+'cacheTemporaryDirectory' to @\/tmp@ (but this is not used when
+'Permanent' is set).
+-}
+createDefaultCacheConfig :: IO CacheConfig
+createDefaultCacheConfig = do
+  let
+#ifdef darwin_HOST_OS
+    cpFlag = "-c"
+#else
+    cpFlag = "--reflink=auto"
+#endif
+  (_, _, errorOutput)<- readProcessWithExitCode "cp" [cpFlag] ""
+  -- if the flags do not exist we get a message like "cp: illegal option"
+  let usage = "usage:" -- macos
+      missingFile = "cp: missing file operand" -- linux
+      cacheUseCopyOnWrite = usage ==  take (length usage) errorOutput
+        || missingFile ==  take (length missingFile) errorOutput
+      cacheDirectoryType = Permanent "~/.tmp-postgres"
+      cacheTemporaryDirectory = "/tmp"
+  pure CacheConfig {..}
+
+-- | Setup the @initdb@ cache folder.
+setupInitDbCache
+  :: CacheConfig
+  -> IO (Bool, CompleteDirectoryType)
+setupInitDbCache CacheConfig {..} =
+  bracketOnError
+    (setupDirectoryType
+      cacheTemporaryDirectory
+      "tmp-postgres-cache"
+      cacheDirectoryType
+    )
+    cleanupDirectoryType $ pure . (cacheUseCopyOnWrite,)
+
+{-|
+Cleanup the cache directory if it was 'Temporary'.
+-}
+cleanupInitDbCache :: (Bool, CompleteDirectoryType) -> IO ()
+cleanupInitDbCache = cleanupDirectoryType . snd
+
+{-|
+Enable @initdb@ data directory caching. This can lead to a 4x speedup.
+
+Exception safe version of 'setupInitDbCache'. Equivalent to
+
+@
+   'withDbCacheConfig' = bracket_ ('setupInitDbCache' config) 'cleanupInitDbCache'
+@
+
+-}
+withDbCacheConfig
+  :: CacheConfig
+  -- ^ Configuration
+  -> ((Bool, CompleteDirectoryType) -> IO a)
+  -- ^ action for which caching is enabled
+  -> IO a
+withDbCacheConfig config =
+  bracket (setupInitDbCache config) cleanupInitDbCache
+
+{-|
+Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
+'createDefaultCacheConfig' makes.
+-}
+withDbCache :: ((Bool, CompleteDirectoryType) -> IO a) -> IO a
+withDbCache action =
+  flip withDbCacheConfig action =<< createDefaultCacheConfig
+
+{-|
+Helper to make a 'Config' out of caching info.
+
+Equivalent to
+
+@
+  toCacheConfig cacheInfo = mempty
+    { plan = mempty
+        { initDbCache = pure $ Just $ fmap toFilePath cacheInfo
+        }
+    }
+@
+
+-}
+toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
+toCacheConfig cacheInfo = mempty
+  { plan = mempty
+      { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
+      }
+  }

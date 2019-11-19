@@ -9,11 +9,16 @@ module Database.Postgres.Temp.Internal.Core where
 import           Control.Concurrent (threadDelay)
 import           Control.Concurrent.Async (race_, withAsync)
 import           Control.Exception
-import           Control.Monad (forever, (>=>), unless)
+import           Control.Monad (forever, unless, void)
+import           Crypto.Hash.SHA1 (hash)
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Base64.URL as Base64
+import           Data.Char
 import           Data.Foldable (for_)
 import           Data.IORef
+import           Data.Maybe
 import           Data.Monoid
+import           Data.List
 import           Data.String
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
@@ -80,7 +85,12 @@ data StartError
   | DeleteDbError PG.SqlError
   | EmptyDataDirectory
   -- ^ This will happen if a 'Database.Postgres.Temp.Config.Plan' is missing a
-  --   'initDbConfig'.
+  --   'Database.Postgres.Temp.Config.initDbConfig'.
+  | CopyCachedInitDbFailed String ExitCode
+  -- ^ This is called if copying a folder cache fails.
+  | FailedToFindDataDirectory String
+  -- ^ Failed to find a data directory when trying to get
+  --   a cached @initdb@ folder.
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -99,7 +109,7 @@ waitForDB logger options = do
   let theConnectionString = Client.toConnectionString options
       startAction = PG.connectPostgreSQL theConnectionString
   try (bracket startAction PG.close mempty) >>= \case
-    Left (_ :: IOError) -> threadDelay 10000 >> waitForDB logger options
+    Left (_ :: IOError) -> threadDelay 1000 >> waitForDB logger options
     Right () -> return ()
 
 -- Only useful if we believe the output is finite
@@ -143,6 +153,12 @@ instance Pretty CompleteProcessConfig where
     <> text "completeProcessConfigCmdLine:"
     <> softline
     <> text (unwords completeProcessConfigCmdLine)
+
+makeCommandLine :: String -> CompleteProcessConfig -> String
+makeCommandLine command CompleteProcessConfig {..} =
+  let envs = unwords $ map (\(x, y) -> x <> "=" <> y) completeProcessConfigEnvVars
+      args = unwords completeProcessConfigCmdLine
+  in envs <> " " <> command <> args
 
 -- | Start a process interactively and return the 'ProcessHandle'
 startProcess
@@ -291,6 +307,101 @@ startPostgresProcess time logger CompletePostgresPlan {..} = do
 
       -- Postgres is now ready so return
       return result
+
+-------------------------------------------------------------------------------
+-- initdb cache
+-------------------------------------------------------------------------------
+getInitDbVersion :: IO String
+getInitDbVersion = readProcessWithExitCode "initdb" ["--version"] "" >>= \case
+  (ExitSuccess, outputString, _) -> do
+    let
+      theLastPart = last $ words outputString
+      versionPart = takeWhile (\x -> isDigit x || x == '.' || x == '-') theLastPart
+    pure $ if last versionPart == '.'
+             then init versionPart
+             else versionPart
+
+  (startErrorExitCode, startErrorStdOut, startErrorStdErr) ->
+    throwIO InitDbFailed {..}
+
+-- TODO We need to remove the data directory!
+makeInitDbCommandLine :: CompleteProcessConfig -> String
+makeInitDbCommandLine = makeCommandLine "initdb"
+
+makeArgumentHash :: String -> String
+makeArgumentHash = BSC.unpack . Base64.encode . hash . BSC.pack
+
+splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
+splitDataDirectory old =
+  let isDataDirectoryFlag xs = "-D" `isPrefixOf` xs || "--pgdata=" `isPrefixOf` xs
+      (dataDirectoryArgs, otherArgs) =
+        partition isDataDirectoryFlag $ completeProcessConfigCmdLine old
+
+      firstDataDirectoryArg = flip fmap (listToMaybe dataDirectoryArgs) $ \case
+        '-':'D':' ':theDir -> theDir
+        '-':'D':theDir -> theDir
+        '-':'-':'p':'g':'d':'a':'t':'a':'=':theDir -> theDir
+        _ -> error "splitDataDirectory not possible"
+
+      filteredEnvs = filter (not . ("PGDATA"==) . fst) $
+        completeProcessConfigEnvVars old
+
+      clearedConfig = old
+        { completeProcessConfigCmdLine = otherArgs
+        , completeProcessConfigEnvVars = filteredEnvs
+        }
+
+  in (firstDataDirectoryArg, clearedConfig)
+
+makeCachePath :: FilePath -> String -> IO String
+makeCachePath cacheFolder cmdLine = do
+  version <- getInitDbVersion
+  let theHash = makeArgumentHash cmdLine
+  pure $ cacheFolder <> "/" <> version <> "/" <> theHash
+
+addDataDirectory :: String -> CompleteProcessConfig -> CompleteProcessConfig
+addDataDirectory theDataDirectory x = x
+  { completeProcessConfigCmdLine =
+      ("--pgdata=" <> theDataDirectory) : completeProcessConfigCmdLine x
+  }
+
+executeInitDb :: Maybe (Bool, FilePath) -> CompleteProcessConfig -> IO ()
+executeInitDb cache config = do
+  -- helper
+  let runInitDb theConfig = do
+        (res, stdOut, stdErr) <- executeProcessAndTee "initdb" theConfig
+        throwIfNotSuccess (InitDbFailed stdOut stdErr) res
+
+  -- Probably want a MVar to lock this whole operation
+  void $ case cache of
+    Nothing -> runInitDb config
+    Just (copyOnWrite, directoryType) -> do
+      let (mtheDataDirectory, clearedConfig) = splitDataDirectory config
+      theDataDirectory <- maybe
+        (throwIO $ FailedToFindDataDirectory (show $ pretty config))
+        pure
+        mtheDataDirectory
+
+      let theCommandLine = makeInitDbCommandLine clearedConfig
+
+      cachePath <- makeCachePath directoryType theCommandLine
+      let newDataDirectory = cachePath <> "/data"
+      doesDirectoryExist cachePath >>= \case
+        True -> pure ()
+        False -> do
+          createDirectoryIfMissing True cachePath
+          writeFile (cachePath <> "/commandLine.log") theCommandLine
+          runInitDb $ addDataDirectory newDataDirectory clearedConfig
+      -- TODO do a check for macos or linux
+      let
+#ifdef darwin_HOST_OS
+        cpFlags = if copyOnWrite then "cp -Rc " else "cp -R "
+#else
+        cpFlags = if copyOnWrite then "cp -R --reflink=auto " else "cp -R "
+#endif
+        copyCommand = cpFlags <> newDataDirectory <> "/* " <> theDataDirectory
+      throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
+
 -------------------------------------------------------------------------------
 -- CompletePlan
 -------------------------------------------------------------------------------
@@ -308,6 +419,7 @@ data CompletePlan = CompletePlan
   , completePlanConfig            :: String
   , completePlanDataDirectory     :: FilePath
   , completePlanConnectionTimeout :: Int
+  , completePlanCacheDirectory    :: Maybe (Bool, FilePath)
   }
 
 instance Pretty CompletePlan where
@@ -330,6 +442,9 @@ instance Pretty CompletePlan where
     <>  hardline
     <>  text "completePlanDataDirectory:"
     <+> pretty completePlanDataDirectory
+    <>  hardline
+    <>  text "completePlanCacheDirectory:"
+    <+> pretty completePlanCacheDirectory
 
 -- A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
 throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
@@ -352,8 +467,7 @@ executeCreateDb config = do
 startPlan :: CompletePlan -> IO PostgresProcess
 startPlan plan@CompletePlan {..} = do
   completePlanLogger $ StartPlan $ show $ pretty plan
-  for_ completePlanInitDb $ executeProcessAndTee "initdb" >=>
-    \(res, stdOut, stdErr) -> throwIfNotSuccess (InitDbFailed stdOut stdErr) res
+  for_ completePlanInitDb $ executeInitDb completePlanCacheDirectory
 
   -- Try to give a better error if @initdb@ was not
   -- configured to run.
@@ -370,7 +484,6 @@ startPlan plan@CompletePlan {..} = do
     for_ completePlanCreateDb executeCreateDb
 
     pure result
-
 
 -- | Stop the @postgres@ process. See 'stopPostgresProcess' for more details.
 stopPlan :: PostgresProcess -> IO ExitCode

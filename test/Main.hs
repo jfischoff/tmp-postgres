@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
+import           Data.List
 import qualified Data.Set as Set
 import           Data.String
 import qualified Database.PostgreSQL.Simple as PG
@@ -56,6 +57,13 @@ countProcesses processName = do
 
   pure $ length $ lines xs
 
+assertConnection :: DB -> IO ()
+assertConnection db = do
+  one <- fmap (PG.fromOnly . head) $
+      withConn db $ \conn -> PG.query_ conn "SELECT 1"
+
+  one `shouldBe` (1 :: Int)
+
 testSuccessfulConfigNoTmp :: ConfigAndAssertion -> IO ()
 testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
   initialPostgresCount <- countPostgresProcesses
@@ -64,11 +72,7 @@ testSuccessfulConfigNoTmp ConfigAndAssertion {..} = do
 
   withConfig' cConfig $ \db -> do
     cAssert db
-    -- check for a valid connection
-    one <- fmap (PG.fromOnly . head) $
-      withConn db $ \conn -> PG.query_ conn "SELECT 1"
-
-    one `shouldBe` (1 :: Int)
+    assertConnection db
 
   countPostgresProcesses `shouldReturn` initialPostgresCount
   countInitdbProcesses `shouldReturn` initialInitdbCount
@@ -86,7 +90,7 @@ testSuccessfulConfig configAssert@ConfigAndAssertion{..} = do
 
 testWithTemporaryDirectory :: ConfigAndAssertion -> (ConfigAndAssertion -> IO a) -> IO a
 testWithTemporaryDirectory x f =
-  withTempDirectory "/tmp" "tmp-postgres-spec" $ \directoryPath -> do
+  withTempDirectory "/tmp" "tmp-postgres-spec" $ \directoryPath ->
     f x
       { cConfig = (cConfig x) { temporaryDirectory = pure directoryPath }
       , cAssert = cAssert x <> (\db -> toTemporaryDirectory db `shouldBe` directoryPath)
@@ -331,6 +335,60 @@ happyPaths = describe "succeeds with" $ do
        doesDirectoryExist pathToCheck >>= \case
          True -> pure ()
          False -> fail "temporary file was not made permanent"
+
+  it "withDbCacheConfig actually caches the config and cleans up" $
+    withTempDirectory "/tmp" "tmp-postgres-cache-test" $ \dirPath -> do
+      let config = silentConfig { temporaryDirectory = pure dirPath }
+          cacheConfig = CacheConfig
+            { cacheTemporaryDirectory = dirPath
+            , cacheDirectoryType      = Temporary
+            , cacheUseCopyOnWrite     = True
+            }
+      withDbCacheConfig cacheConfig $ \cacheInfo -> do
+        withConfig' (config <> toCacheConfig cacheInfo) $ const $ pure ()
+        -- see if there is a cache
+        tmpFiles <- listDirectory dirPath
+
+        cacheDir <- case filter ("tmp-postgres-cache" `isPrefixOf`) tmpFiles of
+          [x] -> pure x
+          xs -> fail $ "expected single cache dir got: " <> show xs
+
+        listDirectory (dirPath <> "/" <> cacheDir) >>= \case
+          [versionDir] -> listDirectory  (dirPath <> "/" <> cacheDir <> "/" <> versionDir) >>= \case
+            [initDbCacheDir] ->
+              writeFile
+                (  dirPath
+                <> "/"
+                <> cacheDir
+                <> "/"
+                <> versionDir
+                <> "/"
+                <> initDbCacheDir
+                <> "/data/cacheCheck.txt"
+                )
+                "test"
+            xs -> fail $ "expected a single initdb cache directory but got " <> show xs
+          xs -> fail $ "expected a single version directory but got " <> show xs
+
+        -- add a file to look for later
+        withConfig' (config <> toCacheConfig cacheInfo) $ \db -> do
+          -- see if the file is in the data directory
+          let theDataDirectory = toDataDirectory db
+          xs <- listDirectory theDataDirectory
+          xs `shouldContain` ["cacheCheck.txt"]
+
+          assertConnection db
+
+      -- See if cache has been cleaned up
+      tmpFiles <- listDirectory dirPath
+
+      case filter ("tmp-postgres-cache" `isPrefixOf`) tmpFiles of
+        [] -> pure ()
+        xs -> fail $ "unexpected cache dirs. Should be cleaned up. Got: " <> show xs
+
+  it "withDbCache seems to work" $
+    withDbCache $ \cacheInfo ->
+      either throwIO pure =<< withConfig (silentConfig <> toCacheConfig cacheInfo) assertConnection
 
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined

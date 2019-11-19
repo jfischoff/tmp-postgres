@@ -17,6 +17,7 @@ module Database.Postgres.Temp.Internal.Config where
 import Database.Postgres.Temp.Internal.Core
 
 import           Control.Applicative.Lift
+import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad (join)
 import           Control.Monad.Trans.Class
@@ -256,7 +257,8 @@ completeProcessConfig envs ProcessConfig {..} = runErrors $ do
 --
 --   @since 1.12.0.0
 data CompleteDirectoryType = CPermanent FilePath | CTemporary FilePath
-  deriving(Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData)
 
 -- | Get the file path of a 'CompleteDirectoryType', regardless if it is a
 -- 'CPermanent' or 'CTemporary' type.
@@ -291,8 +293,8 @@ data DirectoryType
 
 instance Pretty DirectoryType where
   pretty = \case
-    Permanent x -> text "CPermanent" <+> pretty x
-    Temporary   -> text "CTemporary"
+    Permanent x -> text "Permanent" <+> pretty x
+    Temporary   -> text "Temporary"
 
 -- | Takes the last 'Permanent' value.
 instance Semigroup DirectoryType where
@@ -317,7 +319,11 @@ setupDirectoryType
   -> IO CompleteDirectoryType
 setupDirectoryType tempDir pat = \case
   Temporary -> CTemporary <$> createTempDirectory tempDir pat
-  Permanent x  -> pure $ CPermanent x
+  Permanent x  -> CPermanent <$> case x of
+    '~':rest -> do
+      homeDir <- getHomeDirectory
+      pure $ homeDir <> "/" <> rest
+    xs -> pure xs
 
 -- Remove a temporary directory and ignore errors
 -- about it not being there.
@@ -390,6 +396,7 @@ data Plan = Plan
   , connectionTimeout :: Last Int
   -- ^ Max time to spend attempting to connection to @postgres@.
   --   Time is in microseconds.
+  , initDbCache :: Last (Maybe (Bool, FilePath))
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Plan
@@ -416,6 +423,8 @@ instance Pretty Plan where
     <> text "dataDirectoryString:" <+> pretty (getLast dataDirectoryString)
     <> hardline
     <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
+    <> hardline
+    <> text "initDbCache:" <+> pretty (getLast initDbCache)
 
 -- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
@@ -432,6 +441,8 @@ completePlan envs Plan {..} = runErrors $ do
     dataDirectoryString
   completePlanConnectionTimeout <- getOption "connectionTimeout"
     connectionTimeout
+  completePlanCacheDirectory <- getOption "initDbCache"
+    initDbCache
 
   pure CompletePlan {..}
 
@@ -484,7 +495,7 @@ instance Pretty Config where
     <> hardline
     <> text "port:" <+> pretty (getLast port)
     <> hardline
-    <> text "dataDirectory:"
+    <> text "temporaryDirectory:"
     <> softline
     <> pretty (getLast temporaryDirectory)
 
@@ -500,21 +511,22 @@ socketDirectoryToConfig dir =
 --   'Database.Postgres.Temp.startConfig'.
 toPlan
   :: Bool
-  -- ^ Make @initdb@ options
+  -- ^ Make @initdb@ options.
   -> Bool
-  -- ^ Make @createdb@ options
+  -- ^ Make @createdb@ options.
   -> Int
-  -- ^ port
+  -- ^ The port.
   -> FilePath
-  -- ^ Socket directory
+  -- ^ Socket directory.
   -> FilePath
-  -- ^ The @postgres@ data directory
+  -- ^ The @postgres@ data directory.
   -> Plan
 toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
   { postgresConfigFile = socketDirectoryToConfig socketDirectory
   , dataDirectoryString = pure dataDirectoryString
   , connectionTimeout = pure (60 * 1000000) -- 1 minute
   , logger = pure print
+  , initDbCache = pure Nothing
   , postgresPlan = mempty
       { postgresConfig = standardProcessConfig
           { commandLine = mempty
@@ -546,7 +558,6 @@ toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
             { keyBased = Map.fromList
                 [("--pgdata=", Just dataDirectoryString)]
             }
-
         }
       else Nothing
   }
