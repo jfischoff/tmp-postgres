@@ -329,7 +329,10 @@ rmDirIgnoreErrors mainDir = do
         | otherwise = throwIO e
   -- I'm trying to prevent new files getting added
   -- to the dir as I am deleting the files.
-  removeDirectoryRecursive mainDir `catch` ignoreDirIsMissing
+  let newName = mainDir <> "_removing"
+  handle ignoreDirIsMissing $ uninterruptibleMask_ $ do
+    renameDirectory mainDir newName
+    removeDirectoryRecursive newName
 
 -- | Either remove a 'CTemporary' directory or do nothing to a 'CPermanent'
 -- one.
