@@ -275,7 +275,7 @@ The final config is built by
    generated '<>' extra
  @
 
-Based on the value of 'socketClass' a \"postgresql.conf\" is created with:
+Based on the value of 'socketDirectory' a \"postgresql.conf\" is created with:
 
  @
    listen_addresses = \'IP_ADDRESS\'
