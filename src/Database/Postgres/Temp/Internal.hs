@@ -221,7 +221,11 @@ defaultPostgresConf extra = defaultConfig <> mempty
   }
 
 
---   @since 1.14.0.0
+{-|
+A config that logs as little as possible.
+
+@since 1.14.0.0
+-}
 silentPostgresConfig :: [String]
 silentPostgresConfig =
   [ "shared_buffers = 12MB"

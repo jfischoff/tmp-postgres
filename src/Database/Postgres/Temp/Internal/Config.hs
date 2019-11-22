@@ -599,8 +599,7 @@ data Resources = Resources
   { resourcesPlan    :: CompletePlan
   -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's.
   , resourcesSocketDirectory :: CompleteDirectoryType
-  -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
-  --   as the socket location.
+  -- ^ The used to potentially cleanup the temporary unix socket directory.
   , resourcesDataDir :: CompleteDirectoryType
   -- ^ The data directory. Used to track if a temporary directory was used.
   , resourcesTemporaryDir :: FilePath
@@ -913,7 +912,7 @@ resourcesPlanL f (resources@Resources {..})
       (f resourcesPlan)
 {-# INLINE resourcesPlanL #-}
 
--- | Lens for 'resourcesSocket'.
+-- | Lens for 'resourcesSocketDirectory'.
 --
 --   @since 1.15.0.0
 resourcesSocketDirectoryL :: Lens' Resources CompleteDirectoryType
