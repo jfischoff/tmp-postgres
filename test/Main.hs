@@ -14,7 +14,7 @@ import           Database.Postgres.Temp.Internal
 import           Database.Postgres.Temp.Internal.Config
 import           Database.Postgres.Temp.Internal.Core
 import           GHC.Generics (Generic)
-import qualified Network.Socket as N
+-- import qualified Network.Socket as N
 import           Network.Socket.Free
 import           System.Directory
 import           System.Environment
@@ -27,7 +27,9 @@ import           System.Timeout
 import           Test.Hspec
 
 withConn :: DB -> (PG.Connection -> IO a) -> IO a
-withConn db = bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close
+withConn db f = do
+  let connStr = toConnectionString db
+  bracket (PG.connectPostgreSQL connStr) PG.close f
 
 withConfig' :: Config -> (DB -> IO a) -> IO a
 withConfig' config = either throwIO pure <=< withConfig config
@@ -147,15 +149,15 @@ optionsToDefaultConfigSocket socketPath =
 optionsToDefaultConfigFilledOutConfigAssert :: Int -> ConfigAndAssertion
 optionsToDefaultConfigFilledOutConfigAssert expectedPort =
   let
-    expectedDbName   = "fancy"
+    expectedDbName   = "foobar"
     expectedUser     = "some_user"
     expectedPassword = "password"
     expectedHost     = "localhost"
 
     cConfig = optionsToDefaultConfig mempty
-      { Client.dbname   = pure expectedDbName
+      { Client.port     = pure expectedPort
+      , Client.dbname   = pure expectedDbName
       , Client.user     = pure expectedUser
-      , Client.port     = pure expectedPort
       , Client.password = pure expectedPassword
       , Client.host     = pure expectedHost
       }
@@ -164,9 +166,9 @@ optionsToDefaultConfigFilledOutConfigAssert expectedPort =
       let Client.Options {..} = toConnectionOptions db
       port     `shouldBe` pure expectedPort
       user     `shouldBe` pure expectedUser
-      host     `shouldBe` pure expectedHost
-      password `shouldBe` pure expectedPassword
       dbname   `shouldBe` pure expectedDbName
+      password `shouldBe` pure expectedPassword
+      host     `shouldBe` pure expectedHost
 
   in ConfigAndAssertion {..}
 
@@ -189,7 +191,13 @@ defaultIpConfig :: ConfigAndAssertion
 defaultIpConfig =
   let
     cConfig = mempty
-      { socketClass = IpSocket $ Last Nothing
+      { plan = mempty
+          { postgresPlan = mempty
+            { connectionOptions = mempty
+              { Client.host = pure "127.0.0.1"
+              }
+            }
+          }
       }
 
     cAssert db = do
@@ -198,25 +206,12 @@ defaultIpConfig =
 
   in ConfigAndAssertion {..}
 
--- TODO add check of actual host
-specificHostIpConfigAssert :: ConfigAndAssertion
-specificHostIpConfigAssert =
-  let
-    cConfig = mempty
-      { socketClass = IpSocket $ pure "localhost"
-      }
-
-    cAssert db = do
-      let Client.Options {..} = toConnectionOptions db
-      host `shouldBe` pure "localhost"
-
-  in ConfigAndAssertion {..}
 
 specificUnixSocket :: FilePath -> ConfigAndAssertion
 specificUnixSocket filePath =
   let
     cConfig = mempty
-      { socketClass = UnixSocket $ Permanent filePath
+      { socketDirectory = Permanent filePath
       }
     cAssert db = do
       let
@@ -264,7 +259,7 @@ happyPaths :: Spec
 happyPaths = describe "succeeds with" $ do
   it "mempty and extra postgresql.conf" $
     testWithTemporaryDirectory
-      (silentConfigAssert <> memptyConfigAndAssertion <> extraConfigAssert)
+      (defaultConfigAssert <> memptyConfigAndAssertion <> extraConfigAssert)
       testSuccessfulConfig
 
   it "optionsToDefaultConfig mempty is the same as mempty Config" $
@@ -303,11 +298,6 @@ happyPaths = describe "succeeds with" $ do
   it "default ip option works" $
     testWithTemporaryDirectory
       (silentConfigAssert <> defaultIpConfig)
-      testSuccessfulConfig
-
-  it "specific ip option works" $
-    testWithTemporaryDirectory
-      (defaultConfigAssert <> specificHostIpConfigAssert)
       testSuccessfulConfig
 
   it "specific unix socket works" $
@@ -377,6 +367,7 @@ errorPaths = describe "fails when" $ do
           }
     timeout 100000 (withConfig (silentConfig <> invalidConfig) (const $ pure ()))
       `shouldReturn` Nothing
+{-
   it "throws StartPostgresFailed if the port is taken" $
     bracket openFreePort (N.close . snd) $ \(thePort, _) -> do
       let invalidConfig = optionsToDefaultConfig mempty
@@ -385,20 +376,32 @@ errorPaths = describe "fails when" $ do
             }
       withConfig invalidConfig (const $ pure ())
         `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
-
+-}
   it "throws StartPostgresFailed if the host does not exist" $ do
     let invalidConfig = optionsToDefaultConfig mempty
           { Client.host = pure "focalhost"
           }
-    withConfig invalidConfig (const $ pure ())
-      `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
+
+        invalidConfig' = invalidConfig
+          { plan = (plan invalidConfig)
+              { connectionTimeout = pure 100000
+              }
+          }
+    withConfig invalidConfig' (const $ pure ())
+      `shouldReturn` Left ConnectionTimedOut
 
   it "throws StartPostgresFailed if the host does not resolve to ip that is local" $ do
     let invalidConfig = optionsToDefaultConfig mempty
           { Client.host = pure "yahoo.com"
           }
-    withConfig invalidConfig (const $ pure ())
-      `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
+
+        invalidConfig' = invalidConfig
+          { plan = (plan invalidConfig)
+              { connectionTimeout = pure 100000
+              }
+          }
+    withConfig invalidConfig' (const $ pure ())
+      `shouldReturn` Left ConnectionTimedOut
 
   it "throws StartPostgresFailed if the host path does not exist" $ do
     let invalidConfig = optionsToDefaultConfig mempty
@@ -583,7 +586,7 @@ spec = do
           , "postgresConfig:"
           , "postgresConfigFile:"
           , "postgresPlan:"
-          , "socketClass:"
+          , "socketDirectory:"
           , "specific:"
           , "stdErr:"
           , "stdIn:"
@@ -613,7 +616,7 @@ spec = do
         , "fsync=on"
         , "synchronous_commit=on"
         ]
-      backupResources = silentConfig <> justBackupResources
+      backupResources = justBackupResources
 
   it "can support backup and restore" $ withConfig' backupResources $ \db@DB {..} -> do
     let dataDir = toFilePath (resourcesDataDir dbResources)
@@ -631,10 +634,20 @@ spec = do
 
       let Just port = getLast $ Client.port $ postgresProcessClientOptions dbPostgresProcess
           Just host = getLast $ Client.host $ postgresProcessClientOptions dbPostgresProcess
-          backupCommand = "pg_basebackup -D " ++ baseBackupFile ++ " --format=tar -p"
-            ++ show port ++ " -h" ++ host
+          backupCommandFlags =
+            [ "-D" ++ baseBackupFile
+            , "--format=tar"
+            , "-p" ++ show port
+            , "-h" ++ host
+            ]
 
-      system backupCommand `shouldReturn` ExitSuccess
+      (exitCode, stdouts, errs) <-  readProcessWithExitCode "pg_basebackup" backupCommandFlags []
+      case exitCode of
+        ExitSuccess -> pure ()
+        ExitFailure _ -> do
+          putStrLn stdouts
+          putStrLn errs
+          fail $ "pg_basebackup failed with flags " ++ unwords backupCommandFlags
 
       bracket (PG.connectPostgreSQL $ toConnectionString db ) PG.close $ \conn -> do
         _ <- PG.execute_ conn "CREATE TABLE foo(id int PRIMARY KEY);"

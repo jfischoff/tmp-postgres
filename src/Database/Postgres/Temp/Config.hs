@@ -16,7 +16,7 @@ module Database.Postgres.Temp.Config
   , prettyPrintConfig
     -- *** 'Config' Lenses
   , planL
-  , socketClassL
+  , socketDirectoryL
   , dataDirectoryL
   , portL
   , connectionTimeoutL
@@ -54,8 +54,6 @@ module Database.Postgres.Temp.Config
   , keyBasedL
   -- ** 'DirectoryType'
   , DirectoryType (..)
-  -- ** 'SocketClass'
-  , SocketClass (..)
   -- ** 'Logger'
   , Logger
   -- * Internal events passed to the 'logger' .

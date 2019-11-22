@@ -26,7 +26,6 @@ import           Data.Map.Strict (Map)
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
-import           Data.Typeable
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics (Generic)
 import           Network.Socket.Free (getFreePort)
@@ -341,100 +340,6 @@ cleanupDirectoryType = \case
   CPermanent _ -> pure ()
   CTemporary filePath -> rmDirIgnoreErrors filePath
 
--- | A type for configuring the listening address of the @postgres@ process.
---   @postgres@ can listen on several types of sockets simulatanously but we
---   don't support that behavior. One can either listen on a IP based socket
---   or a UNIX domain socket.
---
---   @since 1.12.0.0
-data CompleteSocketClass
-  = CIpSocket String
-  -- ^ IP socket type. The 'String' is either an IP address or
-  -- a host that will resolve to an IP address.
-  | CUnixSocket CompleteDirectoryType
-  -- ^ UNIX domain socket
-  deriving (Show, Eq, Ord, Generic, Typeable)
-
-instance Pretty CompleteSocketClass where
-  pretty = \case
-    CIpSocket x   -> text "CIpSocket:" <+> pretty x
-    CUnixSocket x -> text "CUnixSocket:" <+> pretty x
-
--- | Create the extra config lines for listening based on the 'CompleteSocketClass'.
-socketClassToConfig :: CompleteSocketClass -> [String]
-socketClassToConfig = \case
-  CIpSocket ip    -> ["listen_addresses = '" <> ip <> "'"]
-  CUnixSocket dir ->
-    [ "listen_addresses = ''"
-    , "unix_socket_directories = '" <> toFilePath dir <> "'"
-    ]
-
--- | Many processes require a \"host\" flag. We can generate one from the
---   'CompleteSocketClass'.
-socketClassToHostFlag :: CompleteSocketClass -> [(String, Maybe String)]
-socketClassToHostFlag x = [("-h", Just (socketClassToHost x))]
-
--- | Get the IP address, host name or UNIX domain socket directory
---   as a 'String'.
-socketClassToHost :: CompleteSocketClass -> String
-socketClassToHost = \case
-  CIpSocket ip    -> ip
-  CUnixSocket dir -> toFilePath dir
-
--- | 'SocketClass' is used to specify how @postgres@ should listen for connections
---   The two main options are a `IpSocket` which takes a hostname or IP address.
---   if not is given the default it "127.0.0.1". Alternatively one can
---   specify 'UnixSocket' for a UNIX domain socket. If a directory is
---   specified the socket will live in that folder. Otherwise a
---   temporary folder will get created for the socket.
---
---   @since 1.12.0.0
-data SocketClass
-  = IpSocket (Last String)
-  -- ^ The monoid for combining IP address configuration.
-  | UnixSocket DirectoryType
-  -- ^ The monoid for combining UNIX socket configuration.
-    deriving stock (Show, Eq, Ord, Generic, Typeable)
-
-instance Pretty SocketClass where
-  pretty = \case
-    IpSocket x -> "CIpSocket:" <+> pretty (getLast x)
-    UnixSocket x -> "CUnixSocket" <+> pretty x
-
--- | Last 'IpSocket' wins. 'UnixSocket' 'DirectoryType' as
---   'mappend'ed together.
-instance Semigroup SocketClass where
-  x <> y = case (x, y) of
-    (IpSocket   a, IpSocket b) -> IpSocket $ a <> b
-    (a@(IpSocket _), UnixSocket _) -> a
-    (UnixSocket _, a@(IpSocket _)) -> a
-    (UnixSocket a, UnixSocket b) -> UnixSocket $ a <> b
-
--- | Treats 'UnixSocket' 'mempty' as 'mempty'.
-instance Monoid SocketClass where
- mempty = UnixSocket mempty
-
--- | Turn a 'SocketClass' to a 'CompleteSocketClass'. If the 'IpSocket' is
---   'Nothing' default to \"127.0.0.1\". If the is a 'UnixSocket'
---    optionally create a temporary directory if configured to do so.
-setupSocketClass
-  :: String
-  -- ^ Temporary directory.
-  -> SocketClass
-  -- ^ The type of socket.
-  -> IO CompleteSocketClass
-setupSocketClass tempDir theClass = case theClass of
-  IpSocket mIp -> pure $ CIpSocket $ fromMaybe "127.0.0.1" $
-    getLast mIp
-  UnixSocket mFilePath ->
-    CUnixSocket <$> setupDirectoryType tempDir "tmp-postgres-socket" mFilePath
-
--- | Cleanup the UNIX socket temporary directory if one was created.
-cleanupSocketConfig :: CompleteSocketClass -> IO ()
-cleanupSocketConfig = \case
-  CIpSocket   {}  -> pure ()
-  CUnixSocket dir -> cleanupDirectoryType dir
-
 -- | @postgres@ process config and corresponding client connection
 --   'Client.Options'.
 --
@@ -542,13 +447,13 @@ hasCreateDb Plan {..} = isJust createDbConfig
 
 -- | The high level options for overriding default behavior.
 --
---   @since 1.12.0.0
+--   @since 1.15.0.0
 data Config = Config
   { plan    :: Plan
   -- ^ Extend or replace any of the configuration used to create a final
   --   'CompletePlan'.
-  , socketClass  :: SocketClass
-  -- ^ Override the default 'CompleteSocketClass' by setting this.
+  , socketDirectory  :: DirectoryType
+  -- ^ Override the default temporary UNIX socket directory by setting this.
   , dataDirectory :: DirectoryType
   -- ^ Override the default temporary data directory by passing in
   -- 'Permanent' @DIRECTORY@.
@@ -569,9 +474,9 @@ instance Pretty Config where
     <> softline
     <> pretty plan
     <> hardline
-    <> text "socketClass:"
+    <> text "socketDirectory:"
     <> softline
-    <> pretty socketClass
+    <> pretty socketDirectory
     <> hardline
     <> text "dataDirectory:"
     <> softline
@@ -582,6 +487,12 @@ instance Pretty Config where
     <> text "dataDirectory:"
     <> softline
     <> pretty (getLast temporaryDirectory)
+
+socketDirectoryToConfig :: FilePath -> [String]
+socketDirectoryToConfig dir =
+    [ "listen_addresses = '127.0.0.1, ::1'"
+    , "unix_socket_directories = '" <> dir <> "'"
+    ]
 
 -- | Create a 'Plan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan
@@ -594,13 +505,13 @@ toPlan
   -- ^ Make @createdb@ options
   -> Int
   -- ^ port
-  -> CompleteSocketClass
-  -- ^ Whether to listen on a IP address or UNIX domain socket
+  -> FilePath
+  -- ^ Socket directory
   -> FilePath
   -- ^ The @postgres@ data directory
   -> Plan
-toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
-  { postgresConfigFile = socketClassToConfig socketClass
+toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
+  { postgresConfigFile = socketDirectoryToConfig socketDirectory
   , dataDirectoryString = pure dataDirectoryString
   , connectionTimeout = pure (60 * 1000000) -- 1 minute
   , logger = pure print
@@ -614,7 +525,7 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
               }
           }
       , connectionOptions = mempty
-          { Client.host   = pure $ socketClassToHost socketClass
+          { Client.host   = pure socketDirectory
           , Client.port   = pure port
           , Client.dbname = pure "postgres"
           }
@@ -623,8 +534,9 @@ toPlan makeInitDb makeCreateDb port socketClass dataDirectoryString = mempty
       then pure $ standardProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList $
-                socketClassToHostFlag socketClass <>
-                [("-p ", Just $ show port)]
+                [ ("-h", Just socketDirectory)
+                , ("-p ", Just $ show port)
+                ]
             }
         }
       else Nothing
@@ -650,15 +562,15 @@ setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
   let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
-  resourcesSocket <- ContT $ bracketOnError
-    (setupSocketClass resourcesTemporaryDir socketClass) cleanupSocketConfig
+  resourcesSocketDirectory <- ContT $ bracketOnError
+    (setupDirectoryType resourcesTemporaryDir "tmp-postgres-socket" socketDirectory) cleanupDirectoryType
   resourcesDataDir <- ContT $ bracketOnError
     (setupDirectoryType resourcesTemporaryDir "tmp-postgres-data" dataDirectory) cleanupDirectoryType
   let hostAndDir = toPlan
         (hasInitDb plan)
         (hasCreateDb plan)
         thePort
-        resourcesSocket
+        (toFilePath resourcesSocketDirectory)
         (toFilePath resourcesDataDir)
       finalPlan = hostAndDir <> plan
   resourcesPlan <- lift $
@@ -669,7 +581,7 @@ setupConfig Config {..} = evalContT $ do
 -- | Free the temporary resources created by 'setupConfig'.
 cleanupConfig :: Resources -> IO ()
 cleanupConfig Resources {..} = do
-  cleanupSocketConfig resourcesSocket
+  cleanupDirectoryType resourcesSocketDirectory
   cleanupDirectoryType resourcesDataDir
 
 -- | Display a 'Config'.
@@ -686,7 +598,7 @@ prettyPrintConfig = show . pretty
 data Resources = Resources
   { resourcesPlan    :: CompletePlan
   -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's.
-  , resourcesSocket  :: CompleteSocketClass
+  , resourcesSocketDirectory :: CompleteDirectoryType
   -- ^ The 'CompleteSocketClass'. Used to track if a temporary directory was made
   --   as the socket location.
   , resourcesDataDir :: CompleteDirectoryType
@@ -703,7 +615,7 @@ instance Pretty Resources where
     <>  indent 2 (pretty resourcesPlan)
     <>  hardline
     <>  text "resourcesSocket:"
-    <+> pretty resourcesSocket
+    <+> pretty resourcesSocketDirectory
     <>  hardline
     <>  text "resourcesDataDir:"
     <+> pretty resourcesDataDir
@@ -728,14 +640,14 @@ optionsToConfig opts@Client.Options {..}
   =  ( mempty
        { plan = optionsToPlan opts
        , port = maybe (Last Nothing) (pure . pure) $ getLast port
-       , socketClass = maybe mempty hostToSocketClass $ getLast host
+       , socketDirectory = maybe mempty hostToSocketClass $ getLast host
        }
      )
 -- Convert the 'Client.Options' to a 'Plan' that can
 -- be connected to with the 'Client.Options'.
 optionsToPlan :: Client.Options -> Plan
 optionsToPlan opts@Client.Options {..}
-  =  maybe mempty dbnameToPlan (getLast dbname)
+  =  maybe mempty (dbnameToPlan (getLast user) (getLast password)) (getLast dbname)
   <> maybe mempty userToPlan (getLast user)
   <> maybe mempty passwordToPlan (getLast password)
   <> clientOptionsToPlan opts
@@ -752,12 +664,7 @@ clientOptionsToPlan opts = mempty
 -- Create a 'Plan' given a user.
 userToPlan :: String -> Plan
 userToPlan user = mempty
-  { createDbConfig = pure $ mempty
-    { commandLine = mempty
-        { keyBased = Map.singleton "--username=" $ Just user
-        }
-    }
-  , initDbConfig = pure $ mempty
+  { initDbConfig = pure $ mempty
     { commandLine = mempty
         { keyBased = Map.singleton "--username=" $ Just user
         }
@@ -768,13 +675,17 @@ userToPlan user = mempty
 -- as the database name.
 -- It does nothing if the db names are "template1" or
 -- "postgres"
-dbnameToPlan :: String -> Plan
-dbnameToPlan dbName
+dbnameToPlan :: Maybe String -> Maybe String -> String -> Plan
+dbnameToPlan muser mpassword dbName
   | dbName == "template1" || dbName == "postgres" = mempty
   | otherwise = mempty
     { createDbConfig = pure $ mempty
       { commandLine = mempty
         { indexBased = Map.singleton 0 dbName
+        , keyBased = maybe mempty (Map.singleton "--username=" . Just) muser
+        }
+      , environmentVariables = mempty
+        { specific = maybe mempty (Map.singleton "PGPASSWORD") mpassword
         }
       }
     }
@@ -787,19 +698,14 @@ passwordToPlan password = mempty
       { specific = Map.singleton "PGPASSWORD" password
       }
     }
-  , createDbConfig = pure mempty
-    { environmentVariables = mempty
-      { specific = Map.singleton "PGPASSWORD" password
-      }
-    }
   }
 
 -- Parse a host string as either an UNIX domain socket directory
 -- or a domain or IP.
-hostToSocketClass :: String -> SocketClass
+hostToSocketClass :: String -> DirectoryType
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
-  '/' : _ -> UnixSocket $ Permanent hostOrSocketPath
-  _ -> IpSocket $ pure hostOrSocketPath
+  '/' : _ -> Permanent hostOrSocketPath
+  _ -> Temporary
 
 -------------------------------------------------------------------------------
 -- Lenses
@@ -1009,12 +915,12 @@ resourcesPlanL f (resources@Resources {..})
 
 -- | Lens for 'resourcesSocket'.
 --
---   @since 1.12.0.0
-resourcesSocketL :: Lens' Resources CompleteSocketClass
-resourcesSocketL f (resources@Resources {..})
-  = fmap (\x -> resources { resourcesSocket = x })
-      (f resourcesSocket)
-{-# INLINE resourcesSocketL #-}
+--   @since 1.15.0.0
+resourcesSocketDirectoryL :: Lens' Resources CompleteDirectoryType
+resourcesSocketDirectoryL f (resources@Resources {..})
+  = fmap (\x -> resources { resourcesSocketDirectory = x })
+      (f resourcesSocketDirectory)
+{-# INLINE resourcesSocketDirectoryL #-}
 
 -- | Lens for 'dataDirectory'.
 --
@@ -1043,16 +949,16 @@ portL f (config@Config{..})
       (f port)
 {-# INLINE portL #-}
 
--- | Lens for 'socketClass'.
+-- | Lens for 'socketDirectory'.
 --
 --   @since 1.12.0.0
-socketClassL :: Lens' Config SocketClass
-socketClassL f (config@Config{..})
-  = fmap (\ x -> config { socketClass = x } )
-      (f socketClass)
-{-# INLINE socketClassL #-}
+socketDirectoryL :: Lens' Config DirectoryType
+socketDirectoryL f (config@Config{..})
+  = fmap (\ x -> config { socketDirectory = x } )
+      (f socketDirectory)
+{-# INLINE socketDirectoryL #-}
 
--- | Lens for 'socketClass'.
+-- | Lens for 'socketDirectory'.
 --
 --   @since 1.12.0.0
 temporaryDirectoryL :: Lens' Config (Last FilePath)
