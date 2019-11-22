@@ -447,7 +447,7 @@ hasCreateDb Plan {..} = isJust createDbConfig
 
 -- | The high level options for overriding default behavior.
 --
---   @since 1.12.0.0
+--   @since 1.15.0.0
 data Config = Config
   { plan    :: Plan
   -- ^ Extend or replace any of the configuration used to create a final

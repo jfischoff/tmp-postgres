@@ -278,17 +278,9 @@ The final config is built by
 Based on the value of 'socketDirectory' a \"postgresql.conf\" is created with:
 
  @
-   listen_addresses = \'IP_ADDRESS\'
- @
-
- if it is 'IpSocket'. If is 'UnixSocket' then the lines:
-
- @
-   listen_addresses = ''
+   listen_addresses = '127.0.0.1, ::1'
    unix_socket_directories = \'SOCKET_DIRECTORY\'
  @
-
-are added.
 
 Additionally the @generated@ `Config` also does the following:
 
@@ -311,7 +303,7 @@ used with a `bracket` and 'stop', e.g.
 or just use 'withConfig'. If you are calling 'startConfig' you
 probably want 'withConfig' anyway.
 
-@since 1.12.0.0
+@since 1.15.0.0
 -}
 startConfig :: Config
           -- ^ @extra@ configuration that is 'mappend'ed last to the generated `Config`.
@@ -376,7 +368,7 @@ reloadConfig db =
 Exception safe database create with options. See 'startConfig' for more
 details. Calls 'stop' even in the face of exceptions.
 
-@since 1.12.0.0
+@since 1.15.0.0
 -}
 withConfig :: Config
          -- ^ @extra@. 'Config' combined with the generated 'Config'. See
@@ -393,7 +385,7 @@ withConfig extra f = bracket (startConfig extra) (either mempty stop) $
    'with' = 'withConfig' 'defaultConfig'
  @
 
-@since 1.12.0.0
+@since 1.15.0.0
 -}
 with :: (DB -> IO a)
      -- ^ @action@ continuation.
@@ -411,7 +403,7 @@ withRestart db f = bracket (restart db) (either mempty stop) $
 --   want to create a database owned by a specific user you will also login
 --   with among other use cases.
 --
---   @since 1.13.1.0
+--   @since 1.15.0.0
 optionsToDefaultConfig :: Client.Options -> Config
 optionsToDefaultConfig opts@Client.Options {..} =
   let generated = optionsToConfig opts
