@@ -490,7 +490,7 @@ instance Pretty Config where
 
 socketDirectoryToConfig :: FilePath -> [String]
 socketDirectoryToConfig dir =
-    [ "listen_addresses = '127.0.0.1'"
+    [ "listen_addresses = '127.0.0.1, ::1'"
     , "unix_socket_directories = '" <> dir <> "'"
     ]
 
