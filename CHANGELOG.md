@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.15.1.0
+  #119 Add `initdb` cache
+  #134 Expand tilde in Permanent DirectoryType setup.
+
 1.15.0.0
   #137 Remove SocketClass and listen unconditionally on 127.0.0.1, ::1 and a UNIX socket.
   #138 Fix bug where optionsToDefaultConfig would make createdb plan even if one is not needed.

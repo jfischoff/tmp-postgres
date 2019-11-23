@@ -52,6 +52,8 @@ module Database.Postgres.Temp
   , withRestart
   , withNewDb
   , withNewDbConfig
+  , withDbCacheConfig
+  , withDbCache
   -- * Separate start and stop interface.
   , start
   , startConfig
@@ -61,6 +63,8 @@ module Database.Postgres.Temp
   , startNewDb
   , startNewDbConfig
   , stopNewDb
+  , setupInitDbCache
+  , cleanupInitDbCache
   -- * Main resource handle
   , DB
   -- ** 'DB' accessors
