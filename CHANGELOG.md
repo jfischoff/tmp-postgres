@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.15.1.1
+  #141 Documentation fixes.
+
 1.15.1.0
   #119 Add `initdb` cache
   #134 Expand tilde in Permanent DirectoryType setup.

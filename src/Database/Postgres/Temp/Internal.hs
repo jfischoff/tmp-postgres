@@ -164,7 +164,7 @@ custom 'Config' like the following.
 Or using the provided lenses and your favorite lens library:
 
  @
-  custom = defaultConfig & 'planL' . 'postgresConfigFile' '<>~'
+  custom = defaultConfig & 'planL' . 'postgresConfigFile' <>~
     [ "wal_level = replica"
     , "archive_mode = on"
     , "max_wal_senders = 2"
@@ -211,7 +211,7 @@ defaultConfig = mempty
 or with lenses:
 
 @
-'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFile' '<>~' extra
+'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFile' <>~ extra
 @
 
 @since 1.12.0.0
@@ -242,7 +242,7 @@ silentPostgresConfig =
   ]
 
 {-|
-The similar to 'defaultConfig' but all the handles are set to @/dev/null@.
+The similar to 'defaultConfig' but all the handles are set to @\/dev\/null@.
 and uses a @postgresql.conf@ which disables logging:
 
  @
@@ -620,7 +620,11 @@ stopNewDb db = do
 -------------------------------------------------------------------------------
 -- initdb cache
 -------------------------------------------------------------------------------
--- | Configuration for the @initdb@ data directory cache.
+{-|
+Configuration for the @initdb@ data directory cache.
+
+@since 1.15.1.0
+-}
 data CacheConfig = CacheConfig
   { cacheTemporaryDirectory :: FilePath
   -- ^ Root temporary directory used if 'cacheDirectoryType' is set to
@@ -644,6 +648,8 @@ to 'True'.
 It sets 'cacheDirectoryType' to 'Permanent' @~\/.tmp-postgres@ and
 'cacheTemporaryDirectory' to @\/tmp@ (but this is not used when
 'Permanent' is set).
+
+@since 1.15.1.0
 -}
 createDefaultCacheConfig :: IO CacheConfig
 createDefaultCacheConfig = do
@@ -678,6 +684,8 @@ setupInitDbCache CacheConfig {..} =
 
 {-|
 Cleanup the cache directory if it was 'Temporary'.
+
+@since 1.15.1.0
 -}
 cleanupInitDbCache :: (Bool, CompleteDirectoryType) -> IO ()
 cleanupInitDbCache = cleanupDirectoryType . snd
@@ -688,9 +696,10 @@ Enable @initdb@ data directory caching. This can lead to a 4x speedup.
 Exception safe version of 'setupInitDbCache'. Equivalent to
 
 @
-   'withDbCacheConfig' = bracket_ ('setupInitDbCache' config) 'cleanupInitDbCache'
+   'withDbCacheConfig' = bracket ('setupInitDbCache' config) 'cleanupInitDbCache'
 @
 
+@since 1.15.1.0
 -}
 withDbCacheConfig
   :: CacheConfig
@@ -704,6 +713,8 @@ withDbCacheConfig config =
 {-|
 Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
 'createDefaultCacheConfig' makes.
+
+@since 1.15.1.0
 -}
 withDbCache :: ((Bool, CompleteDirectoryType) -> IO a) -> IO a
 withDbCache action =
@@ -712,20 +723,9 @@ withDbCache action =
 {-|
 Helper to make a 'Config' out of caching info.
 
-Equivalent to
-
-@
-  toCacheConfig cacheInfo = mempty
-    { plan = mempty
-        { initDbCache = pure $ Just $ fmap toFilePath cacheInfo
-        }
-    }
-@
-
+@since 1.15.1.0
 -}
 toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
 toCacheConfig cacheInfo = mempty
-  { plan = mempty
-      { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
-      }
+  { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
   }

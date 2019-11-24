@@ -2,7 +2,7 @@
 This module provides functions for creating a temporary @postgres@ instance.
 By default it will create a temporary data directory and
 a temporary directory for a UNIX domain socket for @postgres@ to listen on in addition to
-listening on 127.0.0.1 and ::1.
+listening on @127.0.0.1@ and @::1@.
 
 Here is an example using the expection safe 'with' function:
 
