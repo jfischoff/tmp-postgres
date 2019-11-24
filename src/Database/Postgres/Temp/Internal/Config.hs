@@ -20,22 +20,29 @@ import           Control.Applicative.Lift
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad (join)
+import           Crypto.Hash.SHA1 (hash)
 import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Cont
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Base64.URL as Base64
+import           Data.Char
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
+import           Data.List
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics (Generic)
 import           Network.Socket.Free (getFreePort)
 import           System.Directory
 import           System.Environment
+import           System.Exit (ExitCode(..))
 import           System.IO
 import           System.IO.Error
 import           System.IO.Temp (createTempDirectory)
 import           System.IO.Unsafe (unsafePerformIO)
+import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc
@@ -389,6 +396,7 @@ completePostgresPlan envs PostgresPlan {..} = runErrors $ do
 data Plan = Plan
   { logger :: Last Logger
   , initDbConfig :: Maybe ProcessConfig
+  , copyConfig :: Last (Maybe CopyDirectoryCommand)
   , createDbConfig :: Maybe ProcessConfig
   , postgresPlan :: PostgresPlan
   , postgresConfigFile :: [String]
@@ -396,7 +404,6 @@ data Plan = Plan
   , connectionTimeout :: Last Int
   -- ^ Max time to spend attempting to connection to @postgres@.
   --   Time is in microseconds.
-  , initDbCache :: Last (Maybe (Bool, FilePath))
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Plan
@@ -411,6 +418,9 @@ instance Pretty Plan where
     <> text "initDbConfig:"
     <> softline
     <> indent 2 (pretty createDbConfig)
+    <> text "copyConfig:"
+    <> softline
+    <> indent 2 (pretty (getLast copyConfig))
     <> hardline
     <> text "postgresPlan:"
     <> softline
@@ -423,8 +433,6 @@ instance Pretty Plan where
     <> text "dataDirectoryString:" <+> pretty (getLast dataDirectoryString)
     <> hardline
     <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
-    <> hardline
-    <> text "initDbCache:" <+> pretty (getLast initDbCache)
 
 -- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
@@ -432,6 +440,7 @@ completePlan envs Plan {..} = runErrors $ do
   completePlanLogger   <- getOption "logger" logger
   completePlanInitDb   <- eitherToErrors $ addErrorContext "initDbConfig: " $
     traverse (completeProcessConfig envs) initDbConfig
+  completePlanCopy   <- getOption "dataDirectoryString" copyConfig
   completePlanCreateDb <- eitherToErrors $ addErrorContext "createDbConfig: " $
     traverse (completeProcessConfig envs) createDbConfig
   completePlanPostgres <- eitherToErrors $ addErrorContext "postgresPlan: " $
@@ -441,8 +450,6 @@ completePlan envs Plan {..} = runErrors $ do
     dataDirectoryString
   completePlanConnectionTimeout <- getOption "connectionTimeout"
     connectionTimeout
-  completePlanCacheDirectory <- getOption "initDbCache"
-    initDbCache
 
   pure CompletePlan {..}
 
@@ -474,6 +481,7 @@ data Config = Config
   , temporaryDirectory :: Last FilePath
   -- ^ The directory used to create other temporary directories. Defaults
   --   to @/tmp@.
+  , initDbCache :: Last (Maybe (Bool, FilePath))
   }
   deriving stock (Generic)
   deriving Semigroup via GenericSemigroup Config
@@ -498,12 +506,109 @@ instance Pretty Config where
     <> text "temporaryDirectory:"
     <> softline
     <> pretty (getLast temporaryDirectory)
+    <> hardline
+    <> text "initDbCache:" <+> pretty (getLast initDbCache)
 
 socketDirectoryToConfig :: FilePath -> [String]
 socketDirectoryToConfig dir =
     [ "listen_addresses = '127.0.0.1, ::1'"
     , "unix_socket_directories = '" <> dir <> "'"
     ]
+
+-------------------------------------------------------------------------------
+-- Caching
+-------------------------------------------------------------------------------
+getInitDbVersion :: IO String
+getInitDbVersion = readProcessWithExitCode "initdb" ["--version"] "" >>= \case
+  (ExitSuccess, outputString, _) -> do
+    let
+      theLastPart = last $ words outputString
+      versionPart = takeWhile (\x -> isDigit x || x == '.' || x == '-') theLastPart
+    pure $ if last versionPart == '.'
+             then init versionPart
+             else versionPart
+
+  (startErrorExitCode, startErrorStdOut, startErrorStdErr) ->
+    throwIO InitDbFailed {..}
+
+makeCommandLine :: String -> CompleteProcessConfig -> String
+makeCommandLine command CompleteProcessConfig {..} =
+  let envs = unwords $ map (\(x, y) -> x <> "=" <> y) completeProcessConfigEnvVars
+      args = unwords completeProcessConfigCmdLine
+  in envs <> " " <> command <> args
+
+makeInitDbCommandLine :: CompleteProcessConfig -> String
+makeInitDbCommandLine = makeCommandLine "initdb"
+
+makeArgumentHash :: String -> String
+makeArgumentHash = BSC.unpack . Base64.encode . hash . BSC.pack
+
+makeCachePath :: FilePath -> String -> IO String
+makeCachePath cacheFolder cmdLine = do
+  version <- getInitDbVersion
+  let theHash = makeArgumentHash cmdLine
+  pure $ cacheFolder <> "/" <> version <> "/" <> theHash
+
+
+splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
+splitDataDirectory old =
+  let isDataDirectoryFlag xs = "-D" `isPrefixOf` xs || "--pgdata=" `isPrefixOf` xs
+      (dataDirectoryArgs, otherArgs) =
+        partition isDataDirectoryFlag $ completeProcessConfigCmdLine old
+
+      firstDataDirectoryArg = flip fmap (listToMaybe dataDirectoryArgs) $ \case
+        '-':'D':' ':theDir -> theDir
+        '-':'D':theDir -> theDir
+        '-':'-':'p':'g':'d':'a':'t':'a':'=':theDir -> theDir
+        _ -> error "splitDataDirectory not possible"
+
+      filteredEnvs = filter (not . ("PGDATA"==) . fst) $
+        completeProcessConfigEnvVars old
+
+      clearedConfig = old
+        { completeProcessConfigCmdLine = otherArgs
+        , completeProcessConfigEnvVars = filteredEnvs
+        }
+
+  in (firstDataDirectoryArg, clearedConfig)
+
+addDataDirectory :: String -> CompleteProcessConfig -> CompleteProcessConfig
+addDataDirectory theDataDirectory x = x
+  { completeProcessConfigCmdLine =
+      ("--pgdata=" <> theDataDirectory) : completeProcessConfigCmdLine x
+  }
+
+cachePlan :: CompletePlan -> Bool -> FilePath -> IO CompletePlan
+cachePlan plan@CompletePlan {..} cow cacheDirectory = case completePlanInitDb of
+  Nothing -> pure plan
+  Just theConfig -> do
+    let (mtheDataDirectory, clearedConfig) = splitDataDirectory theConfig
+    theDataDirectory <- maybe
+      (throwIO $ FailedToFindDataDirectory (show $ pretty clearedConfig))
+      pure
+      mtheDataDirectory
+
+    let theCommandLine = makeInitDbCommandLine clearedConfig
+
+    cachePath <- makeCachePath cacheDirectory theCommandLine
+
+    let cachedDataDirectory = cachePath <> "/data"
+
+    theInitDbPlan <- doesDirectoryExist cachePath >>= \case
+      True -> pure $ Nothing
+      False -> do
+        createDirectoryIfMissing True cachePath
+        writeFile (cachePath <> "/commandLine.log") theCommandLine
+        pure $ pure $ addDataDirectory cachedDataDirectory clearedConfig
+
+    pure plan
+      { completePlanCopy = pure $ CopyDirectoryCommand
+        { copyDirectoryCommandSrc = cachedDataDirectory
+        , copyDirectoryCommandDst = theDataDirectory
+        , copyDirectoryCommandCow = cow
+        }
+      , completePlanInitDb = theInitDbPlan
+      }
 
 -- | Create a 'Plan' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan
@@ -526,7 +631,6 @@ toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
   , dataDirectoryString = pure dataDirectoryString
   , connectionTimeout = pure (60 * 1000000) -- 1 minute
   , logger = pure print
-  , initDbCache = pure Nothing
   , postgresPlan = mempty
       { postgresConfig = standardProcessConfig
           { commandLine = mempty
@@ -560,8 +664,8 @@ toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
             }
         }
       else Nothing
+  , copyConfig = pure Nothing
   }
-
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
 -- 'Plan' from 'toPlan' with the @extra@ 'Config' passed in.
@@ -573,6 +677,7 @@ setupConfig Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
   let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
+      resourcesInitDbCache = join $ getLast initDbCache
   resourcesSocketDirectory <- ContT $ bracketOnError
     (setupDirectoryType resourcesTemporaryDir "tmp-postgres-socket" socketDirectory) cleanupDirectoryType
   resourcesDataDir <- ContT $ bracketOnError
@@ -584,9 +689,10 @@ setupConfig Config {..} = evalContT $ do
         (toFilePath resourcesSocketDirectory)
         (toFilePath resourcesDataDir)
       finalPlan = hostAndDir <> plan
-  resourcesPlan <- lift $
+  uncachedPlan <- lift $
     either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
       completePlan envs finalPlan
+  resourcesPlan <- lift $ maybe (pure uncachedPlan) (uncurry $ cachePlan uncachedPlan) resourcesInitDbCache
   pure Resources {..}
 
 -- | Free the temporary resources created by 'setupConfig'.
@@ -616,6 +722,7 @@ data Resources = Resources
   , resourcesTemporaryDir :: FilePath
   -- ^ The directory where other temporary directories are created.
   --   Usually @/tmp.
+  , resourcesInitDbCache :: Maybe (Bool, FilePath)
   }
 
 instance Pretty Resources where

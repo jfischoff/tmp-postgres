@@ -712,20 +712,8 @@ withDbCache action =
 {-|
 Helper to make a 'Config' out of caching info.
 
-Equivalent to
-
-@
-  toCacheConfig cacheInfo = mempty
-    { plan = mempty
-        { initDbCache = pure $ Just $ fmap toFilePath cacheInfo
-        }
-    }
-@
-
 -}
 toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
 toCacheConfig cacheInfo = mempty
-  { plan = mempty
-      { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
-      }
+  { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
   }
