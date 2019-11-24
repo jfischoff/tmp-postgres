@@ -60,6 +60,7 @@ module Database.Postgres.Temp
   , stop
   , restart
   , stopPostgres
+  , stopPostgresGracefully
   , startNewDb
   , startNewDbConfig
   , stopNewDb
