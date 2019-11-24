@@ -320,7 +320,7 @@ startConfig extra = try $ evalContT $ do
   dbResources@Resources {..} <-
     ContT $ bracketOnError (setupConfig extra) cleanupConfig
   dbPostgresProcess <-
-    ContT $ bracketOnError (startPlan resourcesPlan) stopPostgresProcess
+    ContT $ bracketOnError (startPlan resourcesPlan) stopPlan
   pure DB {..}
 
 -- | Default start behavior. Equivalent to calling 'startConfig' with the
@@ -336,7 +336,7 @@ start = startConfig defaultConfig
 --   @since 1.12.0.0
 stop :: DB -> IO ()
 stop DB {..} = do
-  void $ stopPostgresProcess dbPostgresProcess
+  void $ stopPlan dbPostgresProcess
   cleanupConfig dbResources
 
 -- | Only stop the @postgres@ process but leave any temporary resources.
@@ -345,7 +345,15 @@ stop DB {..} = do
 --
 --   @since 1.12.0.0
 stopPostgres :: DB -> IO ExitCode
-stopPostgres = stopPostgresProcess . dbPostgresProcess
+stopPostgres = stopPlan . dbPostgresProcess
+
+-- | Only stop the @postgres@ process but leave any temporary resources.
+--   In contrast to 'stopPostgres' this function makes sure @postgres@
+--   has time to properly write files to the data directory.
+--
+--   @since 1.16.1.0
+stopPostgresGracefully :: DB -> IO ExitCode
+stopPostgresGracefully = stopPostgresProcess True . dbPostgresProcess
 
 -- | Restart the @postgres@ from 'DB' using the prior 'Plan'.
 --
@@ -356,7 +364,7 @@ restart db@DB{..} = try $ do
   let CompletePlan{..} = resourcesPlan dbResources
       startAction = startPostgresProcess completePlanConnectionTimeout completePlanLogger
         completePlanPostgres
-  bracketOnError startAction stopPostgresProcess $ \result ->
+  bracketOnError startAction stopPlan $ \result ->
     pure $ db { dbPostgresProcess = result }
 
 -- | Reload the configuration file without shutting down. Calls

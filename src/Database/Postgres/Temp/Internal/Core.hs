@@ -21,7 +21,7 @@ import qualified Database.PostgreSQL.Simple.Options as Client
 import           System.Directory
 import           System.Exit (ExitCode(..))
 import           System.IO
-import           System.Posix.Signals (sigQUIT, signalProcess)
+import           System.Posix.Signals (sigINT, sigQUIT, signalProcess)
 import           System.Process
 import           System.Process.Internals
 import           System.Timeout
@@ -251,12 +251,12 @@ terminateConnections options = do
 
 -- | Stop the @postgres@ process after attempting to terminate all the
 --   connections.
-stopPostgresProcess :: PostgresProcess -> IO ExitCode
-stopPostgresProcess PostgresProcess{..} = do
+stopPostgresProcess :: Bool -> PostgresProcess -> IO ExitCode
+stopPostgresProcess graceful PostgresProcess{..} = do
   withProcessHandle postgresProcessHandle $ \case
     OpenHandle p   ->
       -- Call for "Immediate shutdown"
-      signalProcess sigQUIT p
+      signalProcess (if graceful then sigINT else sigQUIT) p
     OpenExtHandle {} -> pure () -- TODO log windows is not supported
     ClosedHandle _ -> return ()
 
@@ -273,7 +273,7 @@ startPostgresProcess time logger CompletePostgresPlan {..} = do
         <$> startProcess "postgres" completePostgresPlanProcessConfig
 
   -- Start postgres and stop if an exception occurs
-  bracketOnError startAction stopPostgresProcess $
+  bracketOnError startAction (stopPostgresProcess False) $
     \result@PostgresProcess {..} -> do
       logger WaitForDB
       -- We assume that 'template1' exist and make connection
@@ -412,11 +412,11 @@ startPlan plan@CompletePlan {..} = do
   let startAction = startPostgresProcess
         completePlanConnectionTimeout completePlanLogger completePlanPostgres
 
-  bracketOnError startAction stopPostgresProcess $ \result -> do
+  bracketOnError startAction (stopPostgresProcess False) $ \result -> do
     for_ completePlanCreateDb executeCreateDb
 
     pure result
 
 -- | Stop the @postgres@ process. See 'stopPostgresProcess' for more details.
 stopPlan :: PostgresProcess -> IO ExitCode
-stopPlan = stopPostgresProcess
+stopPlan = stopPostgresProcess False

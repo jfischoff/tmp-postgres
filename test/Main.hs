@@ -717,7 +717,7 @@ spec = do
         PG.query_ conn "SELECT id FROM foo ORDER BY id ASC"
           `shouldReturn` [PG.Only (1 :: Int), PG.Only 2]
 
-      stopPostgres db `shouldReturn` ExitSuccess
+      stopPostgresGracefully db `shouldReturn` ExitSuccess
 
       removeDirectoryRecursive dataDir
       createDirectory dataDir

@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.16.1.0
+  #152 Add stopPostgresGracefully function.
+
 1.16.0.0
   #149 CopyDirectoryCommand partial and rename the old CopyDirectoryCommand to
   CompleteCopyDirectoryCommand.
