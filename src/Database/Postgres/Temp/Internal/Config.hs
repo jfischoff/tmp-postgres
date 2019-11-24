@@ -210,14 +210,14 @@ standardProcessConfig = mempty
   , stdErr = pure stderr
   }
 
--- | A global reference to @/dev/null@ 'Handle'.
+-- | A global reference to @\/dev\/null@ 'Handle'.
 --
 --   @since 1.12.0.0
 devNull :: Handle
 devNull = unsafePerformIO (openFile "/dev/null" WriteMode)
 {-# NOINLINE devNull #-}
 
--- | 'silentProcessConfig' sets the handles to @/dev/null@ and
+-- | 'silentProcessConfig' sets the handles to @\/dev\/null@ and
 --   inherits the environment variables from the calling process.
 --
 --   @since 1.12.0.0
