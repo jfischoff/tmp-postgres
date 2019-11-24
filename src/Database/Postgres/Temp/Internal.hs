@@ -737,3 +737,22 @@ toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
 toCacheConfig cacheInfo = mempty
   { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
   }
+
+-------------------------------------------------------------------------------
+-- withSnapshot
+-------------------------------------------------------------------------------
+type Snapshot = FilePath
+
+-- I need to be able to make a cache
+-- looks
+-- snapshot are the general case
+-- everything has a template directory
+-- if you are making one this is unnecessarily slow
+-- a pretty rare case
+-- but it seems like layer on top
+-- it is really a copy step
+withSnapshot :: DirectoryType -> DB -> ((CompleteDirectoryType, Snapshot) -> IO a) -> a
+withSnapshot = undefined
+
+withFromSnapshot :: DB -> Snapshot -> (DB -> IO a) -> IO a
+withFromSnapshot = undefined
