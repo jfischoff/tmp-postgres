@@ -392,7 +392,7 @@ completePostgresPlan envs PostgresPlan {..} = runErrors $ do
 -------------------------------------------------------------------------------
 -- | Describe how to run @initdb@, @createdb@ and @postgres@
 --
---   @since 1.12.0.0
+--   @since 1.16.0.0
 data Plan = Plan
   { logger :: Last Logger
   , initDbConfig :: Maybe ProcessConfig
@@ -436,20 +436,28 @@ instance Pretty Plan where
 
 -- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
-completePlan envs Plan {..} = runErrors $ do
-  completePlanLogger   <- getOption "logger" logger
-  completePlanInitDb   <- eitherToErrors $ addErrorContext "initDbConfig: " $
-    traverse (completeProcessConfig envs) initDbConfig
-  completePlanCopy   <- getOption "dataDirectoryString" copyConfig
-  completePlanCreateDb <- eitherToErrors $ addErrorContext "createDbConfig: " $
-    traverse (completeProcessConfig envs) createDbConfig
-  completePlanPostgres <- eitherToErrors $ addErrorContext "postgresPlan: " $
-    completePostgresPlan envs postgresPlan
+completePlan envs Plan {..} = do
+  (   completePlanLogger
+    , completePlanInitDb
+    , completePlanCreateDb
+    , completePlanPostgres
+    , completePlanDataDirectory
+    , completePlanConnectionTimeout
+    ) <- runErrors
+         $ (,,,,,)
+        <$> getOption "logger" logger
+        <*> eitherToErrors (addErrorContext "initDbConfig: " $
+              traverse (completeProcessConfig envs) initDbConfig)
+        <*> eitherToErrors (addErrorContext "createDbConfig: " $
+              traverse (completeProcessConfig envs) createDbConfig)
+        <*> eitherToErrors (addErrorContext "postgresPlan: "
+              (completePostgresPlan envs postgresPlan))
+        <*> getOption "dataDirectoryString" dataDirectoryString
+        <*> getOption "connectionTimeout" connectionTimeout
+
   let completePlanConfig = unlines postgresConfigFile
-  completePlanDataDirectory <- getOption "dataDirectoryString"
-    dataDirectoryString
-  completePlanConnectionTimeout <- getOption "connectionTimeout"
-    connectionTimeout
+      completePlanCopy =completeCopyDirectory completePlanDataDirectory <$>
+        join (getLast copyConfig)
 
   pure CompletePlan {..}
 
@@ -465,7 +473,7 @@ hasCreateDb Plan {..} = isJust createDbConfig
 
 -- | The high level options for overriding default behavior.
 --
---   @since 1.15.0.0
+--   @since 1.16.0.0
 data Config = Config
   { plan    :: Plan
   -- ^ Extend or replace any of the configuration used to create a final
@@ -518,6 +526,45 @@ socketDirectoryToConfig dir =
 -------------------------------------------------------------------------------
 -- Caching
 -------------------------------------------------------------------------------
+{-|
+Copy command used to create a data directory. If @initdb@ used to create the
+data directory directly this is not needed.
+
+If 'destinationDirectory' is Nothing then the 'dataDirectoryString'
+(which might be generated) is used.
+
+@since 1.16.0.0
+-}
+data CopyDirectoryCommand = CopyDirectoryCommand
+  { sourceDirectory :: FilePath
+  , destinationDirectory :: Maybe FilePath
+  , useCopyOnWrite :: Bool
+  } deriving (Show, Eq, Ord)
+
+instance Pretty CopyDirectoryCommand where
+  pretty CopyDirectoryCommand {..}
+    =  text "sourceDirectory:"
+    <> softline
+    <> indent 2 (text sourceDirectory)
+    <> hardline
+    <> text "destinationDirectory:"
+    <> softline
+    <> indent 2 (pretty destinationDirectory)
+    <> hardline
+    <> text "useCopyOnWrite:"
+    <+> (pretty useCopyOnWrite)
+
+completeCopyDirectory
+  :: FilePath
+  -> CopyDirectoryCommand
+  -> CompleteCopyDirectoryCommand
+completeCopyDirectory theDataDirectory CopyDirectoryCommand {..} =
+  CompleteCopyDirectoryCommand
+    { copyDirectoryCommandSrc = sourceDirectory
+    , copyDirectoryCommandDst = fromMaybe theDataDirectory destinationDirectory
+    , copyDirectoryCommandCow = useCopyOnWrite
+    }
+
 getInitDbVersion :: IO String
 getInitDbVersion = readProcessWithExitCode "initdb" ["--version"] "" >>= \case
   (ExitSuccess, outputString, _) -> do
@@ -548,7 +595,6 @@ makeCachePath cacheFolder cmdLine = do
   version <- getInitDbVersion
   let theHash = makeArgumentHash cmdLine
   pure $ cacheFolder <> "/" <> version <> "/" <> theHash
-
 
 splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
 splitDataDirectory old =
@@ -602,7 +648,7 @@ cachePlan plan@CompletePlan {..} cow cacheDirectory = case completePlanInitDb of
         pure $ pure $ addDataDirectory cachedDataDirectory clearedConfig
 
     pure plan
-      { completePlanCopy = pure $ CopyDirectoryCommand
+      { completePlanCopy = pure $ CompleteCopyDirectoryCommand
         { copyDirectoryCommandSrc = cachedDataDirectory
         , copyDirectoryCommandDst = theDataDirectory
         , copyDirectoryCommandCow = cow
@@ -976,6 +1022,15 @@ dataDirectoryStringL f (plan@Plan{..})
       (f dataDirectoryString)
 {-# INLINE dataDirectoryStringL #-}
 
+-- | Lens for 'copyConfig'.
+--
+--   @since 1.16.0.0
+copyConfigL :: Lens' Plan (Last (Maybe CopyDirectoryCommand))
+copyConfigL f (plan@Plan{..})
+  = fmap (\x -> plan { copyConfig = x })
+      (f copyConfig)
+{-# INLINE copyConfigL #-}
+
 -- | Lens for 'initDbConfig'.
 --
 --   @since 1.12.0.0
@@ -1107,3 +1162,30 @@ keyBasedL
   = fmap (`CommandLineArgs` x_amNx)
       (f_amNv x_amNw)
 {-# INLINE keyBasedL #-}
+
+-- | Lens for 'sourceDirectory'.
+--
+--   @since 1.16.0.0
+sourceDirectoryL :: Lens' CopyDirectoryCommand FilePath
+sourceDirectoryL f (cmd@CopyDirectoryCommand{..})
+  = fmap (\x -> cmd { sourceDirectory = x })
+      (f sourceDirectory)
+{-# INLINE sourceDirectoryL #-}
+
+-- | Lens for 'destinationDirectory'.
+--
+--   @since 1.16.0.0
+destinationDirectoryL :: Lens' CopyDirectoryCommand (Maybe FilePath)
+destinationDirectoryL f (cmd@CopyDirectoryCommand{..})
+  = fmap (\x -> cmd { destinationDirectory = x })
+      (f destinationDirectory)
+{-# INLINE destinationDirectoryL #-}
+
+-- | Lens for 'useCopyOnWrite'.
+--
+--   @since 1.16.0.0
+useCopyOnWriteL :: Lens' CopyDirectoryCommand Bool
+useCopyOnWriteL f (cmd@CopyDirectoryCommand{..})
+  = fmap (\x -> cmd { useCopyOnWrite = x })
+      (f useCopyOnWrite)
+{-# INLINE useCopyOnWriteL #-}

@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.16.0.0
+  #149 CopyDirectoryCommand partial and rename the old CopyDirectoryCommand to
+  CompleteCopyDirectoryCommand.
+
 1.15.1.1
   #141 Documentation fixes.
 
