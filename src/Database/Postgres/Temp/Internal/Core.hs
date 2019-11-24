@@ -305,14 +305,14 @@ executeInitDb config = do
   (res, stdOut, stdErr) <- executeProcessAndTee "initdb" config
   throwIfNotSuccess (InitDbFailed stdOut stdErr) res
 
-data CopyDirectoryCommand = CopyDirectoryCommand
+data CompleteCopyDirectoryCommand = CompleteCopyDirectoryCommand
   { copyDirectoryCommandSrc :: FilePath
   , copyDirectoryCommandDst :: FilePath
   , copyDirectoryCommandCow :: Bool
   } deriving (Show, Eq, Ord)
 
-instance Pretty CopyDirectoryCommand where
-  pretty CopyDirectoryCommand {..}
+instance Pretty CompleteCopyDirectoryCommand where
+  pretty CompleteCopyDirectoryCommand {..}
     =  text "copyDirectoryCommandSrc:"
     <> softline
     <> indent 2 (text copyDirectoryCommandSrc)
@@ -324,8 +324,8 @@ instance Pretty CopyDirectoryCommand where
     <> text "copyDirectoryCommandCow:"
     <+> (pretty copyDirectoryCommandCow)
 
-executeCopyDirectoryCommand :: CopyDirectoryCommand -> IO ()
-executeCopyDirectoryCommand CopyDirectoryCommand {..} = do
+executeCopyDirectoryCommand :: CompleteCopyDirectoryCommand -> IO ()
+executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
   let
 #ifdef darwin_HOST_OS
     cpFlags = if copyDirectoryCommandCow then "cp -Rc " else "cp -R "
@@ -347,7 +347,7 @@ executeCopyDirectoryCommand CopyDirectoryCommand {..} = do
 data CompletePlan = CompletePlan
   { completePlanLogger            :: Logger
   , completePlanInitDb            :: Maybe CompleteProcessConfig
-  , completePlanCopy              :: Maybe CopyDirectoryCommand
+  , completePlanCopy              :: Maybe CompleteCopyDirectoryCommand
   , completePlanCreateDb          :: Maybe CompleteProcessConfig
   , completePlanPostgres          :: CompletePostgresPlan
   , completePlanConfig            :: String

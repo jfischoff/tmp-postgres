@@ -26,6 +26,7 @@ module Database.Postgres.Temp.Config
   , postgresConfigFileL
   , createDbConfigL
   , dataDirectoryStringL
+  , copyConfigL
   , initDbConfigL
   , loggerL
   , postgresPlanL
@@ -34,6 +35,10 @@ module Database.Postgres.Temp.Config
   -- *** 'PostgresPlan' lenses
   , connectionOptionsL
   , postgresConfigL
+  -- ** 'CopyDirectoryCommand'
+  , sourceDirectoryL
+  , destinationDirectoryL
+  , useCopyOnWriteL
   -- ** 'ProcessConfig'
   , ProcessConfig (..)
   -- *** 'ProcessConfig' Lenses
