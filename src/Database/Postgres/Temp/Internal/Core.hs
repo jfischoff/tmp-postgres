@@ -86,6 +86,8 @@ data StartError
   | FailedToFindDataDirectory String
   -- ^ Failed to find a data directory when trying to get
   --   a cached @initdb@ folder.
+  | SnapshotCopyFailed String ExitCode
+  -- ^ We tried to copy a data directory to a snapshot folder and it failed
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -360,6 +362,10 @@ instance Pretty CompletePlan where
     =   text "completePlanInitDb:"
     <>  softline
     <>  indent 2 (pretty completePlanInitDb)
+    <>  hardline
+    <>  text "completePlanCopy:"
+    <>  softline
+    <>  indent 2 (pretty completePlanCopy)
     <>  hardline
     <>  text "completePlanCreateDb:"
     <>  softline

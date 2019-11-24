@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.16.2.0
+  #142 Cluster save points
+
 1.16.1.0
   #152 Add stopPostgresGracefully function.
 

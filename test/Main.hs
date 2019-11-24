@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
+-- import           Data.Int
 import           Data.List
 import qualified Data.Set as Set
 import           Data.String
@@ -602,11 +603,45 @@ withNewDbSpecs = describe "withNewDb" $ do
           Left (CreateDbFailed {}) -> pure ()
           Left err -> fail $ "Wrong type of error " <> show err
 
+withSnapshotSpecs :: Spec
+withSnapshotSpecs = describe "withSnapshot" $ do
+  it "works" $ withConfig' defaultConfig $ \db -> do
+    -- TODO create a table
+    withConn db $ \conn -> do
+      _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
+      void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+
+    either throwIO pure <=< withSnapshot Temporary db $ \snapshotDir -> do
+      snapshotConfig <- (defaultConfig { plan = (plan defaultConfig) {initDbConfig = Nothing} } <>)
+        <$> configFromSavePoint (toFilePath snapshotDir)
+
+      let snapshotConfigAndAssert = ConfigAndAssertion snapshotConfig $ flip withConn $ \conn -> do
+            oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
+            oneAgain `shouldBe` (1 :: Int)
+
+      testWithTemporaryDirectory
+        snapshotConfigAndAssert
+        testSuccessfulConfig
+
+
+      {-
+      withConfig' snapshotConfig $ flip withConn $ \conn -> do
+          fix $ \next -> do
+            fmap (PG.fromOnly . head) (PG.query_ conn "SELECT pg_is_in_recovery()") >>= \case
+              True -> threadDelay 100000 >> next
+              False -> pure ()
+
+          PG.query_ conn "SELECT id FROM foo ORDER BY id ASC"
+            `shouldReturn` [PG.Only (1 :: Int)]
+      -}
+
 spec :: Spec
 spec = do
   withConfigSpecs
 
   withNewDbSpecs
+
+  withSnapshotSpecs
 
   it "stopPostgres cannot be connected to" $ withConfig' silentConfig $ \db -> do
     stopPostgres db `shouldReturn` ExitSuccess

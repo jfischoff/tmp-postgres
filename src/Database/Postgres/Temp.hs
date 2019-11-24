@@ -54,6 +54,7 @@ module Database.Postgres.Temp
   , withNewDbConfig
   , withDbCacheConfig
   , withDbCache
+  , withSnapshot
   -- * Separate start and stop interface.
   , start
   , startConfig
@@ -66,6 +67,8 @@ module Database.Postgres.Temp
   , stopNewDb
   , setupInitDbCache
   , cleanupInitDbCache
+  , takeSnapshot
+  , cleanupSnapshot
   -- * Main resource handle
   , DB
   -- ** 'DB' accessors
@@ -87,6 +90,7 @@ module Database.Postgres.Temp
   , standardProcessConfig
   , silentConfig
   , silentProcessConfig
+  , configFromSavePoint
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
   -- ** Configuration Types

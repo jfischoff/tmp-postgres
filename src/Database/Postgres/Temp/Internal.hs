@@ -741,18 +741,82 @@ toCacheConfig cacheInfo = mempty
 -------------------------------------------------------------------------------
 -- withSnapshot
 -------------------------------------------------------------------------------
-type Snapshot = FilePath
+{- |
+Shutdown the database and copy the directory to a folder.
 
--- I need to be able to make a cache
--- looks
--- snapshot are the general case
--- everything has a template directory
--- if you are making one this is unnecessarily slow
--- a pretty rare case
--- but it seems like layer on top
--- it is really a copy step
-withSnapshot :: DirectoryType -> DB -> ((CompleteDirectoryType, Snapshot) -> IO a) -> a
-withSnapshot = undefined
+@since 1.16.2.0
+-}
+takeSnapshot
+  :: DirectoryType
+  -- ^ Either a 'Temporary' or preexisting 'Permanent' directory.
+  -> DB
+  -- ^ The handle. The @postgres@ is shutdown and the data directory is copied.
+  -> IO (Either StartError CompleteDirectoryType)
+takeSnapshot directoryType db = try $ do
+  throwIfNotSuccess id =<< stopPostgresGracefully db
+  cow <- cacheUseCopyOnWrite <$> createDefaultCacheConfig
+  let
+#ifdef darwin_HOST_OS
+    cpFlags = if cow then "cp -Rc " else "cp -R "
+#else
+    cpFlags = if cow then "cp -R --reflink=auto " else "cp -R "
+#endif
+  bracketOnError
+    (setupDirectoryType
+      (toTemporaryDirectory db)
+      "tmp-postgres-snapshot"
+      directoryType
+    )
+    cleanupDirectoryType $ \snapShotDir -> do
+      let snapshotCopyCmd = cpFlags <>
+            toDataDirectory db <> "/* " <> toFilePath snapShotDir
+      throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
+        system snapshotCopyCmd
 
-withFromSnapshot :: DB -> Snapshot -> (DB -> IO a) -> IO a
-withFromSnapshot = undefined
+      pure snapShotDir
+
+{-|
+Cleanup any temporary resources used for the snapshot.
+
+@since 1.16.2.0
+-}
+cleanupSnapshot :: CompleteDirectoryType -> IO ()
+cleanupSnapshot = cleanupDirectoryType
+
+{- |
+Exception safe method for taking a file system level copy of the database cluster.
+
+Snapshots are useful if you would like to start every test from a migrated database
+and the migration process is more time consuming then copying the additional data.
+
+@since 1.16.2.0
+-}
+withSnapshot
+  :: DirectoryType
+  -> DB
+  -> (CompleteDirectoryType -> IO a)
+  -> IO (Either StartError a)
+withSnapshot dirType db f = bracket
+  (takeSnapshot dirType db)
+  (either mempty cleanupSnapshot)
+  (either (pure . Left) (fmap Right . f))
+
+{-|
+Convert a snapshot into a 'Config' that includes a 'copyConfig' for copying the
+snapshot directory to a temporary directory.
+
+@since 1.16.2.0
+-}
+configFromSavePoint :: FilePath -> IO Config
+configFromSavePoint savePointPath = do
+  cow <- cacheUseCopyOnWrite <$> createDefaultCacheConfig
+  pure mempty
+    { plan = mempty
+        { copyConfig = pure $ pure CopyDirectoryCommand
+            { sourceDirectory = savePointPath
+            , destinationDirectory = Nothing
+            , useCopyOnWrite = cow
+            }
+        , initDbConfig = Nothing
+        }
+    }
