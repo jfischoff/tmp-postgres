@@ -59,6 +59,8 @@ module Database.Postgres.Temp.Config
   , keyBasedL
   -- ** 'DirectoryType'
   , DirectoryType (..)
+  -- ** 'Accum'
+  , Accum (..)
   -- ** 'Logger'
   , Logger
   -- * Internal events passed to the 'logger' .

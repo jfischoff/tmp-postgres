@@ -1,7 +1,9 @@
 Changelog for tmp-postgres
 
-1.16.2.0
-  #142 Cluster save points
+1.7.0.0
+  #156 Deprecate `NewDb` functions.
+  #155 Better monoids for `initDbConfig` and `createDbConfig`.
+  #142 Cluster save points.
 
 1.16.1.0
   #152 Add stopPostgresGracefully function.

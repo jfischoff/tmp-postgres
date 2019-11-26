@@ -45,6 +45,49 @@ import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
+{-|
+
+'Accum' is a monoid.
+
+It's '<>' behavior is analogous to 1 and 0 with '*'. Think of 'DontCare'
+as 1 and 'Zlich' as 0.
+
+The behavior of 'Merge' is like 'Just's.
+
+@since 1.17.0.0
+-}
+data Accum a = DontCare | Zlich | Merge a
+  deriving stock (Show, Eq, Ord, Functor)
+
+instance Applicative Accum where
+  pure = Merge
+  af <*> ax = case (af, ax) of
+    (Merge f, Merge x) -> Merge $ f x
+
+    (DontCare, _) -> DontCare
+    (_, DontCare) -> DontCare
+
+    (Zlich, _) -> Zlich
+    (_, Zlich) -> Zlich
+
+instance Semigroup a => Semigroup (Accum a) where
+  x <> y = case (x, y) of
+    (DontCare,         b) -> b
+    (a       , DontCare ) -> a
+
+    (Zlich   , _    ) -> Zlich
+    (_       , Zlich) -> Zlich
+
+    (Merge a, Merge b) -> Merge $ a <> b
+
+getAccum :: Accum a -> Maybe a
+getAccum = \case
+  Merge a -> Just a
+  _ -> Nothing
+
+instance Monoid a => Monoid (Accum a) where
+  mempty = DontCare
+
 prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc
 prettyMap theMap =
   let xs = Map.toList theMap
@@ -395,9 +438,9 @@ completePostgresPlan envs PostgresPlan {..} = runErrors $ do
 --   @since 1.16.0.0
 data Plan = Plan
   { logger :: Last Logger
-  , initDbConfig :: Maybe ProcessConfig
+  , initDbConfig :: Accum ProcessConfig
   , copyConfig :: Last (Maybe CopyDirectoryCommand)
-  , createDbConfig :: Maybe ProcessConfig
+  , createDbConfig :: Accum ProcessConfig
   , postgresPlan :: PostgresPlan
   , postgresConfigFile :: [String]
   , dataDirectoryString :: Last String
@@ -413,11 +456,11 @@ instance Pretty Plan where
   pretty Plan {..}
     =  text "initDbConfig:"
     <> softline
-    <> indent 2 (pretty initDbConfig)
+    <> indent 2 (pretty $ getAccum initDbConfig)
     <> hardline
     <> text "initDbConfig:"
     <> softline
-    <> indent 2 (pretty createDbConfig)
+    <> indent 2 (pretty $ getAccum createDbConfig)
     <> text "copyConfig:"
     <> softline
     <> indent 2 (pretty (getLast copyConfig))
@@ -447,16 +490,16 @@ completePlan envs Plan {..} = do
          $ (,,,,,)
         <$> getOption "logger" logger
         <*> eitherToErrors (addErrorContext "initDbConfig: " $
-              traverse (completeProcessConfig envs) initDbConfig)
+              traverse (completeProcessConfig envs) $ getAccum initDbConfig)
         <*> eitherToErrors (addErrorContext "createDbConfig: " $
-              traverse (completeProcessConfig envs) createDbConfig)
+              traverse (completeProcessConfig envs) $ getAccum createDbConfig)
         <*> eitherToErrors (addErrorContext "postgresPlan: "
               (completePostgresPlan envs postgresPlan))
         <*> getOption "dataDirectoryString" dataDirectoryString
         <*> getOption "connectionTimeout" connectionTimeout
 
   let completePlanConfig = unlines postgresConfigFile
-      completePlanCopy =completeCopyDirectory completePlanDataDirectory <$>
+      completePlanCopy = completeCopyDirectory completePlanDataDirectory <$>
         join (getLast copyConfig)
 
   pure CompletePlan {..}
@@ -464,12 +507,12 @@ completePlan envs Plan {..} = do
 -- Returns 'True' if the 'Plan' has a
 -- 'Just' 'initDbConfig'.
 hasInitDb :: Plan -> Bool
-hasInitDb Plan {..} = isJust initDbConfig
+hasInitDb Plan {..} = isJust $ getAccum initDbConfig
 
 -- Returns 'True' if the 'Plan' has a
 -- 'Just' 'createDbConfig'.
 hasCreateDb :: Plan -> Bool
-hasCreateDb Plan {..} = isJust createDbConfig
+hasCreateDb Plan {..} = isJust $ getAccum createDbConfig
 
 -- | The high level options for overriding default behavior.
 --
@@ -672,7 +715,7 @@ toPlan
   -> FilePath
   -- ^ The @postgres@ data directory.
   -> Plan
-toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
+toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
   { postgresConfigFile = socketDirectoryToConfig socketDirectory
   , dataDirectoryString = pure dataDirectoryString
   , connectionTimeout = pure (60 * 1000000) -- 1 minute
@@ -701,16 +744,31 @@ toPlan makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
                 ]
             }
         }
-      else Nothing
-  , initDbConfig = if makeInitDb
-      then pure $ standardProcessConfig
+      else mempty
+
+  , initDbConfig = pure $ standardProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList
                 [("--pgdata=", Just dataDirectoryString)]
             }
         }
-      else Nothing
   , copyConfig = pure Nothing
+  }
+
+
+-- | 'combinePlans' is almost '<>'. However the 'Last' monoid for
+--    @createdb@ and @initdb@ plans are not used. Instead something
+--    like Lastoid is.
+combinePlans :: Plan -> Plan -> Plan
+combinePlans x y = Plan
+  { logger               = logger x              <> logger y
+  , initDbConfig         = initDbConfig x        <> initDbConfig y
+  , copyConfig           = copyConfig x          <> copyConfig y
+  , createDbConfig       = createDbConfig x      <> createDbConfig y
+  , postgresPlan         = postgresPlan x        <> postgresPlan y
+  , postgresConfigFile   = postgresConfigFile x  <> postgresConfigFile y
+  , dataDirectoryString  = dataDirectoryString x <> dataDirectoryString y
+  , connectionTimeout    = connectionTimeout x   <> connectionTimeout y
   }
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
@@ -734,7 +792,7 @@ setupConfig Config {..} = evalContT $ do
         thePort
         (toFilePath resourcesSocketDirectory)
         (toFilePath resourcesDataDir)
-      finalPlan = hostAndDir <> plan
+      finalPlan = combinePlans hostAndDir plan
   uncachedPlan <- lift $
     either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
       completePlan envs finalPlan
@@ -827,7 +885,7 @@ clientOptionsToPlan opts = mempty
 -- Create a 'Plan' given a user.
 userToPlan :: String -> Plan
 userToPlan user = mempty
-  { initDbConfig = pure $ mempty
+  { initDbConfig = pure mempty
     { commandLine = mempty
         { keyBased = Map.singleton "--username=" $ Just user
         }
@@ -842,7 +900,7 @@ dbnameToPlan :: Maybe String -> Maybe String -> String -> Plan
 dbnameToPlan muser mpassword dbName
   | dbName == "template1" || dbName == "postgres" = mempty
   | otherwise = mempty
-    { createDbConfig = pure $ mempty
+    { createDbConfig = pure mempty
       { commandLine = mempty
         { indexBased = Map.singleton 0 dbName
         , keyBased = maybe mempty (Map.singleton "--username=" . Just) muser
@@ -1005,9 +1063,9 @@ postgresConfigFileL f (plan@Plan{..})
 
 -- | Lens for 'createDbConfig'.
 --
---   @since 1.12.0.0
+--   @since 1.17.0.0
 createDbConfigL ::
-  Lens' Plan (Maybe ProcessConfig)
+  Lens' Plan (Accum ProcessConfig)
 createDbConfigL f (plan@Plan{..})
   = fmap (\x -> plan { createDbConfig = x })
       (f createDbConfig)
@@ -1034,7 +1092,7 @@ copyConfigL f (plan@Plan{..})
 -- | Lens for 'initDbConfig'.
 --
 --   @since 1.12.0.0
-initDbConfigL :: Lens' Plan (Maybe ProcessConfig)
+initDbConfigL :: Lens' Plan (Accum ProcessConfig)
 initDbConfigL f (plan@Plan{..})
   = fmap (\x -> plan { initDbConfig = x })
       (f initDbConfig)

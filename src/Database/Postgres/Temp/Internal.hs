@@ -187,7 +187,6 @@ defaultConfig = mempty
   { plan = mempty
     { logger = pure mempty
     , postgresConfigFile = defaultPostgresConfig
-    , createDbConfig = Nothing
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--no-sync" Nothing
@@ -744,7 +743,7 @@ toCacheConfig cacheInfo = mempty
 {- |
 Shutdown the database and copy the directory to a folder.
 
-@since 1.16.2.0
+@since 1.17.0.0
 -}
 takeSnapshot
   :: DirectoryType
@@ -778,7 +777,7 @@ takeSnapshot directoryType db = try $ do
 {-|
 Cleanup any temporary resources used for the snapshot.
 
-@since 1.16.2.0
+@since 1.17.0.0
 -}
 cleanupSnapshot :: CompleteDirectoryType -> IO ()
 cleanupSnapshot = cleanupDirectoryType
@@ -789,7 +788,7 @@ Exception safe method for taking a file system level copy of the database cluste
 Snapshots are useful if you would like to start every test from a migrated database
 and the migration process is more time consuming then copying the additional data.
 
-@since 1.16.2.0
+@since 1.17.0.0
 -}
 withSnapshot
   :: DirectoryType
@@ -805,7 +804,7 @@ withSnapshot dirType db f = bracket
 Convert a snapshot into a 'Config' that includes a 'copyConfig' for copying the
 snapshot directory to a temporary directory.
 
-@since 1.16.2.0
+@since 1.17.0.0
 -}
 configFromSavePoint :: FilePath -> IO Config
 configFromSavePoint savePointPath = do
@@ -817,6 +816,6 @@ configFromSavePoint savePointPath = do
             , destinationDirectory = Nothing
             , useCopyOnWrite = cow
             }
-        , initDbConfig = Nothing
+        , initDbConfig = Zlich
         }
     }

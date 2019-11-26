@@ -18,7 +18,6 @@ defaultConfigDefaultInitDb = mempty
   { plan = mempty
     { logger = pure mempty
     , postgresConfigFile = defaultPostgresConfig
-    , createDbConfig = Nothing
     , initDbConfig = pure mempty
     }
   }
@@ -62,7 +61,7 @@ setupCacheAndSP = do
     migrateDb db
     either throwIO pure =<< takeSnapshot Temporary db
 
-  snapshotConfig <- (silentConfig { plan = (plan silentConfig) {initDbConfig = Nothing} } <>)
+  snapshotConfig <- (silentConfig <>)
     <$> configFromSavePoint (toFilePath sp)
   let theConfig = snapshotConfig <> cacheConfig
 
@@ -109,7 +108,7 @@ main = defaultMain
   , setupWithCache $ \cacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \db -> do
       migrateDb db
       void $ withSnapshot Temporary db $ \snapshotDir -> do
-        snapshotConfig <- (silentConfig { plan = (plan silentConfig) {initDbConfig = Nothing} } <>) <$> configFromSavePoint (toFilePath snapshotDir)
+        snapshotConfig <- (silentConfig <>) <$> configFromSavePoint (toFilePath snapshotDir)
         replicateM_ 10 $ withConfig snapshotConfig testQuery
 {-
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $

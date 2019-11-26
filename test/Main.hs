@@ -159,13 +159,15 @@ optionsToDefaultConfigFilledOutConfigAssert expectedPort =
     expectedPassword = "password"
     expectedHost     = "localhost"
 
-    cConfig = optionsToDefaultConfig mempty
+    cConfig' = optionsToDefaultConfig mempty
       { Client.port     = pure expectedPort
       , Client.dbname   = pure expectedDbName
       , Client.user     = pure expectedUser
       , Client.password = pure expectedPassword
       , Client.host     = pure expectedHost
       }
+
+    cConfig = cConfig' { plan = (plan cConfig') { logger = pure print }}
 
     cAssert db = do
       let Client.Options {..} = toConnectionOptions db
@@ -322,7 +324,7 @@ happyPaths = describe "succeeds with" $ do
             { cConfig = silentConfig
               { dataDirectory = Permanent dirPath
               , plan = (plan silentConfig)
-                  { initDbConfig = Nothing
+                  { initDbConfig = Zlich
                   }
               }
             }
@@ -473,7 +475,7 @@ errorPaths = describe "fails when" $ do
     let dontTimeout = silentConfig
           { plan = (plan silentConfig)
               { connectionTimeout = pure maxBound
-              , initDbConfig = Nothing
+              , initDbConfig = Zlich
               }
           }
 
@@ -612,7 +614,7 @@ withSnapshotSpecs = describe "withSnapshot" $ do
       void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
 
     either throwIO pure <=< withSnapshot Temporary db $ \snapshotDir -> do
-      snapshotConfig <- (defaultConfig { plan = (plan defaultConfig) {initDbConfig = Nothing} } <>)
+      snapshotConfig <- (defaultConfig <>)
         <$> configFromSavePoint (toFilePath snapshotDir)
 
       let snapshotConfigAndAssert = ConfigAndAssertion snapshotConfig $ flip withConn $ \conn -> do
