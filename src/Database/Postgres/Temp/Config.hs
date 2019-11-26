@@ -59,6 +59,8 @@ module Database.Postgres.Temp.Config
   , keyBasedL
   -- ** 'DirectoryType'
   , DirectoryType (..)
+  -- ** 'CompleteDirectoryType
+  , CompleteDirectoryType (..)
   -- ** 'Accum'
   , Accum (..)
   -- ** 'Logger'
