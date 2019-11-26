@@ -567,10 +567,8 @@ withSnapshotSpecs = describe "withSnapshot" $ do
       void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
 
     either throwIO pure <=< withSnapshot Temporary db $ \snapshotDir -> do
-      snapshotConfig <- (defaultConfig <>)
-        <$> configFromSavePoint (toFilePath snapshotDir)
-
-      let snapshotConfigAndAssert = ConfigAndAssertion snapshotConfig $ flip withConn $ \conn -> do
+      let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
+          snapshotConfigAndAssert = ConfigAndAssertion theSnapshotConfig $ flip withConn $ \conn -> do
             oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
             oneAgain `shouldBe` (1 :: Int)
 

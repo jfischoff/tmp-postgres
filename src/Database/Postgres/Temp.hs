@@ -76,6 +76,10 @@ module Database.Postgres.Temp
   , reloadConfig
   -- ** 'DB' debugging
   , prettyPrintDB
+  -- ** 'Snapshot' handle
+  , Snapshot
+  -- ** @initdb@ cache handle
+  , CacheResources
   -- * Errors
   , StartError (..)
   -- * Configuration
@@ -86,7 +90,7 @@ module Database.Postgres.Temp
   , silentConfig
   , silentProcessConfig
   , defaultCacheConfig
-  , configFromSavePoint
+  , snapshotConfig
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
   -- ** Configuration Types

@@ -8,6 +8,7 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
+import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
@@ -15,6 +16,7 @@ import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
+import           GHC.Generics
 import           System.Exit (ExitCode(..))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
@@ -442,7 +444,7 @@ prettyPrintDB = show . pretty
 {-|
 Configuration for the @initdb@ data directory cache.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
 data CacheConfig = CacheConfig
   { cacheTemporaryDirectory :: FilePath
@@ -459,6 +461,19 @@ data CacheConfig = CacheConfig
   --   and sets this to 'True' if it does.
   }
 
+{-|
+A handle to cache temporary resources and configuration.
+
+@since 1.20.0.0
+-}
+data CacheResources = CacheResources
+  { cacheResourcesCow :: Bool
+  , cacheResourcesDirectory :: CompleteDirectoryType
+  } deriving stock (Generic)
+    deriving anyclass (NFData)
+
+-- | A bool that is 'True' if the @cp@ on the path supports \"copy on write\"
+--   flags.
 cowCheck :: Bool
 cowCheck = unsafePerformIO $ do
   let
@@ -493,11 +508,10 @@ defaultCacheConfig = CacheConfig
   , cacheUseCopyOnWrite = cowCheck
   }
 
-
 -- | Setup the @initdb@ cache folder.
 setupInitDbCache
   :: CacheConfig
-  -> IO (Bool, CompleteDirectoryType)
+  -> IO CacheResources
 setupInitDbCache CacheConfig {..} =
   bracketOnError
     (setupDirectoryType
@@ -505,15 +519,15 @@ setupInitDbCache CacheConfig {..} =
       "tmp-postgres-cache"
       cacheDirectoryType
     )
-    cleanupDirectoryType $ pure . (cacheUseCopyOnWrite,)
+    cleanupDirectoryType $ pure . CacheResources cacheUseCopyOnWrite
 
 {-|
 Cleanup the cache directory if it was 'Temporary'.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
-cleanupInitDbCache :: (Bool, CompleteDirectoryType) -> IO ()
-cleanupInitDbCache = cleanupDirectoryType . snd
+cleanupInitDbCache :: CacheResources -> IO ()
+cleanupInitDbCache = cleanupDirectoryType . cacheResourcesDirectory
 
 {-|
 Enable @initdb@ data directory caching. This can lead to a 4x speedup.
@@ -524,12 +538,12 @@ Exception safe version of 'setupInitDbCache'. Equivalent to
    'withDbCacheConfig' = bracket ('setupInitDbCache' config) 'cleanupInitDbCache'
 @
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
 withDbCacheConfig
   :: CacheConfig
   -- ^ Configuration
-  -> ((Bool, CompleteDirectoryType) -> IO a)
+  -> (CacheResources -> IO a)
   -- ^ action for which caching is enabled
   -> IO a
 withDbCacheConfig config =
@@ -539,35 +553,45 @@ withDbCacheConfig config =
 Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
 'defaultCacheConfig' makes.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
-withDbCache :: ((Bool, CompleteDirectoryType) -> IO a) -> IO a
+withDbCache :: (CacheResources -> IO a) -> IO a
 withDbCache = withDbCacheConfig defaultCacheConfig
 
 {-|
 Helper to make a 'Config' out of caching info.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
-toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
-toCacheConfig cacheInfo = mempty
-  { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
+toCacheConfig :: CacheResources -> Config
+toCacheConfig CacheResources {..} = mempty
+  { initDbCache = pure $ pure
+      (cacheResourcesCow, toFilePath cacheResourcesDirectory)
   }
 
 -------------------------------------------------------------------------------
 -- withSnapshot
 -------------------------------------------------------------------------------
+{-|
+A type to track a possibly temporary snapshot directory
+
+@since 1.20.0.0
+-}
+newtype Snapshot = Snapshot { unSnapshot :: CompleteDirectoryType }
+  deriving stock (Generic)
+  deriving anyclass (NFData)
+
 {- |
 Shutdown the database and copy the directory to a folder.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
 takeSnapshot
   :: DirectoryType
   -- ^ Either a 'Temporary' or preexisting 'Permanent' directory.
   -> DB
   -- ^ The handle. The @postgres@ is shutdown and the data directory is copied.
-  -> IO (Either StartError CompleteDirectoryType)
+  -> IO (Either StartError Snapshot)
 takeSnapshot directoryType db = try $ do
   throwIfNotSuccess id =<< stopPostgresGracefully db
   let
@@ -588,15 +612,15 @@ takeSnapshot directoryType db = try $ do
       throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
         system snapshotCopyCmd
 
-      pure snapShotDir
+      pure $ Snapshot snapShotDir
 
 {-|
 Cleanup any temporary resources used for the snapshot.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
-cleanupSnapshot :: CompleteDirectoryType -> IO ()
-cleanupSnapshot = cleanupDirectoryType
+cleanupSnapshot :: Snapshot -> IO ()
+cleanupSnapshot = cleanupDirectoryType . unSnapshot
 
 {- |
 Exception safe method for taking a file system level copy of the database cluster.
@@ -604,12 +628,12 @@ Exception safe method for taking a file system level copy of the database cluste
 Snapshots are useful if you would like to start every test from a migrated database
 and the migration process is more time consuming then copying the additional data.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
 withSnapshot
   :: DirectoryType
   -> DB
-  -> (CompleteDirectoryType -> IO a)
+  -> (Snapshot -> IO a)
   -> IO (Either StartError a)
 withSnapshot dirType db f = bracket
   (takeSnapshot dirType db)
@@ -620,17 +644,16 @@ withSnapshot dirType db f = bracket
 Convert a snapshot into a 'Config' that includes a 'copyConfig' for copying the
 snapshot directory to a temporary directory.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
-configFromSavePoint :: FilePath -> IO Config
-configFromSavePoint savePointPath = do
-  pure mempty
-    { plan = mempty
-        { copyConfig = pure $ pure CopyDirectoryCommand
-            { sourceDirectory = savePointPath
-            , destinationDirectory = Nothing
-            , useCopyOnWrite = cowCheck
-            }
-        , initDbConfig = Zlich
-        }
-    }
+snapshotConfig :: Snapshot -> Config
+snapshotConfig (Snapshot savePointPath) = mempty
+  { plan = mempty
+      { copyConfig = pure $ pure CopyDirectoryCommand
+          { sourceDirectory = toFilePath savePointPath
+          , destinationDirectory = Nothing
+          , useCopyOnWrite = cowCheck
+          }
+      , initDbConfig = Zlich
+      }
+  }
