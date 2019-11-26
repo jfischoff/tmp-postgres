@@ -50,10 +50,8 @@ module Database.Postgres.Temp
     with
   , withConfig
   , withRestart
-  , withNewDb
-  , withNewDbConfig
-  , withDbCacheConfig
   , withDbCache
+  , withDbCacheConfig
   , withSnapshot
   -- * Separate start and stop interface.
   , start
@@ -62,9 +60,6 @@ module Database.Postgres.Temp
   , restart
   , stopPostgres
   , stopPostgresGracefully
-  , startNewDb
-  , startNewDbConfig
-  , stopNewDb
   , setupInitDbCache
   , cleanupInitDbCache
   , takeSnapshot
@@ -95,6 +90,12 @@ module Database.Postgres.Temp
   , optionsToDefaultConfig
   -- ** Configuration Types
   , module Database.Postgres.Temp.Config
+  -- * Deprecated NewDb Functions. Use 'withSnapshot'.
+  , withNewDb
+  , withNewDbConfig
+  , startNewDb
+  , startNewDbConfig
+  , stopNewDb
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core

@@ -36,10 +36,6 @@ withConn db f = do
 withConfig' :: Config -> (DB -> IO a) -> IO a
 withConfig' config = either throwIO pure <=< withConfig config
 
-withNewDbConfig' :: ProcessConfig -> DB -> (DB -> IO a) -> IO a
-withNewDbConfig' config db = either throwIO pure <=<
-  withNewDbConfig config db
-
 countPostgresProcesses :: IO Int
 countPostgresProcesses = countProcesses "postgres"
 
@@ -562,49 +558,6 @@ withConfigSpecs = describe "withConfig" $ do
   happyPaths
   errorPaths
 
--- I nest the db creation to make sure I can do that
-withNewDbSpecs :: Spec
-withNewDbSpecs = describe "withNewDb" $ do
-  it "works" $ withConfig' silentConfig $ \db -> do
-    withConn db $ \conn -> do
-      _ <- PG.execute_ conn "CREATE TABLE foo ( id int );"
-      void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1);"
-
-    withNewDbConfig' mempty db $ \newDb -> do
-      one <- fmap (PG.fromOnly . head) $
-        withConn newDb $ \conn -> PG.query_ conn "SELECT id FROM foo"
-
-      one `shouldBe` (1 :: Int)
-
-      let expectedDbName = "newname"
-          specificDbName = mempty
-            { commandLine = mempty
-              { indexBased =
-                  Map.singleton 0 expectedDbName
-              }
-            }
-
-      withNewDbConfig' specificDbName db $ \newerDb -> do
-        Client.dbname (toConnectionOptions newerDb) `shouldBe`
-          pure expectedDbName
-
-        oneAgain <- fmap (PG.fromOnly . head) $
-          withConn newerDb $ \conn -> PG.query_ conn "SELECT id FROM foo"
-
-        oneAgain `shouldBe` (1 :: Int)
-
-        let invalidConfig = silentProcessConfig
-              { commandLine = mempty
-                { indexBased =
-                    Map.singleton 0 "template1"
-                }
-              }
-
-        withNewDbConfig invalidConfig db (const $ pure ()) >>= \case
-          Right () -> fail "Should not succeed"
-          Left (CreateDbFailed {}) -> pure ()
-          Left err -> fail $ "Wrong type of error " <> show err
-
 withSnapshotSpecs :: Spec
 withSnapshotSpecs = describe "withSnapshot" $ do
   it "works" $ withConfig' defaultConfig $ \db -> do
@@ -625,23 +578,9 @@ withSnapshotSpecs = describe "withSnapshot" $ do
         snapshotConfigAndAssert
         testSuccessfulConfig
 
-
-      {-
-      withConfig' snapshotConfig $ flip withConn $ \conn -> do
-          fix $ \next -> do
-            fmap (PG.fromOnly . head) (PG.query_ conn "SELECT pg_is_in_recovery()") >>= \case
-              True -> threadDelay 100000 >> next
-              False -> pure ()
-
-          PG.query_ conn "SELECT id FROM foo ORDER BY id ASC"
-            `shouldReturn` [PG.Only (1 :: Int)]
-      -}
-
 spec :: Spec
 spec = do
   withConfigSpecs
-
-  withNewDbSpecs
 
   withSnapshotSpecs
 

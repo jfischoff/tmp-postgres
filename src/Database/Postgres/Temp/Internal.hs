@@ -483,7 +483,7 @@ withNewDb
   --   in it's connection options.
   -> IO (Either StartError a)
 withNewDb = withNewDbConfig mempty
-
+{-# DEPRECATED withNewDb "Use withSnapshot" #-}
 {-|
 Exception safe version of 'startNewDbConfig'. Creates a
 temporary database using the current database as a template.
@@ -506,6 +506,7 @@ withNewDbConfig
 withNewDbConfig extra db f =
   bracket (startNewDbConfig extra db) (either mempty stopNewDb) $
     either (pure . Left) (fmap Right . f)
+{-# DEPRECATED withNewDbConfig "Use withSnapshot" #-}
 
 {-|
 Use the current database as a template and make a copy. Give the
@@ -528,6 +529,7 @@ startNewDb
   --   is used as the template for the @generated@ 'ProcessConfig'.
   -> IO (Either StartError DB)
 startNewDb = startNewDbConfig mempty
+{-# DEPRECATED startNewDb "Use takeSnapshot" #-}
 
 {-|
 Use the current database as a template and make a copy. Give the
@@ -606,7 +608,7 @@ startNewDbConfig extra@ProcessConfig{..} db = try $ do
   terminateConnections oldOptions
   executeCreateDb final
   pure newDb
-
+{-# DEPRECATED startNewDbConfig "Use takeSnapshot" #-}
 -- | Cleanup the temporary database created by 'startNewDbConfig'
 --   or 'startNewDb'.
 --
@@ -623,6 +625,7 @@ stopNewDb db = do
         { Client.dbname = pure "template1"
         }
   dropDbIfExists template1Options newDbName
+{-# DEPRECATED stopNewDb "Use cleanupSnapshot" #-}
 
 -------------------------------------------------------------------------------
 -- initdb cache
