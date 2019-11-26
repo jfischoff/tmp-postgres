@@ -608,18 +608,20 @@ completeCopyDirectory theDataDirectory CopyDirectoryCommand {..} =
     , copyDirectoryCommandCow = useCopyOnWrite
     }
 
-getInitDbVersion :: IO String
-getInitDbVersion = readProcessWithExitCode "initdb" ["--version"] "" >>= \case
+getInitDbVersion :: String
+getInitDbVersion = unsafePerformIO $ readProcessWithExitCode "initdb" ["--version"] "" >>= \case
   (ExitSuccess, outputString, _) -> do
     let
       theLastPart = last $ words outputString
       versionPart = takeWhile (\x -> isDigit x || x == '.' || x == '-') theLastPart
-    pure $ if last versionPart == '.'
-             then init versionPart
-             else versionPart
+      humanReadable = if last versionPart == '.'
+        then init versionPart
+        else versionPart
+    pure $ humanReadable <> take 8 (makeArgumentHash outputString)
 
   (startErrorExitCode, startErrorStdOut, startErrorStdErr) ->
     throwIO InitDbFailed {..}
+{-# NOINLINE getInitDbVersion #-}
 
 makeCommandLine :: String -> CompleteProcessConfig -> String
 makeCommandLine command CompleteProcessConfig {..} =
@@ -633,11 +635,12 @@ makeInitDbCommandLine = makeCommandLine "initdb"
 makeArgumentHash :: String -> String
 makeArgumentHash = BSC.unpack . Base64.encode . hash . BSC.pack
 
-makeCachePath :: FilePath -> String -> IO String
-makeCachePath cacheFolder cmdLine = do
-  version <- getInitDbVersion
-  let theHash = makeArgumentHash cmdLine
-  pure $ cacheFolder <> "/" <> version <> "/" <> theHash
+makeCachePath :: FilePath -> String -> String
+makeCachePath cacheFolder cmdLine =
+  let
+    version = getInitDbVersion
+    theHash = makeArgumentHash cmdLine
+  in cacheFolder <> "/" <> version <> "/" <> theHash
 
 splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
 splitDataDirectory old =
@@ -677,11 +680,10 @@ cachePlan plan@CompletePlan {..} cow cacheDirectory = case completePlanInitDb of
       pure
       mtheDataDirectory
 
-    let theCommandLine = makeInitDbCommandLine clearedConfig
-
-    cachePath <- makeCachePath cacheDirectory theCommandLine
-
-    let cachedDataDirectory = cachePath <> "/data"
+    let
+      theCommandLine = makeInitDbCommandLine clearedConfig
+      cachePath = makeCachePath cacheDirectory theCommandLine
+      cachedDataDirectory = cachePath <> "/data"
 
     theInitDbPlan <- doesDirectoryExist cachePath >>= \case
       True -> pure $ Nothing

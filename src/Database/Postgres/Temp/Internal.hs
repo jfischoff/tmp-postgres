@@ -450,11 +450,11 @@ data CacheConfig = CacheConfig
   -- 'Temporary'. @\/tmp@ is a good default.
   , cacheDirectoryType      :: DirectoryType
   -- ^ Used to specify is a 'Permanent' or 'Temporary' directory should be
-  --   used. 'createDefaultCacheConfig' uses 'Permanent' @~\/.tmp-postgres@
+  --   used. 'defaultCacheConfig' uses 'Permanent' @~\/.tmp-postgres@
   --   by default.
   , cacheUseCopyOnWrite     :: Bool
   -- ^ Some operatoring system versions support flags for @cp@ that allow
-  --   \"copy on write\" which is about 2x faster. 'createDefaultCacheConfig'
+  --   \"copy on write\" which is about 2x faster. 'defaultCacheConfig'
   --   attempts to determine if the @cp@ on the path supports copy on write
   --   and sets this to 'True' if it does.
   }
