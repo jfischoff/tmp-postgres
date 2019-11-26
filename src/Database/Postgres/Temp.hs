@@ -78,6 +78,8 @@ module Database.Postgres.Temp
   , prettyPrintDB
   -- ** 'Snapshot' handle
   , Snapshot
+  -- ** @initdb@ cache handle
+  , CacheResources
   -- * Errors
   , StartError (..)
   -- * Configuration

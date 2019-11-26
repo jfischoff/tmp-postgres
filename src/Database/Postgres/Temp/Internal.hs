@@ -442,7 +442,7 @@ prettyPrintDB = show . pretty
 {-|
 Configuration for the @initdb@ data directory cache.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
 data CacheConfig = CacheConfig
   { cacheTemporaryDirectory :: FilePath
@@ -457,6 +457,16 @@ data CacheConfig = CacheConfig
   --   \"copy on write\" which is about 2x faster. 'defaultCacheConfig'
   --   attempts to determine if the @cp@ on the path supports copy on write
   --   and sets this to 'True' if it does.
+  }
+
+{-|
+A handle to cache temporary resources and configuration.
+
+@since 1.20.0.0
+-}
+data CacheResources = CacheResources
+  { cacheResourcesCow :: Bool
+  , cacheResourcesDirectory :: CompleteDirectoryType
   }
 
 -- | A bool that is 'True' if the @cp@ on the path supports \"copy on write\"
@@ -495,11 +505,10 @@ defaultCacheConfig = CacheConfig
   , cacheUseCopyOnWrite = cowCheck
   }
 
-
 -- | Setup the @initdb@ cache folder.
 setupInitDbCache
   :: CacheConfig
-  -> IO (Bool, CompleteDirectoryType)
+  -> IO CacheResources
 setupInitDbCache CacheConfig {..} =
   bracketOnError
     (setupDirectoryType
@@ -507,15 +516,15 @@ setupInitDbCache CacheConfig {..} =
       "tmp-postgres-cache"
       cacheDirectoryType
     )
-    cleanupDirectoryType $ pure . (cacheUseCopyOnWrite,)
+    cleanupDirectoryType $ pure . CacheResources cacheUseCopyOnWrite
 
 {-|
 Cleanup the cache directory if it was 'Temporary'.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
-cleanupInitDbCache :: (Bool, CompleteDirectoryType) -> IO ()
-cleanupInitDbCache = cleanupDirectoryType . snd
+cleanupInitDbCache :: CacheResources -> IO ()
+cleanupInitDbCache = cleanupDirectoryType . cacheResourcesDirectory
 
 {-|
 Enable @initdb@ data directory caching. This can lead to a 4x speedup.
@@ -526,12 +535,12 @@ Exception safe version of 'setupInitDbCache'. Equivalent to
    'withDbCacheConfig' = bracket ('setupInitDbCache' config) 'cleanupInitDbCache'
 @
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
 withDbCacheConfig
   :: CacheConfig
   -- ^ Configuration
-  -> ((Bool, CompleteDirectoryType) -> IO a)
+  -> (CacheResources -> IO a)
   -- ^ action for which caching is enabled
   -> IO a
 withDbCacheConfig config =
@@ -541,19 +550,20 @@ withDbCacheConfig config =
 Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
 'defaultCacheConfig' makes.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
-withDbCache :: ((Bool, CompleteDirectoryType) -> IO a) -> IO a
+withDbCache :: (CacheResources -> IO a) -> IO a
 withDbCache = withDbCacheConfig defaultCacheConfig
 
 {-|
 Helper to make a 'Config' out of caching info.
 
-@since 1.15.1.0
+@since 1.20.0.0
 -}
-toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
-toCacheConfig cacheInfo = mempty
-  { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
+toCacheConfig :: CacheResources -> Config
+toCacheConfig CacheResources {..} = mempty
+  { initDbCache = pure $ pure
+      (cacheResourcesCow, toFilePath cacheResourcesDirectory)
   }
 
 -------------------------------------------------------------------------------
