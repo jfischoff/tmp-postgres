@@ -43,7 +43,7 @@ testQuery db = do
   bracket (PG.connectPostgreSQL theConnectionString) PG.close $
     \conn -> void $ PG.execute_ conn "INSERT INTO foo1 (id) VALUES (1)"
 
-setupCache :: IO (Bool, CompleteDirectoryType)
+setupCache :: IO CacheResources
 setupCache = do
   cacheInfo <- setupInitDbCache defaultCacheConfig
   void (withConfig (silentConfig <> toCacheConfig cacheInfo) (const $ pure ()))
@@ -52,7 +52,7 @@ setupCache = do
 setupWithCache :: (Config -> Benchmark) -> Benchmark
 setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (silentConfig <>) . toCacheConfig
 
-setupCacheAndSP :: IO ((Bool, CompleteDirectoryType), CompleteDirectoryType, Once Config)
+setupCacheAndSP :: IO (CacheResources, Snapshot, Once Config)
 setupCacheAndSP = do
   cacheInfo <- setupCache
   let cacheConfig = silentConfig <> toCacheConfig cacheInfo
@@ -60,19 +60,18 @@ setupCacheAndSP = do
     migrateDb db
     either throwIO pure =<< takeSnapshot Temporary db
 
-  snapshotConfig <- (silentConfig <>)
-    <$> snapshotConfig (toFilePath sp)
-  let theConfig = snapshotConfig <> cacheConfig
+  let theConfig = silentConfig <> snapshotConfig sp <> cacheConfig
+
 
   pure (cacheInfo, sp, Once theConfig)
 
-cleanupCacheAndSP :: ((Bool, CompleteDirectoryType), CompleteDirectoryType, Once Config) -> IO ()
+cleanupCacheAndSP :: (CacheResources, Snapshot, Once Config) -> IO ()
 cleanupCacheAndSP (x, y, _) = cleanupSnapshot y >> cleanupInitDbCache x
 
 setupWithCacheAndSP :: (Config -> Benchmark) -> Benchmark
 setupWithCacheAndSP f = envWithCleanup setupCacheAndSP cleanupCacheAndSP $ \ ~(_, _, Once x) -> f x
 
-setupWithCacheAndSP' :: (CompleteDirectoryType -> Benchmark) -> Benchmark
+setupWithCacheAndSP' :: (Snapshot -> Benchmark) -> Benchmark
 setupWithCacheAndSP' f = envWithCleanup setupCacheAndSP cleanupCacheAndSP $ \ ~(_, x, _) -> f x
 
 main :: IO ()
@@ -100,8 +99,8 @@ main = defaultMain
   , setupWithCache $ \cacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \db -> do
       migrateDb db
       void $ withSnapshot Temporary db $ \snapshotDir -> do
-        snapshotConfig <- (silentConfig <>) <$> snapshotConfig (toFilePath snapshotDir)
-        replicateM_ 10 $ withConfig snapshotConfig testQuery
+        let theSnapshotConfig = silentConfig <> snapshotConfig snapshotDir
+        replicateM_ 10 $ withConfig theSnapshotConfig testQuery
 {-
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
       void $ withConfig theConfig $ const $ pure ()

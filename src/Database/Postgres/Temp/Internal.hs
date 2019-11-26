@@ -8,6 +8,7 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
+import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
@@ -15,6 +16,7 @@ import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
+import           GHC.Generics
 import           System.Exit (ExitCode(..))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
@@ -467,7 +469,8 @@ A handle to cache temporary resources and configuration.
 data CacheResources = CacheResources
   { cacheResourcesCow :: Bool
   , cacheResourcesDirectory :: CompleteDirectoryType
-  }
+  } deriving stock (Generic)
+    deriving anyclass (NFData)
 
 -- | A bool that is 'True' if the @cp@ on the path supports \"copy on write\"
 --   flags.
@@ -575,6 +578,8 @@ A type to track a possibly temporary snapshot directory
 @since 1.20.0.0
 -}
 newtype Snapshot = Snapshot { unSnapshot :: CompleteDirectoryType }
+  deriving stock (Generic)
+  deriving anyclass (NFData)
 
 {- |
 Shutdown the database and copy the directory to a folder.
