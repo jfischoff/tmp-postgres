@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
+-- import           Data.Int
 import           Data.List
 import qualified Data.Set as Set
 import           Data.String
@@ -34,10 +35,6 @@ withConn db f = do
 
 withConfig' :: Config -> (DB -> IO a) -> IO a
 withConfig' config = either throwIO pure <=< withConfig config
-
-withNewDbConfig' :: ProcessConfig -> DB -> (DB -> IO a) -> IO a
-withNewDbConfig' config db = either throwIO pure <=<
-  withNewDbConfig config db
 
 countPostgresProcesses :: IO Int
 countPostgresProcesses = countProcesses "postgres"
@@ -158,13 +155,15 @@ optionsToDefaultConfigFilledOutConfigAssert expectedPort =
     expectedPassword = "password"
     expectedHost     = "localhost"
 
-    cConfig = optionsToDefaultConfig mempty
+    cConfig' = optionsToDefaultConfig mempty
       { Client.port     = pure expectedPort
       , Client.dbname   = pure expectedDbName
       , Client.user     = pure expectedUser
       , Client.password = pure expectedPassword
       , Client.host     = pure expectedHost
       }
+
+    cConfig = cConfig' { plan = (plan cConfig') { logger = pure print }}
 
     cAssert db = do
       let Client.Options {..} = toConnectionOptions db
@@ -321,7 +320,7 @@ happyPaths = describe "succeeds with" $ do
             { cConfig = silentConfig
               { dataDirectory = Permanent dirPath
               , plan = (plan silentConfig)
-                  { initDbConfig = Nothing
+                  { initDbConfig = Zlich
                   }
               }
             }
@@ -472,7 +471,7 @@ errorPaths = describe "fails when" $ do
     let dontTimeout = silentConfig
           { plan = (plan silentConfig)
               { connectionTimeout = pure maxBound
-              , initDbConfig = Nothing
+              , initDbConfig = Zlich
               }
           }
 
@@ -559,54 +558,31 @@ withConfigSpecs = describe "withConfig" $ do
   happyPaths
   errorPaths
 
--- I nest the db creation to make sure I can do that
-withNewDbSpecs :: Spec
-withNewDbSpecs = describe "withNewDb" $ do
-  it "works" $ withConfig' silentConfig $ \db -> do
+withSnapshotSpecs :: Spec
+withSnapshotSpecs = describe "withSnapshot" $ do
+  it "works" $ withConfig' defaultConfig $ \db -> do
+    -- TODO create a table
     withConn db $ \conn -> do
-      _ <- PG.execute_ conn "CREATE TABLE foo ( id int );"
-      void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1);"
+      _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
+      void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
 
-    withNewDbConfig' mempty db $ \newDb -> do
-      one <- fmap (PG.fromOnly . head) $
-        withConn newDb $ \conn -> PG.query_ conn "SELECT id FROM foo"
+    either throwIO pure <=< withSnapshot Temporary db $ \snapshotDir -> do
+      snapshotConfig <- (defaultConfig <>)
+        <$> configFromSavePoint (toFilePath snapshotDir)
 
-      one `shouldBe` (1 :: Int)
+      let snapshotConfigAndAssert = ConfigAndAssertion snapshotConfig $ flip withConn $ \conn -> do
+            oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
+            oneAgain `shouldBe` (1 :: Int)
 
-      let expectedDbName = "newname"
-          specificDbName = mempty
-            { commandLine = mempty
-              { indexBased =
-                  Map.singleton 0 expectedDbName
-              }
-            }
-
-      withNewDbConfig' specificDbName db $ \newerDb -> do
-        Client.dbname (toConnectionOptions newerDb) `shouldBe`
-          pure expectedDbName
-
-        oneAgain <- fmap (PG.fromOnly . head) $
-          withConn newerDb $ \conn -> PG.query_ conn "SELECT id FROM foo"
-
-        oneAgain `shouldBe` (1 :: Int)
-
-        let invalidConfig = silentProcessConfig
-              { commandLine = mempty
-                { indexBased =
-                    Map.singleton 0 "template1"
-                }
-              }
-
-        withNewDbConfig invalidConfig db (const $ pure ()) >>= \case
-          Right () -> fail "Should not succeed"
-          Left (CreateDbFailed {}) -> pure ()
-          Left err -> fail $ "Wrong type of error " <> show err
+      testWithTemporaryDirectory
+        snapshotConfigAndAssert
+        testSuccessfulConfig
 
 spec :: Spec
 spec = do
   withConfigSpecs
 
-  withNewDbSpecs
+  withSnapshotSpecs
 
   it "stopPostgres cannot be connected to" $ withConfig' silentConfig $ \db -> do
     stopPostgres db `shouldReturn` ExitSuccess

@@ -187,7 +187,6 @@ defaultConfig = mempty
   { plan = mempty
     { logger = pure mempty
     , postgresConfigFile = defaultPostgresConfig
-    , createDbConfig = Nothing
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--no-sync" Nothing
@@ -484,7 +483,7 @@ withNewDb
   --   in it's connection options.
   -> IO (Either StartError a)
 withNewDb = withNewDbConfig mempty
-
+{-# DEPRECATED withNewDb "Use withSnapshot" #-}
 {-|
 Exception safe version of 'startNewDbConfig'. Creates a
 temporary database using the current database as a template.
@@ -507,6 +506,7 @@ withNewDbConfig
 withNewDbConfig extra db f =
   bracket (startNewDbConfig extra db) (either mempty stopNewDb) $
     either (pure . Left) (fmap Right . f)
+{-# DEPRECATED withNewDbConfig "Use withSnapshot" #-}
 
 {-|
 Use the current database as a template and make a copy. Give the
@@ -529,6 +529,7 @@ startNewDb
   --   is used as the template for the @generated@ 'ProcessConfig'.
   -> IO (Either StartError DB)
 startNewDb = startNewDbConfig mempty
+{-# DEPRECATED startNewDb "Use takeSnapshot" #-}
 
 {-|
 Use the current database as a template and make a copy. Give the
@@ -607,7 +608,7 @@ startNewDbConfig extra@ProcessConfig{..} db = try $ do
   terminateConnections oldOptions
   executeCreateDb final
   pure newDb
-
+{-# DEPRECATED startNewDbConfig "Use takeSnapshot" #-}
 -- | Cleanup the temporary database created by 'startNewDbConfig'
 --   or 'startNewDb'.
 --
@@ -624,6 +625,7 @@ stopNewDb db = do
         { Client.dbname = pure "template1"
         }
   dropDbIfExists template1Options newDbName
+{-# DEPRECATED stopNewDb "Use cleanupSnapshot" #-}
 
 -------------------------------------------------------------------------------
 -- initdb cache
@@ -737,3 +739,86 @@ toCacheConfig :: (Bool, CompleteDirectoryType) -> Config
 toCacheConfig cacheInfo = mempty
   { initDbCache = pure $ pure $ fmap toFilePath cacheInfo
   }
+
+-------------------------------------------------------------------------------
+-- withSnapshot
+-------------------------------------------------------------------------------
+{- |
+Shutdown the database and copy the directory to a folder.
+
+@since 1.17.0.0
+-}
+takeSnapshot
+  :: DirectoryType
+  -- ^ Either a 'Temporary' or preexisting 'Permanent' directory.
+  -> DB
+  -- ^ The handle. The @postgres@ is shutdown and the data directory is copied.
+  -> IO (Either StartError CompleteDirectoryType)
+takeSnapshot directoryType db = try $ do
+  throwIfNotSuccess id =<< stopPostgresGracefully db
+  cow <- cacheUseCopyOnWrite <$> createDefaultCacheConfig
+  let
+#ifdef darwin_HOST_OS
+    cpFlags = if cow then "cp -Rc " else "cp -R "
+#else
+    cpFlags = if cow then "cp -R --reflink=auto " else "cp -R "
+#endif
+  bracketOnError
+    (setupDirectoryType
+      (toTemporaryDirectory db)
+      "tmp-postgres-snapshot"
+      directoryType
+    )
+    cleanupDirectoryType $ \snapShotDir -> do
+      let snapshotCopyCmd = cpFlags <>
+            toDataDirectory db <> "/* " <> toFilePath snapShotDir
+      throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
+        system snapshotCopyCmd
+
+      pure snapShotDir
+
+{-|
+Cleanup any temporary resources used for the snapshot.
+
+@since 1.17.0.0
+-}
+cleanupSnapshot :: CompleteDirectoryType -> IO ()
+cleanupSnapshot = cleanupDirectoryType
+
+{- |
+Exception safe method for taking a file system level copy of the database cluster.
+
+Snapshots are useful if you would like to start every test from a migrated database
+and the migration process is more time consuming then copying the additional data.
+
+@since 1.17.0.0
+-}
+withSnapshot
+  :: DirectoryType
+  -> DB
+  -> (CompleteDirectoryType -> IO a)
+  -> IO (Either StartError a)
+withSnapshot dirType db f = bracket
+  (takeSnapshot dirType db)
+  (either mempty cleanupSnapshot)
+  (either (pure . Left) (fmap Right . f))
+
+{-|
+Convert a snapshot into a 'Config' that includes a 'copyConfig' for copying the
+snapshot directory to a temporary directory.
+
+@since 1.17.0.0
+-}
+configFromSavePoint :: FilePath -> IO Config
+configFromSavePoint savePointPath = do
+  cow <- cacheUseCopyOnWrite <$> createDefaultCacheConfig
+  pure mempty
+    { plan = mempty
+        { copyConfig = pure $ pure CopyDirectoryCommand
+            { sourceDirectory = savePointPath
+            , destinationDirectory = Nothing
+            , useCopyOnWrite = cow
+            }
+        , initDbConfig = Zlich
+        }
+    }

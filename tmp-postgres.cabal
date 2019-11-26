@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.16.1.0
+version:             1.17.0.0
 synopsis: Start and stop a temporary postgres
 description: Start and stop a temporary postgres. See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
@@ -104,6 +104,7 @@ benchmark benchmark
   ghc-options: -O2 -Wall
   build-depends: base
     , criterion
+    , deepseq
     , postgres-options
     , postgresql-simple
     , tmp-postgres
