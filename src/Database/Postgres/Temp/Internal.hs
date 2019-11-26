@@ -459,6 +459,8 @@ data CacheConfig = CacheConfig
   --   and sets this to 'True' if it does.
   }
 
+-- | A bool that is 'True' if the @cp@ on the path supports \"copy on write\"
+--   flags.
 cowCheck :: Bool
 cowCheck = unsafePerformIO $ do
   let
@@ -557,17 +559,24 @@ toCacheConfig cacheInfo = mempty
 -------------------------------------------------------------------------------
 -- withSnapshot
 -------------------------------------------------------------------------------
+{-|
+A type to track a possibly temporary snapshot directory
+
+@since 1.20.0.0
+-}
+newtype Snapshot = Snapshot { unSnapshot :: CompleteDirectoryType }
+
 {- |
 Shutdown the database and copy the directory to a folder.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
 takeSnapshot
   :: DirectoryType
   -- ^ Either a 'Temporary' or preexisting 'Permanent' directory.
   -> DB
   -- ^ The handle. The @postgres@ is shutdown and the data directory is copied.
-  -> IO (Either StartError CompleteDirectoryType)
+  -> IO (Either StartError Snapshot)
 takeSnapshot directoryType db = try $ do
   throwIfNotSuccess id =<< stopPostgresGracefully db
   let
@@ -588,15 +597,15 @@ takeSnapshot directoryType db = try $ do
       throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
         system snapshotCopyCmd
 
-      pure snapShotDir
+      pure $ Snapshot snapShotDir
 
 {-|
 Cleanup any temporary resources used for the snapshot.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
-cleanupSnapshot :: CompleteDirectoryType -> IO ()
-cleanupSnapshot = cleanupDirectoryType
+cleanupSnapshot :: Snapshot -> IO ()
+cleanupSnapshot = cleanupDirectoryType . unSnapshot
 
 {- |
 Exception safe method for taking a file system level copy of the database cluster.
@@ -604,12 +613,12 @@ Exception safe method for taking a file system level copy of the database cluste
 Snapshots are useful if you would like to start every test from a migrated database
 and the migration process is more time consuming then copying the additional data.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
 withSnapshot
   :: DirectoryType
   -> DB
-  -> (CompleteDirectoryType -> IO a)
+  -> (Snapshot -> IO a)
   -> IO (Either StartError a)
 withSnapshot dirType db f = bracket
   (takeSnapshot dirType db)
@@ -620,17 +629,16 @@ withSnapshot dirType db f = bracket
 Convert a snapshot into a 'Config' that includes a 'copyConfig' for copying the
 snapshot directory to a temporary directory.
 
-@since 1.17.0.0
+@since 1.20.0.0
 -}
-configFromSavePoint :: FilePath -> IO Config
-configFromSavePoint savePointPath = do
-  pure mempty
-    { plan = mempty
-        { copyConfig = pure $ pure CopyDirectoryCommand
-            { sourceDirectory = savePointPath
-            , destinationDirectory = Nothing
-            , useCopyOnWrite = cowCheck
-            }
-        , initDbConfig = Zlich
-        }
-    }
+snapshotConfig :: Snapshot -> Config
+snapshotConfig (Snapshot savePointPath) = mempty
+  { plan = mempty
+      { copyConfig = pure $ pure CopyDirectoryCommand
+          { sourceDirectory = toFilePath savePointPath
+          , destinationDirectory = Nothing
+          , useCopyOnWrite = cowCheck
+          }
+      , initDbConfig = Zlich
+      }
+  }

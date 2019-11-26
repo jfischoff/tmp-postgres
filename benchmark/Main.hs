@@ -61,7 +61,7 @@ setupCacheAndSP = do
     either throwIO pure =<< takeSnapshot Temporary db
 
   snapshotConfig <- (silentConfig <>)
-    <$> configFromSavePoint (toFilePath sp)
+    <$> snapshotConfig (toFilePath sp)
   let theConfig = snapshotConfig <> cacheConfig
 
   pure (cacheInfo, sp, Once theConfig)
@@ -100,13 +100,13 @@ main = defaultMain
   , setupWithCache $ \cacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \db -> do
       migrateDb db
       void $ withSnapshot Temporary db $ \snapshotDir -> do
-        snapshotConfig <- (silentConfig <>) <$> configFromSavePoint (toFilePath snapshotDir)
+        snapshotConfig <- (silentConfig <>) <$> snapshotConfig (toFilePath snapshotDir)
         replicateM_ 10 $ withConfig snapshotConfig testQuery
 {-
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
       void $ withConfig theConfig $ const $ pure ()
 
-  , setupWithCacheAndSP' $ \sp -> bench "configFromSavePoint" $ whnfIO $ void $ configFromSavePoint $ toFilePath sp
+  , setupWithCacheAndSP' $ \sp -> bench "snapshotConfig" $ whnfIO $ void $ snapshotConfig $ toFilePath sp
 
   , bench "migrateDb" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig silentConfig) (stop . unOnce) $
       \ ~(Once db) -> migrateDb db
