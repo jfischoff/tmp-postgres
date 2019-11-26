@@ -45,8 +45,7 @@ testQuery db = do
 
 setupCache :: IO (Bool, CompleteDirectoryType)
 setupCache = do
-  defCacheConfig <- createDefaultCacheConfig
-  cacheInfo <- setupInitDbCache defCacheConfig
+  cacheInfo <- setupInitDbCache defaultCacheConfig
   void (withConfig (silentConfig <> toCacheConfig cacheInfo) (const $ pure ()))
   pure cacheInfo
 

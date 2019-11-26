@@ -16,6 +16,7 @@ import qualified Data.Map.Strict as Map
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           System.Exit (ExitCode(..))
+import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
@@ -458,19 +459,8 @@ data CacheConfig = CacheConfig
   --   and sets this to 'True' if it does.
   }
 
-{-|
-'createDefaultCacheConfig' attempts to determine if the @cp@ on the path
-supports \"copy on write\" flags and if it does, sets 'cacheUseCopyOnWrite'
-to 'True'.
-
-It sets 'cacheDirectoryType' to 'Permanent' @~\/.tmp-postgres@ and
-'cacheTemporaryDirectory' to @\/tmp@ (but this is not used when
-'Permanent' is set).
-
-@since 1.15.1.0
--}
-createDefaultCacheConfig :: IO CacheConfig
-createDefaultCacheConfig = do
+cowCheck :: Bool
+cowCheck = unsafePerformIO $ do
   let
 #ifdef darwin_HOST_OS
     cpFlag = "-c"
@@ -481,11 +471,28 @@ createDefaultCacheConfig = do
   -- if the flags do not exist we get a message like "cp: illegal option"
   let usage = "usage:" -- macos
       missingFile = "cp: missing file operand" -- linux
-      cacheUseCopyOnWrite = usage ==  take (length usage) errorOutput
-        || missingFile ==  take (length missingFile) errorOutput
-      cacheDirectoryType = Permanent "~/.tmp-postgres"
-      cacheTemporaryDirectory = "/tmp"
-  pure CacheConfig {..}
+  pure $ usage ==  take (length usage) errorOutput
+       || missingFile ==  take (length missingFile) errorOutput
+{-# NOINLINE cowCheck #-}
+
+{-|
+'defaultCacheConfig' attempts to determine if the @cp@ on the path
+supports \"copy on write\" flags and if it does, sets 'cacheUseCopyOnWrite'
+to 'True'.
+
+It sets 'cacheDirectoryType' to 'Permanent' @~\/.tmp-postgres@ and
+'cacheTemporaryDirectory' to @\/tmp@ (but this is not used when
+'Permanent' is set).
+
+@since 1.19.0.0
+-}
+defaultCacheConfig :: CacheConfig
+defaultCacheConfig = CacheConfig
+  { cacheDirectoryType = Permanent "~/.tmp-postgres"
+  , cacheTemporaryDirectory = "/tmp"
+  , cacheUseCopyOnWrite = cowCheck
+  }
+
 
 -- | Setup the @initdb@ cache folder.
 setupInitDbCache
@@ -530,13 +537,12 @@ withDbCacheConfig config =
 
 {-|
 Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
-'createDefaultCacheConfig' makes.
+'defaultCacheConfig' makes.
 
 @since 1.15.1.0
 -}
 withDbCache :: ((Bool, CompleteDirectoryType) -> IO a) -> IO a
-withDbCache action =
-  flip withDbCacheConfig action =<< createDefaultCacheConfig
+withDbCache = withDbCacheConfig defaultCacheConfig
 
 {-|
 Helper to make a 'Config' out of caching info.
@@ -564,12 +570,11 @@ takeSnapshot
   -> IO (Either StartError CompleteDirectoryType)
 takeSnapshot directoryType db = try $ do
   throwIfNotSuccess id =<< stopPostgresGracefully db
-  cow <- cacheUseCopyOnWrite <$> createDefaultCacheConfig
   let
 #ifdef darwin_HOST_OS
-    cpFlags = if cow then "cp -Rc " else "cp -R "
+    cpFlags = if cowCheck then "cp -Rc " else "cp -R "
 #else
-    cpFlags = if cow then "cp -R --reflink=auto " else "cp -R "
+    cpFlags = if cowCheck then "cp -R --reflink=auto " else "cp -R "
 #endif
   bracketOnError
     (setupDirectoryType
@@ -619,13 +624,12 @@ snapshot directory to a temporary directory.
 -}
 configFromSavePoint :: FilePath -> IO Config
 configFromSavePoint savePointPath = do
-  cow <- cacheUseCopyOnWrite <$> createDefaultCacheConfig
   pure mempty
     { plan = mempty
         { copyConfig = pure $ pure CopyDirectoryCommand
             { sourceDirectory = savePointPath
             , destinationDirectory = Nothing
-            , useCopyOnWrite = cow
+            , useCopyOnWrite = cowCheck
             }
         , initDbConfig = Zlich
         }

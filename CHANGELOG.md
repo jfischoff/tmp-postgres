@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.19.0.0
+  #154 Change 'createDefaultCacheConfig` to `defaultCacheConfig`
+
 1.18.0.0
   #143 Remove the withNewDb API
 
