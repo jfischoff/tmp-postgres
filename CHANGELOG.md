@@ -1,7 +1,7 @@
 Changelog for tmp-postgres
 
 1.18.0.0
-  #143 Remove the the withNewDb API
+  #143 Remove the withNewDb API
 
 1.17.0.0
   #156 Deprecate `NewDb` functions.
