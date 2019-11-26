@@ -90,12 +90,6 @@ module Database.Postgres.Temp
   , optionsToDefaultConfig
   -- ** Configuration Types
   , module Database.Postgres.Temp.Config
-  -- * Deprecated NewDb Functions. Use 'withSnapshot'.
-  , withNewDb
-  , withNewDbConfig
-  , startNewDb
-  , startNewDbConfig
-  , stopNewDb
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core

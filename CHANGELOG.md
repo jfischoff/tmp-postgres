@@ -1,6 +1,9 @@
 Changelog for tmp-postgres
 
-1.7.0.0
+1.18.0.0
+  #143 Remove the the withNewDb API
+
+1.17.0.0
   #156 Deprecate `NewDb` functions.
   #155 Better monoids for `initDbConfig` and `createDbConfig`.
   #142 Cluster save points.

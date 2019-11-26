@@ -91,16 +91,9 @@ main = defaultMain
   , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig silentConfig $ \db ->
       migrateDb db >> testQuery db
 
-  , bench "withNewDb migrate 10x" $ whnfIO $ withConfig silentConfig $ \db -> do
-      migrateDb db
-      replicateM 10 $ withNewDb db testQuery
 -}
-    setupWithCache $ \cacheConfig -> bench "withNewDbConfig migrate 10x and cache" $ whnfIO $ withConfig cacheConfig
-    $ \db -> do
-      migrateDb db
-      replicateM 10 $ withNewDb db testQuery
 
-  ,  setupWithCache $ \cacheConfig -> do
+    setupWithCache $ \cacheConfig -> do
       bench "with migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \_ -> do
         replicateM_ 10 $ withConfig cacheConfig $ \db ->
           migrateDb db >> testQuery db
