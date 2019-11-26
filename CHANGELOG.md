@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.19.0.1
+  #146 Better version hashing for making cache directories
+  Documentation fixes
+
 1.19.0.0
   #154 Change 'createDefaultCacheConfig` to `defaultCacheConfig`
 
