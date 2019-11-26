@@ -12,7 +12,8 @@
     functions.
 |-}
 module Database.Postgres.Temp.Config
-  ( Config (..)
+  ( -- ** 'Config'
+    Config (..)
   , prettyPrintConfig
     -- *** 'Config' Lenses
   , planL
