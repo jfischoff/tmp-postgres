@@ -85,10 +85,14 @@ module Database.Postgres.Temp
   , standardProcessConfig
   , silentConfig
   , silentProcessConfig
+  , defaultCacheConfig
   , configFromSavePoint
   -- ** Custom Config builder helpers
   , optionsToDefaultConfig
   -- ** Configuration Types
+  -- *** 'CacheConfig'
+  , CacheConfig (..)
+  -- *** General Configuration Types
   , module Database.Postgres.Temp.Config
   ) where
 import Database.Postgres.Temp.Internal
