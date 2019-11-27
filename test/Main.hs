@@ -6,7 +6,6 @@ import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
--- import           Data.Int
 import           Data.List
 import qualified Data.Set as Set
 import           Data.String
@@ -310,7 +309,8 @@ happyPaths = describe "succeeds with" $ do
 
   it "works if on non-empty if initdb is disabled" $
     withTempDirectory "/tmp" "tmp-postgres-preinitdb" $ \dirPath -> do
-      throwIfNotSuccess id =<< system ("initdb " <> dirPath)
+      throwIfNotSuccess id . (\(x, _, _) -> x) =<<
+        readProcessWithExitCode "initdb" [dirPath] ""
       let nonEmptyFolderConfig = memptyConfigAndAssertion
             { cConfig = defaultConfig
               { dataDirectory = Permanent dirPath
@@ -382,7 +382,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCache seems to work" $
     withDbCache $ \cacheInfo ->
-      either throwIO pure =<< withConfig (defaultConfig <> cacheResourcesToConfig cacheInfo) assertConnection
+      either throwIO pure =<< withConfig (cacheResourcesToConfig cacheInfo) assertConnection
 
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
@@ -422,10 +422,17 @@ errorPaths = describe "fails when" $ do
 {-
   it "throws StartPostgresFailed if the port is taken" $
     bracket openFreePort (N.close . snd) $ \(thePort, _) -> do
-      let invalidConfig = optionsToDefaultConfig mempty
+      let invalidConfig' = optionsToDefaultConfig mempty
             { Client.port = pure thePort
             , Client.host = pure "127.0.0.1"
+            } <> verboseConfig
+
+          invalidConfig = invalidConfig'
+            { plan = (plan invalidConfig')
+                { connectionTimeout = pure 1000000
+                }
             }
+
       withConfig invalidConfig (const $ pure ())
         `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
 -}
@@ -591,7 +598,7 @@ spec = do
 
     reloadConfig db
 
-    bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn -> do
+    withConn db $ \conn -> do
       [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
       actualDuration `shouldBe` expectedDuration
 
@@ -640,8 +647,6 @@ spec = do
         [ "wal_level=replica"
         , "archive_mode=on"
         , "max_wal_senders=2"
-        , "fsync=on"
-        , "synchronous_commit=on"
         ]
       backupResources = justBackupResources
 

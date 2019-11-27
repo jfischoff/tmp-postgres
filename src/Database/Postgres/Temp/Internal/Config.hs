@@ -215,9 +215,6 @@ data ProcessConfig = ProcessConfig
   deriving Semigroup via GenericSemigroup ProcessConfig
   deriving Monoid    via GenericMonoid ProcessConfig
 
-prettyHandle :: Handle -> Doc
-prettyHandle _ = text "[HANDLE]"
-
 instance Pretty ProcessConfig where
   pretty ProcessConfig {..}
     = text "environmentVariables:"
@@ -562,7 +559,7 @@ instance Pretty Config where
 
 socketDirectoryToConfig :: FilePath -> [String]
 socketDirectoryToConfig dir =
-    [ "listen_addresses = '127.0.0.1, ::1'"
+    [ "listen_addresses = '127.0.0.1,::1'"
     , "unix_socket_directories = '" <> dir <> "'"
     ]
 
@@ -738,7 +735,7 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
           }
       }
   , createDbConfig = if makeCreateDb
-      then pure $ silentProcessConfig
+      then pure silentProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList
                 [ ("-h", Just socketDirectory)
@@ -748,29 +745,13 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
         }
       else mempty
 
-  , initDbConfig = pure $ silentProcessConfig
+  , initDbConfig = pure silentProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList
                 [("--pgdata=", Just dataDirectoryString)]
             }
         }
   , copyConfig = pure Nothing
-  }
-
-
--- | 'combinePlans' is almost '<>'. However the 'Last' monoid for
---    @createdb@ and @initdb@ plans are not used. Instead something
---    like Lastoid is.
-combinePlans :: Plan -> Plan -> Plan
-combinePlans x y = Plan
-  { logger               = logger x              <> logger y
-  , initDbConfig         = initDbConfig x        <> initDbConfig y
-  , copyConfig           = copyConfig x          <> copyConfig y
-  , createDbConfig       = createDbConfig x      <> createDbConfig y
-  , postgresPlan         = postgresPlan x        <> postgresPlan y
-  , postgresConfigFile   = postgresConfigFile x  <> postgresConfigFile y
-  , dataDirectoryString  = dataDirectoryString x <> dataDirectoryString y
-  , connectionTimeout    = connectionTimeout x   <> connectionTimeout y
   }
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
@@ -794,7 +775,7 @@ setupConfig Config {..} = evalContT $ do
         thePort
         (toFilePath resourcesSocketDirectory)
         (toFilePath resourcesDataDir)
-      finalPlan = combinePlans hostAndDir plan
+      finalPlan = hostAndDir <> plan
   uncachedPlan <- lift $
     either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
       completePlan envs finalPlan

@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.21.1.1
+  #172 Fix verboseLogging not working
+
 1.21.1.0
   #135 Add defaultConfig_9_3_10
   #170 Expose cacheResourcesToConfig
