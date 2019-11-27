@@ -339,7 +339,7 @@ happyPaths = describe "succeeds with" $ do
             , cacheUseCopyOnWrite     = True
             }
       withDbCacheConfig cacheConfig $ \cacheInfo -> do
-        withConfig' (config <> toCacheConfig cacheInfo) $ const $ pure ()
+        withConfig' (config <> cacheResourcesToConfig cacheInfo) $ const $ pure ()
         -- see if there is a cache
         tmpFiles <- listDirectory dirPath
 
@@ -365,7 +365,7 @@ happyPaths = describe "succeeds with" $ do
           xs -> fail $ "expected a single version directory but got " <> show xs
 
         -- add a file to look for later
-        withConfig' (config <> toCacheConfig cacheInfo) $ \db -> do
+        withConfig' (config <> cacheResourcesToConfig cacheInfo) $ \db -> do
           -- see if the file is in the data directory
           let theDataDirectory = toDataDirectory db
           xs <- listDirectory theDataDirectory
@@ -382,7 +382,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCache seems to work" $
     withDbCache $ \cacheInfo ->
-      either throwIO pure =<< withConfig (defaultConfig <> toCacheConfig cacheInfo) assertConnection
+      either throwIO pure =<< withConfig (defaultConfig <> cacheResourcesToConfig cacheInfo) assertConnection
 
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined

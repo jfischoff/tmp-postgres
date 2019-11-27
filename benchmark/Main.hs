@@ -46,16 +46,16 @@ testQuery db = do
 setupCache :: IO CacheResources
 setupCache = do
   cacheInfo <- setupInitDbCache defaultCacheConfig
-  void (withConfig (defaultConfig <> toCacheConfig cacheInfo) (const $ pure ()))
+  void (withConfig (defaultConfig <> cacheResourcesToConfig cacheInfo) (const $ pure ()))
   pure cacheInfo
 
 setupWithCache :: (Config -> Benchmark) -> Benchmark
-setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultConfig <>) . toCacheConfig
+setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultConfig <>) . cacheResourcesToConfig
 
 setupCacheAndSP :: IO (CacheResources, Snapshot, Once Config)
 setupCacheAndSP = do
   cacheInfo <- setupCache
-  let cacheConfig = defaultConfig <> toCacheConfig cacheInfo
+  let cacheConfig = defaultConfig <> cacheResourcesToConfig cacheInfo
   sp <- either throwIO pure <=< withConfig cacheConfig $ \db -> do
     migrateDb db
     either throwIO pure =<< takeSnapshot Temporary db

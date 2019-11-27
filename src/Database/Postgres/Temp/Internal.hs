@@ -206,6 +206,27 @@ defaultConfig = mempty
   }
 
 {-|
+Default configuration for PostgreSQL versions 9.3 and greater but less
+than 10.
+
+If you get an error that \"--no-sync\" is an invalid parameter then you
+should use this config.
+
+@since 1.21.1.0
+-}
+defaultConfig_9_3_10 :: Config
+defaultConfig_9_3_10 = mempty
+  { plan = mempty
+    { postgresConfigFile = fastPostgresConfig
+    , initDbConfig = pure mempty
+      { commandLine = mempty
+        { keyBased = Map.singleton "--nosync" Nothing
+        }
+      }
+    }
+  }
+
+{-|
 'mappend' the 'defaultConfig' with a 'Config' that provides additional
    \"postgresql.conf\" lines. Equivalent to:
 
@@ -547,10 +568,10 @@ withDbCache = withDbCacheConfig defaultCacheConfig
 {-|
 Helper to make a 'Config' out of caching info.
 
-@since 1.20.0.0
+@since 1.22.0.0
 -}
-toCacheConfig :: CacheResources -> Config
-toCacheConfig CacheResources {..} = mempty
+cacheResourcesToConfig :: CacheResources -> Config
+cacheResourcesToConfig CacheResources {..} = mempty
   { initDbCache = pure $ pure
       (cacheResourcesCow, toFilePath cacheResourcesDirectory)
   }
