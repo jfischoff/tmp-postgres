@@ -87,7 +87,7 @@ module Database.Postgres.Temp
   , defaultConfig
   , defaultPostgresConf
   , standardProcessConfig
-  , silentConfig
+  , verboseConfig
   , silentProcessConfig
   , defaultCacheConfig
   , snapshotConfig

@@ -2,7 +2,7 @@ module Main where
 import Control.DeepSeq
 import Control.Exception
 import Control.Monad
-import Criterion.Main
+import Criterion.Main hiding (defaultConfig)
 import Data.String
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Config
@@ -17,7 +17,7 @@ defaultConfigDefaultInitDb :: Config
 defaultConfigDefaultInitDb = mempty
   { plan = mempty
     { logger = pure mempty
-    , postgresConfigFile = defaultPostgresConfig
+    , postgresConfigFile = fastPostgresConfig
     , initDbConfig = pure mempty
     }
   }
@@ -46,21 +46,21 @@ testQuery db = do
 setupCache :: IO CacheResources
 setupCache = do
   cacheInfo <- setupInitDbCache defaultCacheConfig
-  void (withConfig (silentConfig <> toCacheConfig cacheInfo) (const $ pure ()))
+  void (withConfig (defaultConfig <> toCacheConfig cacheInfo) (const $ pure ()))
   pure cacheInfo
 
 setupWithCache :: (Config -> Benchmark) -> Benchmark
-setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (silentConfig <>) . toCacheConfig
+setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultConfig <>) . toCacheConfig
 
 setupCacheAndSP :: IO (CacheResources, Snapshot, Once Config)
 setupCacheAndSP = do
   cacheInfo <- setupCache
-  let cacheConfig = silentConfig <> toCacheConfig cacheInfo
+  let cacheConfig = defaultConfig <> toCacheConfig cacheInfo
   sp <- either throwIO pure <=< withConfig cacheConfig $ \db -> do
     migrateDb db
     either throwIO pure =<< takeSnapshot Temporary db
 
-  let theConfig = silentConfig <> snapshotConfig sp <> cacheConfig
+  let theConfig = defaultConfig <> snapshotConfig sp <> cacheConfig
 
 
   pure (cacheInfo, sp, Once theConfig)
@@ -81,12 +81,12 @@ main = defaultMain
   --    withConfig defaultConfigDefaultInitDb $ const $ pure ()
 {-
   bench "withConfig silent" $ whnfIO $
-    withConfig silentConfig $ const $ pure ()
+    withConfig defaultConfig $ const $ pure ()
 
   , setupWithCache $ \cacheConfig -> bench "withConfig silent cache" $ whnfIO $
       withConfig cacheConfig $ const $ pure ()
 
-  , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig silentConfig $ \db ->
+  , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig defaultConfig $ \db ->
       migrateDb db >> testQuery db
 
 -}
@@ -99,7 +99,7 @@ main = defaultMain
   , setupWithCache $ \cacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \db -> do
       migrateDb db
       void $ withSnapshot Temporary db $ \snapshotDir -> do
-        let theSnapshotConfig = silentConfig <> snapshotConfig snapshotDir
+        let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
         replicateM_ 10 $ withConfig theSnapshotConfig testQuery
 {-
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
@@ -107,10 +107,10 @@ main = defaultMain
 
   , setupWithCacheAndSP' $ \sp -> bench "snapshotConfig" $ whnfIO $ void $ snapshotConfig $ toFilePath sp
 
-  , bench "migrateDb" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig silentConfig) (stop . unOnce) $
+  , bench "migrateDb" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> migrateDb db
 -}
-  , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig silentConfig) (stop . unOnce) $
+  , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> void $ withSnapshot Temporary db $ const $ pure ()
 
   ]

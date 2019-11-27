@@ -155,15 +155,13 @@ optionsToDefaultConfigFilledOutConfigAssert expectedPort =
     expectedPassword = "password"
     expectedHost     = "localhost"
 
-    cConfig' = optionsToDefaultConfig mempty
+    cConfig = optionsToDefaultConfig mempty
       { Client.port     = pure expectedPort
       , Client.dbname   = pure expectedDbName
       , Client.user     = pure expectedUser
       , Client.password = pure expectedPassword
       , Client.host     = pure expectedHost
       }
-
-    cConfig = cConfig' { plan = (plan cConfig') { logger = pure print }}
 
     cAssert db = do
       let Client.Options {..} = toConnectionOptions db
@@ -226,9 +224,6 @@ specificUnixSocket filePath =
 
   in ConfigAndAssertion {..}
 
-silentConfigAssert :: ConfigAndAssertion
-silentConfigAssert = ConfigAndAssertion silentConfig mempty
-
 defaultConfigAssert :: ConfigAndAssertion
 defaultConfigAssert = ConfigAndAssertion defaultConfig mempty
 
@@ -272,7 +267,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "postgres db name does not cause createdb failure" $ do
     testWithTemporaryDirectory
-      (  silentConfigAssert
+      (  defaultConfigAssert
       <> memptyConfigAndAssertion
       <> ConfigAndAssertion (optionsToDefaultConfig mempty { Client.dbname = pure "postgres" }) mempty
       )
@@ -280,7 +275,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "template1 db name does not cause createdb failure" $ do
     testWithTemporaryDirectory
-      (  silentConfigAssert
+      (  defaultConfigAssert
       <> memptyConfigAndAssertion' "template1"
       <> ConfigAndAssertion (optionsToDefaultConfig mempty { Client.dbname = pure "template1" }) mempty
       )
@@ -300,26 +295,26 @@ happyPaths = describe "succeeds with" $ do
 
   it "default ip option works" $
     testWithTemporaryDirectory
-      (silentConfigAssert <> defaultIpConfig)
+      (defaultConfigAssert <> defaultIpConfig)
       testSuccessfulConfig
 
   it "specific unix socket works" $
     withTempDirectory "/tmp" "tmp-postgres-spec-socket" $ \socketFilePath ->
       testWithTemporaryDirectory
-        (silentConfigAssert <> specificUnixSocket socketFilePath)
+        (defaultConfigAssert <> specificUnixSocket socketFilePath)
         testSuccessfulConfig
 
   it "works with the default temporary directory to some degree at least" $
-    testSuccessfulConfigNoTmp $ silentConfigAssert <>
+    testSuccessfulConfigNoTmp $ defaultConfigAssert <>
       memptyConfigAndAssertion <> createdbAndDescription
 
   it "works if on non-empty if initdb is disabled" $
     withTempDirectory "/tmp" "tmp-postgres-preinitdb" $ \dirPath -> do
       throwIfNotSuccess id =<< system ("initdb " <> dirPath)
       let nonEmptyFolderConfig = memptyConfigAndAssertion
-            { cConfig = silentConfig
+            { cConfig = defaultConfig
               { dataDirectory = Permanent dirPath
-              , plan = (plan silentConfig)
+              , plan = (plan defaultConfig)
                   { initDbConfig = Zlich
                   }
               }
@@ -328,7 +323,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "makeResourcesDataDirPermanent works" $
     withTempDirectory "/tmp" "tmp-postgres-make-premanent" $ \dirPath -> do
-       let config = silentConfig { temporaryDirectory = pure dirPath }
+       let config = defaultConfig { temporaryDirectory = pure dirPath }
        pathToCheck <- bracket (either throwIO (pure . makeDataDirPermanent) =<< startConfig config) stop $
         pure . toDataDirectory
        doesDirectoryExist pathToCheck >>= \case
@@ -337,7 +332,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCacheConfig actually caches the config and cleans up" $
     withTempDirectory "/tmp" "tmp-postgres-cache-test" $ \dirPath -> do
-      let config = silentConfig { temporaryDirectory = pure dirPath }
+      let config = defaultConfig { temporaryDirectory = pure dirPath }
           cacheConfig = CacheConfig
             { cacheTemporaryDirectory = dirPath
             , cacheDirectoryType      = Temporary
@@ -387,7 +382,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCache seems to work" $
     withDbCache $ \cacheInfo ->
-      either throwIO pure =<< withConfig (silentConfig <> toCacheConfig cacheInfo) assertConnection
+      either throwIO pure =<< withConfig (defaultConfig <> toCacheConfig cacheInfo) assertConnection
 
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
@@ -408,7 +403,7 @@ errorPaths = describe "fails when" $ do
                   }
               }
           }
-    withConfig (silentConfig <> invalidConfig) (const $ pure ())
+    withConfig (defaultConfig <> invalidConfig) (const $ pure ())
       `shouldReturn` Left ConnectionTimedOut
 
   it "does not timeout quickly with an invalid connection and large timeout" $ do
@@ -422,7 +417,7 @@ errorPaths = describe "fails when" $ do
                   }
               }
           }
-    timeout 100000 (withConfig (silentConfig <> invalidConfig) (const $ pure ()))
+    timeout 100000 (withConfig (defaultConfig <> invalidConfig) (const $ pure ()))
       `shouldReturn` Nothing
 {-
   it "throws StartPostgresFailed if the port is taken" $
@@ -468,8 +463,8 @@ errorPaths = describe "fails when" $ do
       `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
 
   it "No initdb plan causes failure" $ do
-    let dontTimeout = silentConfig
-          { plan = (plan silentConfig)
+    let dontTimeout = defaultConfig
+          { plan = (plan defaultConfig)
               { connectionTimeout = pure maxBound
               , initDbConfig = Zlich
               }
@@ -481,7 +476,7 @@ errorPaths = describe "fails when" $ do
   it "initdb with non-empty data directory fails with InitDbFailed" $
     withTempDirectory "/tmp" "tmp-postgres-test" $ \dirPath -> do
       writeFile (dirPath <> "/PG_VERSION") "1 million"
-      let nonEmptyFolderPlan = silentConfig
+      let nonEmptyFolderPlan = defaultConfig
             { dataDirectory = Permanent dirPath
             }
 
@@ -494,8 +489,8 @@ errorPaths = describe "fails when" $ do
         Left err -> fail $ "Wrong type of error " <> show err
 
   it "invalid initdb options cause an error" $ do
-    let invalidConfig = silentConfig
-          { plan = (plan silentConfig)
+    let invalidConfig = defaultConfig
+          { plan = (plan defaultConfig)
               { initDbConfig = pure silentProcessConfig
                 { commandLine = mempty
                   { keyBased = Map.singleton "--super-sync" Nothing
@@ -509,8 +504,8 @@ errorPaths = describe "fails when" $ do
       Left err -> fail $ "Wrong type of error " <> show err
 
   it "invalid createdb plan causes an error" $ do
-    let invalidConfig = silentConfig
-          { plan = (plan silentConfig)
+    let invalidConfig = defaultConfig
+          { plan = (plan defaultConfig)
               { createDbConfig = pure silentProcessConfig
                 { commandLine = mempty
                   { indexBased =
@@ -529,7 +524,7 @@ errorPaths = describe "fails when" $ do
     path <-  getEnv "PATH"
 
     bracket (setEnv "PATH" "/foo") (const $ setEnv "PATH" path) $ \_ ->
-      withConfig silentConfig (const $ pure ())
+      withConfig defaultConfig (const $ pure ())
         `shouldThrow` isDoesNotExistError
 
   it "throws if createdb is not on the path" $
@@ -543,8 +538,8 @@ errorPaths = describe "fails when" $ do
 
       path <-  getEnv "PATH"
 
-      let config = silentConfig
-            { plan = (plan silentConfig)
+      let config = defaultConfig
+            { plan = (plan defaultConfig)
                 { createDbConfig = pure mempty
                 }
             }
@@ -582,12 +577,12 @@ spec = do
 
   withSnapshotSpecs
 
-  it "stopPostgres cannot be connected to" $ withConfig' silentConfig $ \db -> do
+  it "stopPostgres cannot be connected to" $ withConfig' defaultConfig $ \db -> do
     stopPostgres db `shouldReturn` ExitSuccess
     PG.connectPostgreSQL (toConnectionString db) `shouldThrow`
       (\(_ :: IOError) -> True)
 
-  it "reloadConfig works" $ withConfig' silentConfig $ \db -> do
+  it "reloadConfig works" $ withConfig' defaultConfig $ \db -> do
     let
       dataDir = toDataDirectory db
       expectedDuration = "100ms"
@@ -627,7 +622,7 @@ spec = do
     shouldSatisfy (Set.fromList $ words configString) $
       Set.isSubsetOf wordsToSearchFor
 
-  it "prettyPrintDB seems to work" $ withConfig' (createdbPlan <> silentConfig) $ \db -> do
+  it "prettyPrintDB seems to work" $ withConfig' (createdbPlan <> defaultConfig) $ \db -> do
     let dbString = prettyPrintDB db
 
         wordsToSearchFor = Set.fromList
