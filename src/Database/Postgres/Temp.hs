@@ -46,61 +46,66 @@ The necessary binaries are in the @\/usr\/lib\/postgresql\/VERSION\/bin\/@ direc
 
 module Database.Postgres.Temp
   (
-  -- * Exception safe interface
+  -- * Start and Stop @postgres@
+  -- ** Exception safe interface
     with
   , withConfig
   , withRestart
-  , withDbCache
-  , withDbCacheConfig
-  , withSnapshot
-  -- * Separate start and stop interface.
+  -- *** Configuration
+  -- *** Defaults
+  , defaultConfig
+  , defaultConfig_9_3_10
+  , defaultPostgresConf
+  , verboseConfig
+  -- *** Custom Config builder helpers
+  , optionsToDefaultConfig
+  -- *** General Configuration Types
+  , module Database.Postgres.Temp.Config
+  -- ** Main resource handle
+  , DB
+  -- *** 'DB' accessors
+  , toConnectionString
+  , toConnectionOptions
+  , toDataDirectory
+  , toTemporaryDirectory
+  -- *** 'DB' modifiers
+  , makeDataDirPermanent
+  , reloadConfig
+  -- *** 'DB' debugging
+  , prettyPrintDB
+  -- ** Separate start and stop interface.
   , start
   , startConfig
   , stop
   , restart
   , stopPostgres
   , stopPostgresGracefully
+  -- * Making Starting Faster
+  -- ** @initdb@ Data Directory Caching
+  -- *** Exception safe interface
+  , withDbCache
+  , withDbCacheConfig
+  -- *** @initdb@ cache configuration.
+  , CacheConfig (..)
+  , defaultCacheConfig
+  -- *** @initdb@ cache handle.
+  , CacheResources
+  , cacheResourcesToConfig
+  -- *** Separate start and stop interface.
   , setupInitDbCache
   , cleanupInitDbCache
+  -- ** Data Directory Snapshots
+  -- *** Exception safe interface
+  , withSnapshot
+  -- *** 'Snapshot' handle
+  , Snapshot
+  , snapshotConfig
+  -- *** Separate start and stop interface.
   , takeSnapshot
   , cleanupSnapshot
-  -- * Main resource handle
-  , DB
-  -- ** 'DB' accessors
-  , toConnectionString
-  , toConnectionOptions
-  , toDataDirectory
-  , toTemporaryDirectory
-  -- ** 'DB' modifiers
-  , makeDataDirPermanent
-  , reloadConfig
-  -- ** 'DB' debugging
-  , prettyPrintDB
-  -- ** 'Snapshot' handle
-  , Snapshot
-  -- ** @initdb@ cache handle
-  , CacheResources
   -- * Errors
   , StartError (..)
-  -- * Configuration
-  -- ** Defaults
-  , defaultConfig
-  , defaultPostgresConf
-  , standardProcessConfig
-  , verboseConfig
-  , silentProcessConfig
-  , defaultCacheConfig
-  , snapshotConfig
-  -- ** Custom Config builder helpers
-  , optionsToDefaultConfig
-  -- ** Configuration Types
-  -- *** 'CacheConfig'
-  , CacheConfig (..)
-  -- *** General Configuration Types
-  , module Database.Postgres.Temp.Config
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Config
-import Database.Postgres.Temp.Internal.Config
-  (standardProcessConfig, silentProcessConfig)
