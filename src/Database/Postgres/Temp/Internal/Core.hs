@@ -324,7 +324,7 @@ instance Pretty CompleteCopyDirectoryCommand where
     <> indent 2 (text copyDirectoryCommandDst)
     <> hardline
     <> text "copyDirectoryCommandCow:"
-    <+> (pretty copyDirectoryCommandCow)
+    <+> pretty copyDirectoryCommandCow
 
 executeCopyDirectoryCommand :: CompleteCopyDirectoryCommand -> IO ()
 executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
@@ -426,3 +426,4 @@ startPlan plan@CompletePlan {..} = do
 -- | Stop the @postgres@ process. See 'stopPostgresProcess' for more details.
 stopPlan :: PostgresProcess -> IO ExitCode
 stopPlan = stopPostgresProcess False
+

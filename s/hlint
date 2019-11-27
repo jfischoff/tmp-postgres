@@ -1,1 +1,1 @@
-hlint src
+find src -name "*.hs" -exec hlint --refactor --refactor-options='-XLambdaCase -XRankNTypes -XCPP --inplace' {} \;

@@ -595,7 +595,7 @@ instance Pretty CopyDirectoryCommand where
     <> indent 2 (pretty destinationDirectory)
     <> hardline
     <> text "useCopyOnWrite:"
-    <+> (pretty useCopyOnWrite)
+    <+> pretty useCopyOnWrite
 
 completeCopyDirectory
   :: FilePath
@@ -654,7 +654,7 @@ splitDataDirectory old =
         '-':'-':'p':'g':'d':'a':'t':'a':'=':theDir -> theDir
         _ -> error "splitDataDirectory not possible"
 
-      filteredEnvs = filter (not . ("PGDATA"==) . fst) $
+      filteredEnvs = filter (("PGDATA" /=) . fst) $
         completeProcessConfigEnvVars old
 
       clearedConfig = old
@@ -686,7 +686,7 @@ cachePlan plan@CompletePlan {..} cow cacheDirectory = case completePlanInitDb of
       cachedDataDirectory = cachePath <> "/data"
 
     theInitDbPlan <- doesDirectoryExist cachePath >>= \case
-      True -> pure $ Nothing
+      True -> pure Nothing
       False -> do
         createDirectoryIfMissing True cachePath
         writeFile (cachePath <> "/commandLine.log") theCommandLine
@@ -740,7 +740,7 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
   , createDbConfig = if makeCreateDb
       then pure $ silentProcessConfig
         { commandLine = mempty
-            { keyBased = Map.fromList $
+            { keyBased = Map.fromList
                 [ ("-h", Just socketDirectory)
                 , ("-p ", Just $ show port)
                 ]
@@ -1058,7 +1058,7 @@ postgresConfigL
 --
 --   @since 1.12.0.0
 postgresConfigFileL :: Lens' Plan [String]
-postgresConfigFileL f (plan@Plan{..})
+postgresConfigFileL f plan@Plan{..}
   = fmap (\x -> plan { postgresConfigFile = x })
       (f postgresConfigFile)
 {-# INLINE postgresConfigFileL #-}
@@ -1068,7 +1068,7 @@ postgresConfigFileL f (plan@Plan{..})
 --   @since 1.17.0.0
 createDbConfigL ::
   Lens' Plan (Accum ProcessConfig)
-createDbConfigL f (plan@Plan{..})
+createDbConfigL f plan@Plan{..}
   = fmap (\x -> plan { createDbConfig = x })
       (f createDbConfig)
 {-# INLINE createDbConfigL #-}
@@ -1077,7 +1077,7 @@ createDbConfigL f (plan@Plan{..})
 --
 --   @since 1.12.0.0
 dataDirectoryStringL :: Lens' Plan (Last String)
-dataDirectoryStringL f (plan@Plan{..})
+dataDirectoryStringL f plan@Plan{..}
   = fmap (\x -> plan { dataDirectoryString = x })
       (f dataDirectoryString)
 {-# INLINE dataDirectoryStringL #-}
@@ -1086,7 +1086,7 @@ dataDirectoryStringL f (plan@Plan{..})
 --
 --   @since 1.16.0.0
 copyConfigL :: Lens' Plan (Last (Maybe CopyDirectoryCommand))
-copyConfigL f (plan@Plan{..})
+copyConfigL f plan@Plan{..}
   = fmap (\x -> plan { copyConfig = x })
       (f copyConfig)
 {-# INLINE copyConfigL #-}
@@ -1095,7 +1095,7 @@ copyConfigL f (plan@Plan{..})
 --
 --   @since 1.12.0.0
 initDbConfigL :: Lens' Plan (Accum ProcessConfig)
-initDbConfigL f (plan@Plan{..})
+initDbConfigL f plan@Plan{..}
   = fmap (\x -> plan { initDbConfig = x })
       (f initDbConfig)
 {-# INLINE initDbConfigL #-}
@@ -1104,7 +1104,7 @@ initDbConfigL f (plan@Plan{..})
 --
 --   @since 1.12.0.0
 loggerL :: Lens' Plan (Last Logger)
-loggerL f (plan@Plan{..})
+loggerL f plan@Plan{..}
   = fmap (\x -> plan { logger = x })
       (f logger)
 {-# INLINE loggerL #-}
@@ -1113,7 +1113,7 @@ loggerL f (plan@Plan{..})
 --
 --   @since 1.12.0.0
 postgresPlanL :: Lens' Plan PostgresPlan
-postgresPlanL f (plan@Plan{..})
+postgresPlanL f plan@Plan{..}
   = fmap (\x -> plan { postgresPlan = x })
       (f postgresPlan)
 {-# INLINE postgresPlanL #-}
@@ -1122,7 +1122,7 @@ postgresPlanL f (plan@Plan{..})
 --
 --   @since 1.12.0.0
 connectionTimeoutL :: Lens' Plan (Last Int)
-connectionTimeoutL f (plan@Plan{..})
+connectionTimeoutL f plan@Plan{..}
   = fmap (\x -> plan { connectionTimeout = x })
       (f connectionTimeout)
 {-# INLINE connectionTimeoutL #-}
@@ -1131,7 +1131,7 @@ connectionTimeoutL f (plan@Plan{..})
 --
 --   @since 1.12.0.0
 resourcesDataDirL :: Lens' Resources CompleteDirectoryType
-resourcesDataDirL f (resources@Resources {..})
+resourcesDataDirL f resources@Resources {..}
   = fmap (\x -> resources { resourcesDataDir = x })
       (f resourcesDataDir)
 {-# INLINE resourcesDataDirL #-}
@@ -1140,7 +1140,7 @@ resourcesDataDirL f (resources@Resources {..})
 --
 --   @since 1.12.0.0
 resourcesPlanL :: Lens' Resources CompletePlan
-resourcesPlanL f (resources@Resources {..})
+resourcesPlanL f resources@Resources {..}
   = fmap (\x -> resources { resourcesPlan = x })
       (f resourcesPlan)
 {-# INLINE resourcesPlanL #-}
@@ -1149,7 +1149,7 @@ resourcesPlanL f (resources@Resources {..})
 --
 --   @since 1.15.0.0
 resourcesSocketDirectoryL :: Lens' Resources CompleteDirectoryType
-resourcesSocketDirectoryL f (resources@Resources {..})
+resourcesSocketDirectoryL f resources@Resources {..}
   = fmap (\x -> resources { resourcesSocketDirectory = x })
       (f resourcesSocketDirectory)
 {-# INLINE resourcesSocketDirectoryL #-}
@@ -1158,7 +1158,7 @@ resourcesSocketDirectoryL f (resources@Resources {..})
 --
 --   @since 1.12.0.0
 dataDirectoryL :: Lens' Config DirectoryType
-dataDirectoryL f (config@Config{..})
+dataDirectoryL f config@Config{..}
   = fmap (\ x -> config { dataDirectory = x } )
       (f dataDirectory)
 {-# INLINE dataDirectoryL #-}
@@ -1167,7 +1167,7 @@ dataDirectoryL f (config@Config{..})
 --
 --   @since 1.12.0.0
 planL :: Lens' Config Plan
-planL f (config@Config{..})
+planL f config@Config{..}
   = fmap (\ x -> config { plan = x } )
       (f plan)
 {-# INLINE planL #-}
@@ -1176,7 +1176,7 @@ planL f (config@Config{..})
 --
 --   @since 1.12.0.0
 portL :: Lens' Config (Last (Maybe Int))
-portL f (config@Config{..})
+portL f config@Config{..}
   = fmap (\ x -> config { port = x } )
       (f port)
 {-# INLINE portL #-}
@@ -1185,7 +1185,7 @@ portL f (config@Config{..})
 --
 --   @since 1.12.0.0
 socketDirectoryL :: Lens' Config DirectoryType
-socketDirectoryL f (config@Config{..})
+socketDirectoryL f config@Config{..}
   = fmap (\ x -> config { socketDirectory = x } )
       (f socketDirectory)
 {-# INLINE socketDirectoryL #-}
@@ -1194,7 +1194,7 @@ socketDirectoryL f (config@Config{..})
 --
 --   @since 1.12.0.0
 temporaryDirectoryL :: Lens' Config (Last FilePath)
-temporaryDirectoryL f (config@Config{..})
+temporaryDirectoryL f config@Config{..}
   = fmap (\ x -> config { temporaryDirectory = x } )
       (f temporaryDirectory)
 {-# INLINE temporaryDirectoryL #-}
@@ -1227,7 +1227,7 @@ keyBasedL
 --
 --   @since 1.16.0.0
 sourceDirectoryL :: Lens' CopyDirectoryCommand FilePath
-sourceDirectoryL f (cmd@CopyDirectoryCommand{..})
+sourceDirectoryL f cmd@CopyDirectoryCommand{..}
   = fmap (\x -> cmd { sourceDirectory = x })
       (f sourceDirectory)
 {-# INLINE sourceDirectoryL #-}
@@ -1236,7 +1236,7 @@ sourceDirectoryL f (cmd@CopyDirectoryCommand{..})
 --
 --   @since 1.16.0.0
 destinationDirectoryL :: Lens' CopyDirectoryCommand (Maybe FilePath)
-destinationDirectoryL f (cmd@CopyDirectoryCommand{..})
+destinationDirectoryL f cmd@CopyDirectoryCommand{..}
   = fmap (\x -> cmd { destinationDirectory = x })
       (f destinationDirectory)
 {-# INLINE destinationDirectoryL #-}
@@ -1245,7 +1245,7 @@ destinationDirectoryL f (cmd@CopyDirectoryCommand{..})
 --
 --   @since 1.16.0.0
 useCopyOnWriteL :: Lens' CopyDirectoryCommand Bool
-useCopyOnWriteL f (cmd@CopyDirectoryCommand{..})
+useCopyOnWriteL f cmd@CopyDirectoryCommand{..}
   = fmap (\x -> cmd { useCopyOnWrite = x })
       (f useCopyOnWrite)
 {-# INLINE useCopyOnWriteL #-}
