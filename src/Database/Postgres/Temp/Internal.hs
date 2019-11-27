@@ -96,19 +96,32 @@ toTemporaryDirectory = resourcesTemporaryDir . dbResources
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
--- | Default postgres options
---
---   @since 1.21.0.0
-verbosePostgresConfig :: [String]
-verbosePostgresConfig =
+{-|
+The fastest config we can make.
+
+ @
+   shared_buffers = 12MB
+   fsync = off
+   synchronous_commit = off
+   full_page_writes = off
+   log_min_messages = PANIC
+   log_min_error_statement = PANIC
+   log_statement = none
+   client_min_messages = ERROR
+ @
+
+@since 1.21.0.0
+-}
+fastPostgresConfig :: [String]
+fastPostgresConfig =
   [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
   , "full_page_writes = off"
-  , "log_min_duration_statement = 0"
-  , "log_connections = on"
-  , "log_disconnections = on"
-  , "client_min_messages = WARNING"
+  , "log_min_messages = PANIC"
+  , "log_min_error_statement = PANIC"
+  , "log_statement = none"
+  , "client_min_messages = ERROR"
   ]
 
 {-|
@@ -219,33 +232,19 @@ defaultPostgresConf extra = defaultConfig <> mempty
     }
   }
 
-
-{-|
-The fastest config we can make.
-
- @
-   shared_buffers = 12MB
-   fsync = off
-   synchronous_commit = off
-   full_page_writes = off
-   log_min_messages = PANIC
-   log_min_error_statement = PANIC
-   log_statement = none
-   client_min_messages = ERROR
- @
-
-@since 1.21.0.0
--}
-fastPostgresConfig :: [String]
-fastPostgresConfig =
+-- | Default postgres options
+--
+--   @since 1.21.0.0
+verbosePostgresConfig :: [String]
+verbosePostgresConfig =
   [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
   , "full_page_writes = off"
-  , "log_min_messages = PANIC"
-  , "log_min_error_statement = PANIC"
-  , "log_statement = none"
-  , "client_min_messages = ERROR"
+  , "log_min_duration_statement = 0"
+  , "log_connections = on"
+  , "log_disconnections = on"
+  , "client_min_messages = WARNING"
   ]
 
 {-|
