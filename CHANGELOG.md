@@ -1,18 +1,21 @@
 Changelog for tmp-postgres
 
+1.21.0.0
+  #165 Make silent the default.
+
 1.20.0.1
   #164 Documentation fixes.
 
 1.20.0.0
-  #144 Make a CacheResources type
-  #162 Make a Snapshot alias
+  #144 Make a CacheResources type.
+  #162 Make a Snapshot alias.
 
 1.19.0.1
-  #146 Better version hashing for making cache directories
+  #146 Better version hashing for making cache directories.
   Documentation fixes
 
 1.19.0.0
-  #154 Change 'createDefaultCacheConfig` to `defaultCacheConfig`
+  #154 Change 'createDefaultCacheConfig` to `defaultCacheConfig`.
 
 1.18.0.0
   #143 Remove the withNewDb API

@@ -98,9 +98,9 @@ toTemporaryDirectory = resourcesTemporaryDir . dbResources
 -------------------------------------------------------------------------------
 -- | Default postgres options
 --
---   @since 1.12.0.0
-defaultPostgresConfig :: [String]
-defaultPostgresConfig =
+--   @since 1.21.0.0
+verbosePostgresConfig :: [String]
+verbosePostgresConfig =
   [ "shared_buffers = 12MB"
   , "fsync = off"
   , "synchronous_commit = off"
@@ -108,7 +108,7 @@ defaultPostgresConfig =
   , "log_min_duration_statement = 0"
   , "log_connections = on"
   , "log_disconnections = on"
-  , "client_min_messages = ERROR"
+  , "client_min_messages = WARNING"
   ]
 
 {-|
@@ -124,9 +124,9 @@ The default configuration. This will create a database called \"postgres\"
    fsync = off
    synchronous_commit = off
    full_page_writes = off
-   log_min_duration_statement = 0
-   log_connections = on
-   log_disconnections = on
+   log_min_messages = PANIC
+   log_min_error_statement = PANIC
+   log_statement = none
    client_min_messages = ERROR
 @
 
@@ -140,7 +140,8 @@ Alternatively you can eschew 'defaultConfig' altogether, however
 your @postgres@ might start and run faster if you use
 'defaultConfig'.
 
-The 'defaultConfig' also disables the logging of internal 'Event's.
+The 'defaultConfig' redirects all output to @\/dev\/null@. See
+'verboseConfig' for a version that logs more output.
 
 To append additional lines to \"postgresql.conf\" file create a
 custom 'Config' like the following.
@@ -177,14 +178,12 @@ Or using the provided lenses and your favorite lens library:
  As an alternative to using 'defaultConfig' one could create a
  config from connections parameters using 'optionsToDefaultConfig'.
 
-
-@since 1.12.0.0
+@since 1.21.0.0
 -}
 defaultConfig :: Config
 defaultConfig = mempty
   { plan = mempty
-    { logger = pure mempty
-    , postgresConfigFile = defaultPostgresConfig
+    { postgresConfigFile = fastPostgresConfig
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--no-sync" Nothing
@@ -211,7 +210,7 @@ or with lenses:
 'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFileL' <>~ extra
 @
 
-@since 1.12.0.0
+@since 1.21.0.0
 -}
 defaultPostgresConf :: [String] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
@@ -222,25 +221,7 @@ defaultPostgresConf extra = defaultConfig <> mempty
 
 
 {-|
-A config that logs as little as possible.
-
-@since 1.14.0.0
--}
-silentPostgresConfig :: [String]
-silentPostgresConfig =
-  [ "shared_buffers = 12MB"
-  , "fsync = off"
-  , "synchronous_commit = off"
-  , "full_page_writes = off"
-  , "log_min_messages = PANIC"
-  , "log_min_error_statement = PANIC"
-  , "log_statement = none"
-  , "client_min_messages = ERROR"
-  ]
-
-{-|
-The similar to 'defaultConfig' but all the handles are set to @\/dev\/null@.
-and uses a @postgresql.conf@ which disables logging:
+The fastest config we can make.
 
  @
    shared_buffers = 12MB
@@ -253,17 +234,33 @@ and uses a @postgresql.conf@ which disables logging:
    client_min_messages = ERROR
  @
 
-See 'silentProcessConfig' as well.
-
-@since 1.14.0.0
+@since 1.21.0.0
 -}
-silentConfig :: Config
-silentConfig = defaultConfig <> mempty
+fastPostgresConfig :: [String]
+fastPostgresConfig =
+  [ "shared_buffers = 12MB"
+  , "fsync = off"
+  , "synchronous_commit = off"
+  , "full_page_writes = off"
+  , "log_min_messages = PANIC"
+  , "log_min_error_statement = PANIC"
+  , "log_statement = none"
+  , "client_min_messages = ERROR"
+  ]
+
+{-|
+The similar to 'defaultConfig' log as much as possible.
+
+@since 1.21.0.0
+-}
+verboseConfig :: Config
+verboseConfig = defaultConfig <> mempty
   { plan = mempty
-    { postgresConfigFile = silentPostgresConfig
-    , initDbConfig = pure silentProcessConfig
+    { logger = pure print
+    , postgresConfigFile = verbosePostgresConfig
+    , initDbConfig = pure standardProcessConfig
     , postgresPlan = mempty
-        { postgresConfig = silentProcessConfig
+        { postgresConfig = standardProcessConfig
         }
     }
   }
@@ -323,7 +320,7 @@ startConfig extra = try $ evalContT $ do
 -- | Default start behavior. Equivalent to calling 'startConfig' with the
 --   'defaultConfig'.
 --
---   @since 1.12.0.0
+--   @since 1.21.0.0
 start :: IO (Either StartError DB)
 start = startConfig defaultConfig
 
@@ -380,7 +377,7 @@ reloadConfig db =
 Exception safe database create with options. See 'startConfig' for more
 details. Calls 'stop' even in the face of exceptions.
 
-@since 1.15.0.0
+@since 1.21.0.0
 -}
 withConfig :: Config
          -- ^ @extra@. 'Config' combined with the generated 'Config'. See
@@ -397,7 +394,7 @@ withConfig extra f = bracket (startConfig extra) (either mempty stop) $
    'with' = 'withConfig' 'defaultConfig'
  @
 
-@since 1.15.0.0
+@since 1.21.0.0
 -}
 with :: (DB -> IO a)
      -- ^ @action@ continuation.
@@ -415,19 +412,9 @@ withRestart db f = bracket (restart db) (either mempty stop) $
 --   want to create a database owned by a specific user you will also login
 --   with among other use cases.
 --
---   @since 1.15.0.0
+--   @since 1.21.0.0
 optionsToDefaultConfig :: Client.Options -> Config
-optionsToDefaultConfig opts@Client.Options {..} =
-  let generated = optionsToConfig opts
-      startingConfig =
-        if createDbConfig (plan generated) == mempty
-          then defaultConfig
-          else defaultConfig <> mempty
-            { plan = mempty
-              { createDbConfig = pure standardProcessConfig
-              }
-            }
-  in startingConfig <> generated
+optionsToDefaultConfig opts = defaultConfig <> optionsToConfig opts
 
 -------------------------------------------------------------------------------
 -- Pretty Printing

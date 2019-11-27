@@ -721,9 +721,9 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
   { postgresConfigFile = socketDirectoryToConfig socketDirectory
   , dataDirectoryString = pure dataDirectoryString
   , connectionTimeout = pure (60 * 1000000) -- 1 minute
-  , logger = pure print
+  , logger = pure $ const $ pure ()
   , postgresPlan = mempty
-      { postgresConfig = standardProcessConfig
+      { postgresConfig = silentProcessConfig
           { commandLine = mempty
               { keyBased = Map.fromList
                   [ ("-p", Just $ show port)
@@ -738,7 +738,7 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
           }
       }
   , createDbConfig = if makeCreateDb
-      then pure $ standardProcessConfig
+      then pure $ silentProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList $
                 [ ("-h", Just socketDirectory)
@@ -748,7 +748,7 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
         }
       else mempty
 
-  , initDbConfig = pure $ standardProcessConfig
+  , initDbConfig = pure $ silentProcessConfig
         { commandLine = mempty
             { keyBased = Map.fromList
                 [("--pgdata=", Just dataDirectoryString)]
