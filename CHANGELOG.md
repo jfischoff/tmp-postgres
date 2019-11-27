@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.20.0.1
+  #164 Documentation fixes.
+
 1.20.0.0
   #144 Make a CacheResources type
   #162 Make a Snapshot alias

@@ -162,7 +162,7 @@ custom 'Config' like the following.
 Or using the provided lenses and your favorite lens library:
 
  @
-  custom = defaultConfig & 'planL' . 'postgresConfigFile' <>~
+  custom = defaultConfig & 'planL' . 'postgresConfigFileL' <>~
     [ "wal_level = replica"
     , "archive_mode = on"
     , "max_wal_senders = 2"
@@ -208,7 +208,7 @@ defaultConfig = mempty
 or with lenses:
 
 @
-'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFile' <>~ extra
+'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFileL' <>~ extra
 @
 
 @since 1.12.0.0
