@@ -439,7 +439,7 @@ data Plan = Plan
   , copyConfig :: Last (Maybe CopyDirectoryCommand)
   , createDbConfig :: Accum ProcessConfig
   , postgresPlan :: PostgresPlan
-  , postgresConfigFile :: [String]
+  , postgresConfigFile :: [(String, String)]
   , dataDirectoryString :: Last String
   , connectionTimeout :: Last Int
   -- ^ Max time to spend attempting to connection to @postgres@.
@@ -468,11 +468,15 @@ instance Pretty Plan where
     <> hardline
     <> text "postgresConfigFile:"
     <> softline
-    <> indent 2 (vsep $ map text postgresConfigFile)
+    <> indent 2 (vsep $ map (\(x, y) -> text x <> "=" <> text y) postgresConfigFile)
     <> hardline
     <> text "dataDirectoryString:" <+> pretty (getLast dataDirectoryString)
     <> hardline
     <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
+
+flattenConfig :: [(String, String)] -> String
+flattenConfig = unlines . map (\(x, y) -> x <> "=" <> y) .
+  Map.toList . Map.fromList
 
 -- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
 completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
@@ -495,7 +499,7 @@ completePlan envs Plan {..} = do
         <*> getOption "dataDirectoryString" dataDirectoryString
         <*> getOption "connectionTimeout" connectionTimeout
 
-  let completePlanConfig = unlines postgresConfigFile
+  let completePlanConfig = flattenConfig postgresConfigFile
       completePlanCopy = completeCopyDirectory completePlanDataDirectory <$>
         join (getLast copyConfig)
 
@@ -557,10 +561,10 @@ instance Pretty Config where
     <> hardline
     <> text "initDbCache:" <+> pretty (getLast initDbCache)
 
-socketDirectoryToConfig :: FilePath -> [String]
+socketDirectoryToConfig :: FilePath -> [(String, String)]
 socketDirectoryToConfig dir =
-    [ "listen_addresses = '127.0.0.1,::1'"
-    , "unix_socket_directories = '" <> dir <> "'"
+    [ ("listen_addresses", "'127.0.0.1,::1'")
+    , ("unix_socket_directories", "'" <> dir <> "'")
     ]
 
 -------------------------------------------------------------------------------
@@ -1038,7 +1042,7 @@ postgresConfigL
 -- | Lens for 'postgresConfigFile'.
 --
 --   @since 1.12.0.0
-postgresConfigFileL :: Lens' Plan [String]
+postgresConfigFileL :: Lens' Plan [(String, String)]
 postgresConfigFileL f plan@Plan{..}
   = fmap (\x -> plan { postgresConfigFile = x })
       (f postgresConfigFile)

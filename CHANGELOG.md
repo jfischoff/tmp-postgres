@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.22.0.0
+  #174 Better postgresql.conf type.
+
 1.21.1.1
   #172 Fix verboseLogging not working
 

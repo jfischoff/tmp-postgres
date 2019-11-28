@@ -93,6 +93,14 @@ makeDataDirPermanent db = db
 --   @since 1.12.0.0
 toTemporaryDirectory :: DB -> FilePath
 toTemporaryDirectory = resourcesTemporaryDir . dbResources
+
+{-|
+Get the final @postgresql.conf@
+
+@since 1.22.0.0
+-}
+toPostgresqlConf :: DB -> String
+toPostgresqlConf = completePlanConfig . resourcesPlan . dbResources
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
@@ -112,16 +120,16 @@ The fastest config we can make.
 
 @since 1.21.0.0
 -}
-fastPostgresConfig :: [String]
+fastPostgresConfig :: [(String, String)]
 fastPostgresConfig =
-  [ "shared_buffers = 12MB"
-  , "fsync = off"
-  , "synchronous_commit = off"
-  , "full_page_writes = off"
-  , "log_min_messages = PANIC"
-  , "log_min_error_statement = PANIC"
-  , "log_statement = none"
-  , "client_min_messages = ERROR"
+  [ ("shared_buffers", "12MB")
+  , ("fsync", "off")
+  , ("synchronous_commit", "off")
+  , ("full_page_writes", "off")
+  , ("log_min_messages", "PANIC")
+  , ("log_min_error_statement", "PANIC")
+  , ("log_statement", "none")
+  , ("client_min_messages", "ERROR")
   ]
 
 {-|
@@ -196,7 +204,7 @@ Or using the provided lenses and your favorite lens library:
 defaultConfig :: Config
 defaultConfig = mempty
   { plan = mempty
-    { postgresConfigFile = verbosePostgresConfig
+    { postgresConfigFile = fastPostgresConfig
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--no-sync" Nothing
@@ -217,7 +225,7 @@ should use this config.
 defaultConfig_9_3_10 :: Config
 defaultConfig_9_3_10 = mempty
   { plan = mempty
-    { postgresConfigFile = verbosePostgresConfig
+    { postgresConfigFile = fastPostgresConfig
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--nosync" Nothing
@@ -246,7 +254,7 @@ or with lenses:
 
 @since 1.21.0.0
 -}
-defaultPostgresConf :: [String] -> Config
+defaultPostgresConf :: [(String, String)] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
   { plan = mempty
     { postgresConfigFile = extra
@@ -256,16 +264,16 @@ defaultPostgresConf extra = defaultConfig <> mempty
 -- | Default postgres options
 --
 --   @since 1.21.0.0
-verbosePostgresConfig :: [String]
+verbosePostgresConfig :: [(String, String)]
 verbosePostgresConfig =
-  [ "shared_buffers = 12MB"
-  , "fsync = off"
-  , "synchronous_commit = off"
-  , "full_page_writes = off"
-  , "log_min_duration_statement = 0"
-  , "log_connections = on"
-  , "log_disconnections = on"
-  , "client_min_messages = WARNING"
+  [ ("shared_buffers", "12MB")
+  , ("fsync", "off")
+  , ("synchronous_commit", "off")
+  , ("full_page_writes", "off")
+  , ("log_min_duration_statement", "0")
+  , ("log_connections", "on")
+  , ("log_disconnections", "on")
+  , ("client_min_messages", "WARNING")
   ]
 
 {-|
