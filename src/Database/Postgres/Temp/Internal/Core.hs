@@ -44,7 +44,14 @@ data Event
   -- ^ The fourth event and (possibly all subsequent events).
   -- We are looping trying to successfully connect to the @postgres@
   -- process.
-  deriving (Show, Eq, Ord)
+  deriving (Eq, Ord)
+
+instance Show Event where
+  show = \case
+    StartPlan x -> "StartPlan:\n" <> x
+    StartPostgres -> "StartPostgres"
+    WaitForDB -> "WaitForDB"
+    TryToConnect -> "TryToConnect"
 
 -- | A list of failures that can occur when starting. This is not
 --   and exhaustive list but covers the errors that the system
@@ -97,6 +104,12 @@ instance Exception StartError
 --   @since 1.12.0.0
 type Logger = Event -> IO ()
 
+-- A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
+throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
+throwIfNotSuccess f = \case
+  ExitSuccess -> pure ()
+  e -> throwIO $ f e
+
 -- | @postgres@ is not ready until we are able to successfully connect.
 --   'waitForDB' attempts to connect over and over again and returns
 --   after the first successful connection.
@@ -138,6 +151,9 @@ data CompleteProcessConfig = CompleteProcessConfig
   -- ^ The 'Handle' for standard error
   }
 
+prettyHandle :: Handle -> Doc
+prettyHandle _ = text "HANDLE"
+
 prettyKeyPair ::(Pretty a, Pretty b) => a -> b -> Doc
 prettyKeyPair k v = pretty k <> text ": " <> pretty v
 
@@ -150,6 +166,15 @@ instance Pretty CompleteProcessConfig where
     <> text "completeProcessConfigCmdLine:"
     <> softline
     <> text (unwords completeProcessConfigCmdLine)
+    <> hardline
+    <> text "completeProcessConfigStdIn:"
+    <+> prettyHandle completeProcessConfigStdIn
+    <> hardline
+    <> text "completeProcessConfigStdOut:"
+    <+> prettyHandle completeProcessConfigStdOut
+    <> hardline
+    <> text "completeProcessConfigStdErr:"
+    <+> prettyHandle completeProcessConfigStdErr
 
 -- | Start a process interactively and return the 'ProcessHandle'
 startProcess
@@ -198,8 +223,8 @@ executeProcessAndTee name config = fmap (\((x, y), z) -> (x, z, y)) $
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
--- | 'CompletePostgresPlan' is used be 'startPostgresProcess' to start the @postgres@
---   and then attempt to connect to it.
+-- | 'CompletePostgresPlan' is used be 'startPostgresProcess' to start the
+--   @postgres@ and then attempt to connect to it.
 data CompletePostgresPlan = CompletePostgresPlan
   { completePostgresPlanProcessConfig :: CompleteProcessConfig
   -- ^ The process config for @postgres@
@@ -300,7 +325,7 @@ startPostgresProcess time logger CompletePostgresPlan {..} = do
       return result
 
 -------------------------------------------------------------------------------
--- Init command
+-- Non interactive subcommands
 -------------------------------------------------------------------------------
 executeInitDb :: CompleteProcessConfig -> IO ()
 executeInitDb config = do
@@ -337,15 +362,23 @@ executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
     copyCommand = cpFlags <> copyDirectoryCommandSrc <> "/* " <> copyDirectoryCommandDst
   throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
 
+-- | Call @createdb@ and tee the output to return if there is an
+--   an exception. Throws 'CreateDbFailed'.
+executeCreateDb :: CompleteProcessConfig -> IO ()
+executeCreateDb config = do
+  (res, stdOut, stdErr) <- executeProcessAndTee "createdb" config
+  throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
 -------------------------------------------------------------------------------
 -- CompletePlan
 -------------------------------------------------------------------------------
--- | 'CompletePlan' is the low level configuration necessary for creating a database
+-- | 'CompletePlan' is the low level configuration necessary for initializing
+--   a database cluster
 --   starting @postgres@ and creating a database. There is no validation done
---   on the 'CompletePlan'. It is recommend that one use the higher level functions
+--   on the 'CompletePlan'. It is recommend that one use the higher level
+--   functions
 --   such as 'Database.Postgres.Temp.start' which will generate plans that
---   are valid. 'CompletePlan's are used internally but are exposed if the higher
---   level plan generation is not sufficent.
+--   are valid. 'CompletePlan's are used internally but are exposed if the
+--   higher level plan generation is not sufficent.
 data CompletePlan = CompletePlan
   { completePlanLogger            :: Logger
   , completePlanInitDb            :: Maybe CompleteProcessConfig
@@ -382,19 +415,6 @@ instance Pretty CompletePlan where
     <>  text "completePlanDataDirectory:"
     <+> pretty completePlanDataDirectory
 
--- A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
-throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
-throwIfNotSuccess f = \case
-  ExitSuccess -> pure ()
-  e -> throwIO $ f e
-
--- | Call @createdb@ and tee the output to return if there is an
---   an exception. Throws 'CreateDbFailed'.
-executeCreateDb :: CompleteProcessConfig -> IO ()
-executeCreateDb config = do
-  (res, stdOut, stdErr) <- executeProcessAndTee "createdb" config
-  throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
-
 -- | 'startPlan' optionally calls @initdb@, optionally calls @createdb@ and
 --   unconditionally calls @postgres@.
 --   Additionally it writes a \"postgresql.conf\" and does not return until
@@ -426,4 +446,3 @@ startPlan plan@CompletePlan {..} = do
 -- | Stop the @postgres@ process. See 'stopPostgresProcess' for more details.
 stopPlan :: PostgresProcess -> IO ExitCode
 stopPlan = stopPostgresProcess False
-

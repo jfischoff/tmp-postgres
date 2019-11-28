@@ -196,7 +196,7 @@ Or using the provided lenses and your favorite lens library:
 defaultConfig :: Config
 defaultConfig = mempty
   { plan = mempty
-    { postgresConfigFile = fastPostgresConfig
+    { postgresConfigFile = verbosePostgresConfig
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--no-sync" Nothing
@@ -217,7 +217,7 @@ should use this config.
 defaultConfig_9_3_10 :: Config
 defaultConfig_9_3_10 = mempty
   { plan = mempty
-    { postgresConfigFile = fastPostgresConfig
+    { postgresConfigFile = verbosePostgresConfig
     , initDbConfig = pure mempty
       { commandLine = mempty
         { keyBased = Map.singleton "--nosync" Nothing
@@ -279,6 +279,7 @@ verboseConfig = defaultConfig <> mempty
     { logger = pure print
     , postgresConfigFile = verbosePostgresConfig
     , initDbConfig = pure standardProcessConfig
+    , createDbConfig = pure standardProcessConfig
     , postgresPlan = mempty
         { postgresConfig = standardProcessConfig
         }
