@@ -377,7 +377,10 @@ restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
   let CompletePlan{..} = resourcesPlan dbResources
-      startAction = startPostgresProcess completePlanConnectionTimeout completePlanLogger
+      startAction = startPostgresProcess
+        completePlanPort
+        completePlanConnectionTimeout
+        completePlanLogger
         completePlanPostgres
   bracketOnError startAction stopPlan $ \result ->
     pure $ db { dbPostgresProcess = result }

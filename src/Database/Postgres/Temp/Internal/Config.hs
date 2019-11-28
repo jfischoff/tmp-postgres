@@ -475,8 +475,8 @@ instance Pretty Plan where
     <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
 
 -- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
-completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
-completePlan envs Plan {..} = do
+completePlan :: [(String, String)] -> Int -> Plan -> Either [String] CompletePlan
+completePlan envs completePlanPort Plan {..} = do
   (   completePlanLogger
     , completePlanInitDb
     , completePlanCreateDb
@@ -778,7 +778,7 @@ setupConfig Config {..} = evalContT $ do
       finalPlan = hostAndDir <> plan
   uncachedPlan <- lift $
     either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
-      completePlan envs finalPlan
+      completePlan envs thePort finalPlan
   resourcesPlan <- lift $ maybe (pure uncachedPlan) (uncurry $ cachePlan uncachedPlan) resourcesInitDbCache
   pure Resources {..}
 

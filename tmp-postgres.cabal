@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.21.1.1
+version:             1.21.1.2
 synopsis: Start and stop a temporary postgres
 description: Start and stop a temporary postgres. See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
@@ -49,6 +49,7 @@ library
                , deepseq
                , directory
                , generic-monoid
+               , network
                , port-utils
                , postgres-options >= 0.2.0.0
                , postgresql-simple

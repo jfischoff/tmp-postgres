@@ -15,7 +15,7 @@ import           Database.Postgres.Temp.Internal
 import           Database.Postgres.Temp.Internal.Config
 import           Database.Postgres.Temp.Internal.Core
 import           GHC.Generics (Generic)
--- import qualified Network.Socket as N
+import qualified Network.Socket as N
 import           Network.Socket.Free
 import           System.Directory
 import           System.Environment
@@ -419,13 +419,13 @@ errorPaths = describe "fails when" $ do
           }
     timeout 100000 (withConfig (defaultConfig <> invalidConfig) (const $ pure ()))
       `shouldReturn` Nothing
-{-
+
   it "throws StartPostgresFailed if the port is taken" $
     bracket openFreePort (N.close . snd) $ \(thePort, _) -> do
       let invalidConfig' = optionsToDefaultConfig mempty
             { Client.port = pure thePort
             , Client.host = pure "127.0.0.1"
-            } <> verboseConfig
+            }
 
           invalidConfig = invalidConfig'
             { plan = (plan invalidConfig')
@@ -434,8 +434,8 @@ errorPaths = describe "fails when" $ do
             }
 
       withConfig invalidConfig (const $ pure ())
-        `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
--}
+        `shouldReturn` Left PortInUse
+
   it "throws StartPostgresFailed if the host does not exist" $ do
     let invalidConfig = optionsToDefaultConfig mempty
           { Client.host = pure "focalhost"

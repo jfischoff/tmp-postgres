@@ -18,6 +18,7 @@ import           Data.String
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
+import qualified Network.Socket as N
 import           System.Directory
 import           System.Exit (ExitCode(..))
 import           System.IO
@@ -95,6 +96,8 @@ data StartError
   --   a cached @initdb@ folder.
   | SnapshotCopyFailed String ExitCode
   -- ^ We tried to copy a data directory to a snapshot folder and it failed
+  | PortInUse
+  -- ^ Thrown if the IPv4 or IPv6 port are in use.
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
@@ -109,6 +112,23 @@ throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
 throwIfNotSuccess f = \case
   ExitSuccess -> pure ()
   e -> throwIO $ f e
+
+portsAreFree :: Int -> IO Bool
+portsAreFree thePort = do
+  ip4 <- try $ bracket (N.socket N.AF_INET N.Stream N.defaultProtocol) N.close
+        $ \sock -> do
+          N.bind sock $ N.SockAddrInet (fromIntegral thePort) $ N.tupleToHostAddress (127,0,0,1)
+
+  ip6 <- try $ bracket (N.socket N.AF_INET6 N.Stream N.defaultProtocol) N.close
+        $ \sock -> do
+          N.bind sock $ N.SockAddrInet6 (fromIntegral thePort) 0 (0,0,0,1) 0
+
+  print (ip4, ip6)
+
+  pure $ case (ip4, ip6) of
+    (Left (_ :: IOError), _) -> False
+    (_, Left (_ :: IOError)) -> False
+    _ -> True
 
 -- | @postgres@ is not ready until we are able to successfully connect.
 --   'waitForDB' attempts to connect over and over again and returns
@@ -292,10 +312,11 @@ stopPostgresProcess graceful PostgresProcess{..} = do
 -- | Start the @postgres@ process and block until a successful connection
 --   occurs. A separate thread we continously check to see if the @postgres@
 --   process has crashed.
-startPostgresProcess :: Int -> Logger -> CompletePostgresPlan -> IO PostgresProcess
-startPostgresProcess time logger CompletePostgresPlan {..} = do
+startPostgresProcess :: Int -> Int -> Logger -> CompletePostgresPlan -> IO PostgresProcess
+startPostgresProcess thePort time logger CompletePostgresPlan {..} = do
   logger StartPostgres
-
+  areFree <- portsAreFree thePort
+  unless areFree $ throwIO PortInUse
   let startAction = PostgresProcess completePostgresPlanClientOptions
         <$> startProcess "postgres" completePostgresPlanProcessConfig
 
@@ -388,6 +409,7 @@ data CompletePlan = CompletePlan
   , completePlanConfig            :: String
   , completePlanDataDirectory     :: FilePath
   , completePlanConnectionTimeout :: Int
+  , completePlanPort              :: Int
   }
 
 instance Pretty CompletePlan where
@@ -414,6 +436,9 @@ instance Pretty CompletePlan where
     <>  hardline
     <>  text "completePlanDataDirectory:"
     <+> pretty completePlanDataDirectory
+    <>  hardline
+    <>  text "completePlanPort:"
+    <+> pretty completePlanPort
 
 -- | 'startPlan' optionally calls @initdb@, optionally calls @createdb@ and
 --   unconditionally calls @postgres@.
@@ -435,7 +460,7 @@ startPlan plan@CompletePlan {..} = do
   -- We must provide a config file before we can start postgres.
   writeFile (completePlanDataDirectory <> "/postgresql.conf") completePlanConfig
 
-  let startAction = startPostgresProcess
+  let startAction = startPostgresProcess completePlanPort
         completePlanConnectionTimeout completePlanLogger completePlanPostgres
 
   bracketOnError startAction (stopPostgresProcess False) $ \result -> do

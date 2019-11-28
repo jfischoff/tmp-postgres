@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.21.1.2
+  #140 Detect if a port is taken on either 127.0.0.1 or ::1 and throw
+
 1.21.1.1
   #172 Fix verboseLogging not working
 
