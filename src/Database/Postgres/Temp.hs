@@ -68,6 +68,7 @@ module Database.Postgres.Temp
   , toConnectionOptions
   , toDataDirectory
   , toTemporaryDirectory
+  , toPostgresqlConf
   -- *** 'DB' modifiers
   , makeDataDirPermanent
   , reloadConfig

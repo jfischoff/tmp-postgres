@@ -177,7 +177,7 @@ extraConfigAssert =
   let
     cConfig = mempty
       { plan = mempty
-        { postgresConfigFile = ["log_min_duration_statement='100ms'"]
+        { postgresConfigFile = [("log_min_duration_statement","'100ms'")]
         }
       }
 
@@ -384,6 +384,9 @@ happyPaths = describe "succeeds with" $ do
     withDbCache $ \cacheInfo ->
       either throwIO pure =<< withConfig (cacheResourcesToConfig cacheInfo) assertConnection
 
+  it "postgresql.conf append last wins" $
+    withConfig' (defaultPostgresConf [("fsync", "on")]) $ \db -> do
+      toPostgresqlConf db `shouldContain` "fsync=on"
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
 --
@@ -644,9 +647,9 @@ spec = do
       Set.isSubsetOf wordsToSearchFor
 
   let justBackupResources = defaultPostgresConf
-        [ "wal_level=replica"
-        , "archive_mode=on"
-        , "max_wal_senders=2"
+        [ ("wal_level", "replica")
+        , ("archive_mode","on")
+        , ("max_wal_senders","2")
         ]
       backupResources = justBackupResources
 
