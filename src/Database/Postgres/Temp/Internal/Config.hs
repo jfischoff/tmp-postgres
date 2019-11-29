@@ -454,16 +454,25 @@ hasCreateDb Config {..} = isJust $ getAccum createDbConfig
 
 -- | The high level options for overriding default behavior.
 --
---   @since 1.16.0.0
+--   @since 1.22.0.0
 data Config = Config
   { logger :: Last Logger
+  -- ^ Internal 'Event' logger.
   , initDbConfig :: Accum ProcessConfig
+  -- ^ Monoid for accumulating @initdb@ configuration.
   , copyConfig :: Last (Maybe CopyDirectoryCommand)
+  -- ^ An optional data directory copy command.
   , createDbConfig :: Accum ProcessConfig
+  -- ^ Monoid for accumulating @createdb@ configuration.
   , postgresConfig :: ProcessConfig
+  -- ^ The @postgres@ process configuration.
   , connectionOptions :: Client.Options
+  -- ^ The additional client connection options.
   , postgresConfigFile :: [(String, String)]
+  -- ^ The @postgresql.conf@ configuration file.
   , connectionTimeout :: Last Int
+  -- ^ The amount of microseconds to attempt to connect
+  --   to @postgres@ before throwing 'ConnectionTimedOut'
   , socketDirectory  :: DirectoryType
   -- ^ Override the default temporary UNIX socket directory by setting this.
   , dataDirectory :: DirectoryType

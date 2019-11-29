@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.25.0.1
+  #188 Document all fields of Config
+
 1.25.0.0
   #186 Rename CacheResources and cacheResourcesToConfig
 
