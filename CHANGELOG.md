@@ -1,5 +1,11 @@
 Changelog for tmp-postgres
 
+1.23.0.0
+  #175 Flatten Config
+  #178 Documentation Fixes
+  #179 Remove Public Config.hs
+  #180 Remove Lenses
+
 1.22.0.0
   #174 Better postgresql.conf type.
 

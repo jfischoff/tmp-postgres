@@ -15,12 +15,11 @@ instance NFData (Once a) where
 
 defaultConfigDefaultInitDb :: Config
 defaultConfigDefaultInitDb = mempty
-  { plan = mempty
-    { logger = pure mempty
-    , postgresConfigFile = fastPostgresConfig
-    , initDbConfig = pure mempty
-    }
+  { logger = pure mempty
+  , postgresConfigFile = fastPostgresConfig
+  , initDbConfig = pure mempty
   }
+
 
 createFooDb :: PG.Connection -> Int -> IO ()
 createFooDb conn index = void $ PG.execute_ conn $ fromString $ unlines
