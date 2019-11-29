@@ -323,12 +323,12 @@ happyPaths = describe "succeeds with" $ do
   it "withDbCacheConfig actually caches the config and cleans up" $
     withTempDirectory "/tmp" "tmp-postgres-cache-test" $ \dirPath -> do
       let config = defaultConfig { temporaryDirectory = pure dirPath }
-          cacheConfig = CacheConfig
+          theCacheConfig = CacheConfig
             { cacheTemporaryDirectory = dirPath
             , cacheDirectoryType      = Temporary
             , cacheUseCopyOnWrite     = True
             }
-      withDbCacheConfig cacheConfig $ \cacheInfo -> do
+      withDbCacheConfig theCacheConfig $ \cacheInfo -> do
         withConfig' (config <> cacheConfig cacheInfo) $ const $ pure ()
         -- see if there is a cache
         tmpFiles <- listDirectory dirPath
