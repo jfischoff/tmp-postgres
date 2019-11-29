@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.23.0.1
+  #182 Doc Fixies
+
 1.23.0.0
   #175 Flatten Config
   #178 Documentation Fixes
