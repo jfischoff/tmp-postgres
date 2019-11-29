@@ -66,7 +66,7 @@ module Database.Postgres.Temp
   , toConnectionOptions
   , toDataDirectory
   , toTemporaryDirectory
-  , toPostgresqlConf
+  , toPostgresqlConfigFile
   -- *** 'DB' modifiers
   , makeDataDirectoryPermanent
   , reloadConfig
@@ -89,8 +89,8 @@ module Database.Postgres.Temp
   , CacheConfig (..)
   , defaultCacheConfig
   -- *** @initdb@ cache handle.
-  , CacheResources
-  , cacheResourcesToConfig
+  , Cache
+  , cacheConfig
   -- *** Separate start and stop interface.
   , setupInitDbCache
   , cleanupInitDbCache

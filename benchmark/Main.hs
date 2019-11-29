@@ -42,19 +42,19 @@ testQuery db = do
   bracket (PG.connectPostgreSQL theConnectionString) PG.close $
     \conn -> void $ PG.execute_ conn "INSERT INTO foo1 (id) VALUES (1)"
 
-setupCache :: IO CacheResources
+setupCache :: IO Cache
 setupCache = do
   cacheInfo <- setupInitDbCache defaultCacheConfig
-  void (withConfig (defaultConfig <> cacheResourcesToConfig cacheInfo) (const $ pure ()))
+  void (withConfig (defaultConfig <> cacheConfig cacheInfo) (const $ pure ()))
   pure cacheInfo
 
 setupWithCache :: (Config -> Benchmark) -> Benchmark
-setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultConfig <>) . cacheResourcesToConfig
+setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultConfig <>) . cacheConfig
 
-setupCacheAndSP :: IO (CacheResources, Snapshot, Once Config)
+setupCacheAndSP :: IO (Cache, Snapshot, Once Config)
 setupCacheAndSP = do
   cacheInfo <- setupCache
-  let cacheConfig = defaultConfig <> cacheResourcesToConfig cacheInfo
+  let cacheConfig = defaultConfig <> cacheConfig cacheInfo
   sp <- either throwIO pure <=< withConfig cacheConfig $ \db -> do
     migrateDb db
     either throwIO pure =<< takeSnapshot Temporary db
@@ -64,7 +64,7 @@ setupCacheAndSP = do
 
   pure (cacheInfo, sp, Once theConfig)
 
-cleanupCacheAndSP :: (CacheResources, Snapshot, Once Config) -> IO ()
+cleanupCacheAndSP :: (Cache, Snapshot, Once Config) -> IO ()
 cleanupCacheAndSP (x, y, _) = cleanupSnapshot y >> cleanupInitDbCache x
 
 setupWithCacheAndSP :: (Config -> Benchmark) -> Benchmark

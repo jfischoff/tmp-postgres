@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.25.0.0
+  #186 Rename CacheResources and cacheResourcesToConfig
+
 1.24.0.0
   #185 rename makeDataDirPermanent to makeDataDirectoryPermanent
 
@@ -26,7 +29,7 @@ Changelog for tmp-postgres
 
 1.21.1.0
   #135 Add defaultConfig_9_3_10
-  #170 Expose cacheResourcesToConfig
+  #170 Expose cacheConfig
   #169 Documentation Reorg
 
 1.21.0.0
@@ -36,7 +39,7 @@ Changelog for tmp-postgres
   #164 Documentation fixes.
 
 1.20.0.0
-  #144 Make a CacheResources type.
+  #144 Make a Cache type.
   #162 Make a Snapshot alias.
 
 1.19.0.1

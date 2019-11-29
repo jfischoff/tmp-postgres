@@ -329,7 +329,7 @@ happyPaths = describe "succeeds with" $ do
             , cacheUseCopyOnWrite     = True
             }
       withDbCacheConfig cacheConfig $ \cacheInfo -> do
-        withConfig' (config <> cacheResourcesToConfig cacheInfo) $ const $ pure ()
+        withConfig' (config <> cacheConfig cacheInfo) $ const $ pure ()
         -- see if there is a cache
         tmpFiles <- listDirectory dirPath
 
@@ -355,7 +355,7 @@ happyPaths = describe "succeeds with" $ do
           xs -> fail $ "expected a single version directory but got " <> show xs
 
         -- add a file to look for later
-        withConfig' (config <> cacheResourcesToConfig cacheInfo) $ \db -> do
+        withConfig' (config <> cacheConfig cacheInfo) $ \db -> do
           -- see if the file is in the data directory
           let theDataDirectory = toDataDirectory db
           xs <- listDirectory theDataDirectory
@@ -372,11 +372,11 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCache seems to work" $
     withDbCache $ \cacheInfo ->
-      either throwIO pure =<< withConfig (cacheResourcesToConfig cacheInfo) assertConnection
+      either throwIO pure =<< withConfig (cacheConfig cacheInfo) assertConnection
 
   it "postgresql.conf append last wins" $
     withConfig' (defaultPostgresConf [("fsync", "on")]) $ \db -> do
-      toPostgresqlConf db `shouldContain` "fsync=on"
+      toPostgresqlConfigFile db `shouldContain` "fsync=on"
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
 --

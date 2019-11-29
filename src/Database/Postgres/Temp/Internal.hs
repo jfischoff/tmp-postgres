@@ -97,10 +97,10 @@ toTemporaryDirectory = resourcesTemporaryDir . dbResources
 {-|
 Get the final @postgresql.conf@
 
-@since 1.22.0.0
+@since 1.25.0.0
 -}
-toPostgresqlConf :: DB -> String
-toPostgresqlConf = completePlanConfig . resourcesPlan . dbResources
+toPostgresqlConfigFile :: DB -> String
+toPostgresqlConfigFile = completePlanConfig . resourcesPlan . dbResources
 -------------------------------------------------------------------------------
 -- Life Cycle Management
 -------------------------------------------------------------------------------
@@ -432,7 +432,7 @@ prettyPrintDB = show . pretty
 {-|
 Configuration for the @initdb@ data directory cache.
 
-@since 1.20.0.0
+@since 1.25.0.0
 -}
 data CacheConfig = CacheConfig
   { cacheTemporaryDirectory :: FilePath
@@ -452,9 +452,9 @@ data CacheConfig = CacheConfig
 {-|
 A handle to cache temporary resources and configuration.
 
-@since 1.20.0.0
+@since 1.25.0.0
 -}
-data CacheResources = CacheResources
+data Cache = Cache
   { cacheResourcesCow :: Bool
   , cacheResourcesDirectory :: CompleteDirectoryType
   } deriving stock (Generic)
@@ -487,7 +487,7 @@ It sets 'cacheDirectoryType' to 'Permanent' @~\/.tmp-postgres@ and
 'cacheTemporaryDirectory' to @\/tmp@ (but this is not used when
 'Permanent' is set).
 
-@since 1.19.0.0
+@since 1.25.0.0
 -}
 defaultCacheConfig :: CacheConfig
 defaultCacheConfig = CacheConfig
@@ -496,10 +496,14 @@ defaultCacheConfig = CacheConfig
   , cacheUseCopyOnWrite = cowCheck
   }
 
--- | Setup the @initdb@ cache folder.
+{-|
+Setup the @initdb@ cache folder.
+
+@since 1.25.0.0
+-}
 setupInitDbCache
   :: CacheConfig
-  -> IO CacheResources
+  -> IO Cache
 setupInitDbCache CacheConfig {..} =
   bracketOnError
     (setupDirectoryType
@@ -507,14 +511,14 @@ setupInitDbCache CacheConfig {..} =
       "tmp-postgres-cache"
       cacheDirectoryType
     )
-    cleanupDirectoryType $ pure . CacheResources cacheUseCopyOnWrite
+    cleanupDirectoryType $ pure . Cache cacheUseCopyOnWrite
 
 {-|
 Cleanup the cache directory if it was 'Temporary'.
 
-@since 1.20.0.0
+@since 1.25.0.0
 -}
-cleanupInitDbCache :: CacheResources -> IO ()
+cleanupInitDbCache :: Cache -> IO ()
 cleanupInitDbCache = cleanupDirectoryType . cacheResourcesDirectory
 
 {-|
@@ -526,12 +530,12 @@ Exception safe version of 'setupInitDbCache'. Equivalent to
    'withDbCacheConfig' = bracket ('setupInitDbCache' config) 'cleanupInitDbCache'
 @
 
-@since 1.20.0.0
+@since 1.25.0.0
 -}
 withDbCacheConfig
   :: CacheConfig
   -- ^ Configuration
-  -> (CacheResources -> IO a)
+  -> (Cache -> IO a)
   -- ^ action for which caching is enabled
   -> IO a
 withDbCacheConfig config =
@@ -545,22 +549,22 @@ Here is an example using caching:
 
 @
  withDbCache $ \\cache -> do
-  withCache (cacheResourcesToConfig cache) $ \\db -> ...
-  withCache (cacheResourcesToConfig cache) $ \\db -> ...
+  withCache (cacheConfig cache) $ \\db -> ...
+  withCache (cacheConfig cache) $ \\db -> ...
 @
 
-@since 1.20.0.0
+@since 1.25.0.0
 -}
-withDbCache :: (CacheResources -> IO a) -> IO a
+withDbCache :: (Cache -> IO a) -> IO a
 withDbCache = withDbCacheConfig defaultCacheConfig
 
 {-|
 Helper to make a 'Config' out of caching info.
 
-@since 1.22.0.0
+@since 1.25.0.0
 -}
-cacheResourcesToConfig :: CacheResources -> Config
-cacheResourcesToConfig CacheResources {..} = mempty
+cacheConfig :: Cache -> Config
+cacheConfig Cache {..} = mempty
   { initDbCache = pure $ pure
       (cacheResourcesCow, toFilePath cacheResourcesDirectory)
   }
@@ -627,7 +631,7 @@ and the migration process is more time consuming then copying the additional dat
 Here is an example with caching and snapshots:
 
 @
- withDbCache $ \\cache -> withConfig (cacheResourcesToConfig cache) $ \\db ->
+ withDbCache $ \\cache -> withConfig (cacheConfig cache) $ \\db ->
   migrate db
   withSnapshot Temporary db $ \\snapshot -> do
     withConfig (snapshotConfig db) $ \\migratedDb -> ...
