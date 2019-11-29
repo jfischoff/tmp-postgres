@@ -509,7 +509,7 @@ errorPaths = describe "fails when" $ do
   it "throws if initdb is not on the path" $ do
     path <-  getEnv "PATH"
 
-    bracket (setEnv "PATH" "/foo") (const $ setEnv "PATH" path) $ \_ ->
+    bracket (setEnv "PATH" "/bin") (const $ setEnv "PATH" path) $ \_ ->
       withConfig defaultConfig (const $ pure ())
         `shouldThrow` isDoesNotExistError
 
@@ -517,10 +517,14 @@ errorPaths = describe "fails when" $ do
     withTempDirectory "/tmp" "createdb-not-on-path-test" $ \dir -> do
       Just initDbPath   <- findExecutable "initdb"
       Just postgresPath <- findExecutable "postgres"
+      Just rmPath       <- findExecutable "rm"
+      Just chmod        <- findExecutable "chmod"
 
       -- create symlinks
       createSymbolicLink initDbPath $ dir <> "/initdb"
       createSymbolicLink postgresPath $ dir <> "/postgres"
+      createSymbolicLink rmPath $ dir <> "/rm"
+      createSymbolicLink chmod $ dir <> "/chmod"
 
       path <-  getEnv "PATH"
 

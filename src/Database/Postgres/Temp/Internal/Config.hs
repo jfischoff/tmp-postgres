@@ -379,12 +379,17 @@ rmDirIgnoreErrors mainDir = do
   let ignoreDirIsMissing e
         | isDoesNotExistError e = return ()
         | otherwise = throwIO e
-  -- I'm trying to prevent new files getting added
-  -- to the dir as I am deleting the files.
-  let newName = mainDir <> "_removing"
-  handle ignoreDirIsMissing $ uninterruptibleMask_ $ do
-    renameDirectory mainDir newName
-    removeDirectoryRecursive newName
+
+  -- Files are continued to be written after the delete starts. This
+  -- seems to fix it. #122
+  -- TODO come up with a better way to deal with this. Probably
+  -- need to lock the directories recursively before deleting.
+  handle ignoreDirIsMissing $ do
+    try (removePathForcibly mainDir) >>= \case
+      Left (_ :: IOError) -> try (removePathForcibly mainDir) >>= \case
+        Left (_ :: IOError) -> removePathForcibly mainDir
+        Right _ -> pure ()
+      Right _ -> pure ()
 
 -- | Either remove a 'CTemporary' directory or do nothing to a 'CPermanent'
 -- one.

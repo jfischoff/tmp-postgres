@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.23.0.3
+  #122 Try to minize failed deletes ... again.
+
 1.23.0.2
   #183 More Doc
 
