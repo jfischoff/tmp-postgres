@@ -88,8 +88,6 @@ main = defaultMain
   , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig defaultConfig $ \db ->
       migrateDb db >> testQuery db
 
--}
-
     setupWithCache $ \cacheConfig -> do
       bench "with migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \_ -> do
         replicateM_ 10 $ withConfig cacheConfig $ \db ->
@@ -100,16 +98,17 @@ main = defaultMain
       void $ withSnapshot Temporary db $ \snapshotDir -> do
         let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
         replicateM_ 10 $ withConfig theSnapshotConfig testQuery
-{-
-  , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
-      void $ withConfig theConfig $ const $ pure ()
+-}
 
+   setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
+      void $ withConfig theConfig $ const $ pure ()
+{-
   , setupWithCacheAndSP' $ \sp -> bench "snapshotConfig" $ whnfIO $ void $ snapshotConfig $ toFilePath sp
 
   , bench "migrateDb" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> migrateDb db
--}
+
   , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> void $ withSnapshot Temporary db $ const $ pure ()
-
+-}
   ]

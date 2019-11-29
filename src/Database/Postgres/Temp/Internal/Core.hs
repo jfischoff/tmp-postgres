@@ -7,7 +7,7 @@ See 'startPlan' for more details.
 module Database.Postgres.Temp.Internal.Core where
 
 import           Control.Concurrent (threadDelay)
-import           Control.Concurrent.Async (race_, withAsync)
+import           Control.Concurrent.Async
 import           Control.Exception
 import           Control.Monad
 import qualified Data.ByteString.Char8 as BSC
@@ -359,8 +359,20 @@ executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
 #else
     cpFlags = if copyDirectoryCommandCow then "cp -R --reflink=auto " else "cp -R "
 #endif
+{-
     copyCommand = cpFlags <> copyDirectoryCommandSrc <> "/* " <> copyDirectoryCommandDst
   throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
+-}
+  contents <- listDirectory copyDirectoryCommandSrc
+  createDirectoryIfMissing True copyDirectoryCommandDst
+  forConcurrently_ contents $ \subDir -> do
+    let srcDir = copyDirectoryCommandSrc <> "/" <> subDir
+    isDir <- doesDirectoryExist srcDir
+    let copyCommand = if isDir
+          then cpFlags <> srcDir <> " " <> copyDirectoryCommandDst <> "/" <> subDir
+          else "cp -c " <> srcDir <> " " <> copyDirectoryCommandDst <> "/" <> subDir
+    -- putStrLn copyCommand
+    throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
 
 -- | Call @createdb@ and tee the output to return if there is an
 --   an exception. Throws 'CreateDbFailed'.
