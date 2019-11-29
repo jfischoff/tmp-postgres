@@ -541,6 +541,14 @@ withDbCacheConfig config =
 Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
 'defaultCacheConfig' makes.
 
+Here is an example using caching:
+
+@
+ withDbCache $ \\cache -> do
+  withCache (cacheResourcesToConfig cache) $ \\db -> ...
+  withCache (cacheResourcesToConfig cache) $ \\db -> ...
+@
+
 @since 1.20.0.0
 -}
 withDbCache :: (CacheResources -> IO a) -> IO a
@@ -615,6 +623,17 @@ Exception safe method for taking a file system level copy of the database cluste
 
 Snapshots are useful if you would like to start every test from a migrated database
 and the migration process is more time consuming then copying the additional data.
+
+Here is an example with caching and snapshots:
+
+@
+ withDbCache $ \\cache -> withConfig (cacheResourcesToConfig cache) $ \\db ->
+  migrate db
+  withSnapshot Temporary db $ \\snapshot -> do
+    withConfig (snapshotConfig db) $ \\migratedDb -> ...
+    withConfig (snapshotConfig db) $ \\migratedDb -> ...
+    withConfig (snapshotConfig db) $ \\migratedDb -> ...
+@
 
 @since 1.20.0.0
 -}

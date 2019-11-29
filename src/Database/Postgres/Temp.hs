@@ -80,6 +80,7 @@ module Database.Postgres.Temp
   , stopPostgres
   , stopPostgresGracefully
   -- * Making Starting Faster
+  -- $makingItFaster
   -- ** @initdb@ Data Directory Caching
   -- *** Exception safe interface
   , withDbCache
@@ -128,3 +129,32 @@ module Database.Postgres.Temp
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
+
+{- $makingItFaster
+
+'with' and related functions are fast by themselves but
+by utilizing various forms of caching we can make them
+much faster.
+
+The slowest part of starting a new @postgres@ cluster is the @initdb@
+call which initializes the database files. However for a given @initdb@ version and configuration parameters the output
+is the same.
+
+To take advantage of this idempotent behavior we can cache the output of
+@initdb@ and copy the outputted database cluster files instead of recreating
+them. This leads to a 4x improvement in startup time.
+
+See `withDbCache` and related functions for more details.
+
+Additionally one can take snapshots of a database cluster and start
+new @postgres@ instances using the snapshot as an initial database
+cluster.
+
+This is useful if one has tests that require a time consuming migration
+process. By taking a snapshot after the migration we can start new
+isolated clusters from the point in time after the migration but before any
+test data has tainted the database.
+
+See 'withSnapshot' for details.
+
+-}
