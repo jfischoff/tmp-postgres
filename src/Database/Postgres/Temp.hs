@@ -59,8 +59,25 @@ module Database.Postgres.Temp
   , verboseConfig
   -- *** Custom Config builder helpers
   , optionsToDefaultConfig
-  -- *** General Configuration Types
-  , module Database.Postgres.Temp.Config
+  -- *** 'Config'
+  , Config (..)
+  , prettyPrintConfig
+  -- *** 'ProcessConfig'
+  , ProcessConfig (..)
+  -- *** 'EnvironmentVariables'
+  , EnvironmentVariables (..)
+  -- *** 'CommandLineArgs'
+  , CommandLineArgs (..)
+  -- *** 'DirectoryType'
+  , DirectoryType (..)
+  -- *** 'CompleteDirectoryType'
+  , CompleteDirectoryType (..)
+  -- *** 'Accum'
+  , Accum (..)
+  -- *** 'Logger'
+  , Logger
+  -- ** Internal events passed to the 'logger' .
+  , Event (..)
   -- ** Main resource handle
   , DB
   -- *** 'DB' accessors
@@ -109,4 +126,4 @@ module Database.Postgres.Temp
   ) where
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Core
-import Database.Postgres.Temp.Config
+import Database.Postgres.Temp.Internal.Config

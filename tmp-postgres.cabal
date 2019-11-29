@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.22.0.0
+version:             1.23.0.0
 synopsis: Start and stop a temporary postgres
 description: Start and stop a temporary postgres. See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
@@ -17,7 +17,6 @@ tested-with: GHC ==8.6.5
 library
   hs-source-dirs: src
   exposed-modules: Database.Postgres.Temp
-                 , Database.Postgres.Temp.Config
                  , Database.Postgres.Temp.Internal
                  , Database.Postgres.Temp.Internal.Core
                  , Database.Postgres.Temp.Internal.Config

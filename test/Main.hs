@@ -176,10 +176,8 @@ extraConfigAssert :: ConfigAndAssertion
 extraConfigAssert =
   let
     cConfig = mempty
-      { plan = mempty
         { postgresConfigFile = [("log_min_duration_statement","'100ms'")]
         }
-      }
 
     cAssert db = withConn db $ \conn -> do
       [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
@@ -191,13 +189,9 @@ defaultIpConfig :: ConfigAndAssertion
 defaultIpConfig =
   let
     cConfig = mempty
-      { plan = mempty
-          { postgresPlan = mempty
-            { connectionOptions = mempty
-              { Client.host = pure "127.0.0.1"
-              }
-            }
-          }
+      { connectionOptions = mempty
+        { Client.host = pure "127.0.0.1"
+        }
       }
 
     cAssert db = do
@@ -231,7 +225,6 @@ createdbAndDescription =
   let
     expectedDescription = "newdb description"
     cConfig = mempty
-      { plan = mempty
           { createDbConfig = pure silentProcessConfig
               { commandLine = mempty
                 { indexBased = Map.fromList
@@ -241,7 +234,6 @@ createdbAndDescription =
                 }
               }
           }
-      }
 
     cAssert db = withConn db $ \conn -> do
       [PG.Only actualDescription] <- PG.query_ conn $ fromString $ unlines
@@ -314,9 +306,7 @@ happyPaths = describe "succeeds with" $ do
       let nonEmptyFolderConfig = memptyConfigAndAssertion
             { cConfig = defaultConfig
               { dataDirectory = Permanent dirPath
-              , plan = (plan defaultConfig)
-                  { initDbConfig = Zlich
-                  }
+              , initDbConfig = Zlich
               }
             }
       testWithTemporaryDirectory nonEmptyFolderConfig testSuccessfulConfig
@@ -397,29 +387,23 @@ errorPaths = describe "fails when" $ do
   -- attempt was made? probably.
   it "timesout if the connection parameters are wrong" $ do
     let invalidConfig = mempty
-          { plan = mempty
-              { connectionTimeout = pure 0
-              , postgresPlan = mempty
-                  { connectionOptions = mempty
-                      { Client.dbname = pure "doesnotexist"
-                      }
+          { connectionTimeout = pure 0
+          , connectionOptions = mempty
+                  { Client.dbname = pure "doesnotexist"
                   }
-              }
           }
+
     withConfig (defaultConfig <> invalidConfig) (const $ pure ())
       `shouldReturn` Left ConnectionTimedOut
 
   it "does not timeout quickly with an invalid connection and large timeout" $ do
     let invalidConfig = mempty
-          { plan = mempty
-              { connectionTimeout = pure maxBound
-              , postgresPlan = mempty
-                  { connectionOptions = mempty
-                      { Client.dbname = pure "doesnotexist"
-                      }
+          { connectionTimeout = pure maxBound
+          , connectionOptions = mempty
+                  { Client.dbname = pure "doesnotexist"
                   }
-              }
           }
+
     timeout 100000 (withConfig (defaultConfig <> invalidConfig) (const $ pure ()))
       `shouldReturn` Nothing
 {-
@@ -445,9 +429,7 @@ errorPaths = describe "fails when" $ do
           }
 
         invalidConfig' = invalidConfig
-          { plan = (plan invalidConfig)
-              { connectionTimeout = pure 100000
-              }
+          { connectionTimeout = pure 100000
           }
     withConfig invalidConfig' (const $ pure ())
       `shouldReturn` Left ConnectionTimedOut
@@ -458,10 +440,9 @@ errorPaths = describe "fails when" $ do
           }
 
         invalidConfig' = invalidConfig
-          { plan = (plan invalidConfig)
-              { connectionTimeout = pure 100000
-              }
+          { connectionTimeout = pure 100000
           }
+
     withConfig invalidConfig' (const $ pure ())
       `shouldReturn` Left ConnectionTimedOut
 
@@ -474,10 +455,8 @@ errorPaths = describe "fails when" $ do
 
   it "No initdb plan causes failure" $ do
     let dontTimeout = defaultConfig
-          { plan = (plan defaultConfig)
-              { connectionTimeout = pure maxBound
-              , initDbConfig = Zlich
-              }
+          { connectionTimeout = pure maxBound
+          , initDbConfig = Zlich
           }
 
     withConfig dontTimeout (const $ pure ())
@@ -500,14 +479,13 @@ errorPaths = describe "fails when" $ do
 
   it "invalid initdb options cause an error" $ do
     let invalidConfig = defaultConfig
-          { plan = (plan defaultConfig)
-              { initDbConfig = pure silentProcessConfig
-                { commandLine = mempty
-                  { keyBased = Map.singleton "--super-sync" Nothing
-                  }
-                }
+          { initDbConfig = pure silentProcessConfig
+            { commandLine = mempty
+              { keyBased = Map.singleton "--super-sync" Nothing
               }
+            }
           }
+
     withConfig invalidConfig (const $ pure ()) >>= \case
       Right () -> fail "Should not succeed"
       Left (InitDbFailed {}) -> pure ()
@@ -515,16 +493,14 @@ errorPaths = describe "fails when" $ do
 
   it "invalid createdb plan causes an error" $ do
     let invalidConfig = defaultConfig
-          { plan = (plan defaultConfig)
-              { createDbConfig = pure silentProcessConfig
-                { commandLine = mempty
-                  { indexBased =
-                      Map.singleton 0 "template1"
-                  }
-                }
+          { createDbConfig = pure silentProcessConfig
+            { commandLine = mempty
+              { indexBased =
+                  Map.singleton 0 "template1"
               }
-
+            }
           }
+
     withConfig invalidConfig (const $ pure ()) >>= \case
       Right () -> fail "Should not succeed"
       Left (CreateDbFailed {}) -> pure ()
@@ -549,10 +525,8 @@ errorPaths = describe "fails when" $ do
       path <-  getEnv "PATH"
 
       let config = defaultConfig
-            { plan = (plan defaultConfig)
                 { createDbConfig = pure mempty
                 }
-            }
 
       bracket (setEnv "PATH" dir) (const $ setEnv "PATH" path) $ \_ ->
         withConfig config (const $ pure ())
@@ -615,14 +589,12 @@ spec = do
           , "connectionOptions:"
           , "connectionTimeout:"
           , "dataDirectory:"
-          , "dataDirectoryString:"
           , "environmentVariables:"
           , "inherit:"
           , "initDbConfig:"
           , "port:"
           , "postgresConfig:"
           , "postgresConfigFile:"
-          , "postgresPlan:"
           , "socketDirectory:"
           , "specific:"
           , "stdErr:"

@@ -393,94 +393,26 @@ cleanupDirectoryType = \case
   CPermanent _ -> pure ()
   CTemporary filePath -> rmDirIgnoreErrors filePath
 
--- | @postgres@ process config and corresponding client connection
---   'Client.Options'.
---
---   @since 1.12.0.0
-data PostgresPlan = PostgresPlan
-  { postgresConfig :: ProcessConfig
-  -- ^ Monoid for the @postgres@ ProcessConfig.
-  , connectionOptions :: Client.Options
-  -- ^ Monoid for the @postgres@ client connection options.
-  }
-  deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup PostgresPlan
-  deriving Monoid    via GenericMonoid PostgresPlan
 
-instance Pretty PostgresPlan where
-  pretty PostgresPlan {..}
-    = text "postgresConfig:"
-    <> softline
-    <> indent 2 (pretty postgresConfig)
-    <> hardline
-    <> text "connectionOptions:"
-    <> softline
-    <> indent 2 (prettyOptions connectionOptions)
-
--- | Turn a 'PostgresPlan' into a 'CompletePostgresPlan'. Fails if any
+-- | Turn a 'Config' into a 'CompletePostgresPlan'. Fails if any
 --   values are missing.
-completePostgresPlan :: [(String, String)] -> PostgresPlan -> Either [String] CompletePostgresPlan
-completePostgresPlan envs PostgresPlan {..} = runErrors $ do
+completePostgresPlan :: [(String, String)] -> Config -> Either [String] CompletePostgresPlan
+completePostgresPlan envs Config {..} = runErrors $ do
   let completePostgresPlanClientOptions = connectionOptions
   completePostgresPlanProcessConfig <-
     eitherToErrors $ addErrorContext "postgresConfig: " $
       completeProcessConfig envs postgresConfig
 
   pure CompletePostgresPlan {..}
--------------------------------------------------------------------------------
--- Plan
--------------------------------------------------------------------------------
--- | Describe how to run @initdb@, @createdb@ and @postgres@
---
---   @since 1.16.0.0
-data Plan = Plan
-  { logger :: Last Logger
-  , initDbConfig :: Accum ProcessConfig
-  , copyConfig :: Last (Maybe CopyDirectoryCommand)
-  , createDbConfig :: Accum ProcessConfig
-  , postgresPlan :: PostgresPlan
-  , postgresConfigFile :: [(String, String)]
-  , dataDirectoryString :: Last String
-  , connectionTimeout :: Last Int
-  -- ^ Max time to spend attempting to connection to @postgres@.
-  --   Time is in microseconds.
-  }
-  deriving stock (Generic)
-  deriving Semigroup via GenericSemigroup Plan
-  deriving Monoid    via GenericMonoid Plan
 
-instance Pretty Plan where
-  pretty Plan {..}
-    =  text "initDbConfig:"
-    <> softline
-    <> indent 2 (pretty $ getAccum initDbConfig)
-    <> hardline
-    <> text "initDbConfig:"
-    <> softline
-    <> indent 2 (pretty $ getAccum createDbConfig)
-    <> text "copyConfig:"
-    <> softline
-    <> indent 2 (pretty (getLast copyConfig))
-    <> hardline
-    <> text "postgresPlan:"
-    <> softline
-    <> indent 2 (pretty postgresPlan)
-    <> hardline
-    <> text "postgresConfigFile:"
-    <> softline
-    <> indent 2 (vsep $ map (\(x, y) -> text x <> "=" <> text y) postgresConfigFile)
-    <> hardline
-    <> text "dataDirectoryString:" <+> pretty (getLast dataDirectoryString)
-    <> hardline
-    <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
 
 flattenConfig :: [(String, String)] -> String
 flattenConfig = unlines . map (\(x, y) -> x <> "=" <> y) .
   Map.toList . Map.fromList
 
--- | Turn a 'Plan' into a 'CompletePlan'. Fails if any values are missing.
-completePlan :: [(String, String)] -> Plan -> Either [String] CompletePlan
-completePlan envs Plan {..} = do
+-- | Turn a 'Config' into a 'CompletePlan'. Fails if any values are missing.
+completePlan :: [(String, String)] -> String -> Config -> Either [String] CompletePlan
+completePlan envs dataDirectoryString config@Config {..} = do
   (   completePlanLogger
     , completePlanInitDb
     , completePlanCreateDb
@@ -495,8 +427,8 @@ completePlan envs Plan {..} = do
         <*> eitherToErrors (addErrorContext "createDbConfig: " $
               traverse (completeProcessConfig envs) $ getAccum createDbConfig)
         <*> eitherToErrors (addErrorContext "postgresPlan: "
-              (completePostgresPlan envs postgresPlan))
-        <*> getOption "dataDirectoryString" dataDirectoryString
+              (completePostgresPlan envs config))
+        <*> pure dataDirectoryString
         <*> getOption "connectionTimeout" connectionTimeout
 
   let completePlanConfig = flattenConfig postgresConfigFile
@@ -505,23 +437,28 @@ completePlan envs Plan {..} = do
 
   pure CompletePlan {..}
 
--- Returns 'True' if the 'Plan' has a
+-- Returns 'True' if the 'Config' has a
 -- 'Just' 'initDbConfig'.
-hasInitDb :: Plan -> Bool
-hasInitDb Plan {..} = isJust $ getAccum initDbConfig
+hasInitDb :: Config -> Bool
+hasInitDb Config {..} = isJust $ getAccum initDbConfig
 
--- Returns 'True' if the 'Plan' has a
+-- Returns 'True' if the 'Config' has a
 -- 'Just' 'createDbConfig'.
-hasCreateDb :: Plan -> Bool
-hasCreateDb Plan {..} = isJust $ getAccum createDbConfig
+hasCreateDb :: Config -> Bool
+hasCreateDb Config {..} = isJust $ getAccum createDbConfig
 
 -- | The high level options for overriding default behavior.
 --
 --   @since 1.16.0.0
 data Config = Config
-  { plan    :: Plan
-  -- ^ Extend or replace any of the configuration used to create a final
-  --   'CompletePlan'.
+  { logger :: Last Logger
+  , initDbConfig :: Accum ProcessConfig
+  , copyConfig :: Last (Maybe CopyDirectoryCommand)
+  , createDbConfig :: Accum ProcessConfig
+  , postgresConfig :: ProcessConfig
+  , connectionOptions :: Client.Options
+  , postgresConfigFile :: [(String, String)]
+  , connectionTimeout :: Last Int
   , socketDirectory  :: DirectoryType
   -- ^ Override the default temporary UNIX socket directory by setting this.
   , dataDirectory :: DirectoryType
@@ -541,11 +478,7 @@ data Config = Config
 
 instance Pretty Config where
   pretty Config {..}
-    =  text "plan:"
-    <> softline
-    <> pretty plan
-    <> hardline
-    <> text "socketDirectory:"
+    =  text "socketDirectory:"
     <> softline
     <> pretty socketDirectory
     <> hardline
@@ -560,6 +493,31 @@ instance Pretty Config where
     <> pretty (getLast temporaryDirectory)
     <> hardline
     <> text "initDbCache:" <+> pretty (getLast initDbCache)
+    <> hardline
+    <> text "initDbConfig:"
+    <> softline
+    <> indent 2 (pretty $ getAccum initDbConfig)
+    <> hardline
+    <> text "initDbConfig:"
+    <> softline
+    <> indent 2 (pretty $ getAccum createDbConfig)
+    <> text "copyConfig:"
+    <> softline
+    <> indent 2 (pretty (getLast copyConfig))
+    <> hardline
+    <> text "postgresConfig:"
+    <> softline
+    <> indent 2 (pretty postgresConfig)
+    <> hardline
+    <> text "connectionOptions:"
+    <> softline
+    <> indent 2 (prettyOptions connectionOptions)
+    <> hardline
+    <> text "postgresConfigFile:"
+    <> softline
+    <> indent 2 (vsep $ map (\(x, y) -> text x <> "=" <> text y) postgresConfigFile)
+    <> hardline
+    <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
 
 socketDirectoryToConfig :: FilePath -> [(String, String)]
 socketDirectoryToConfig dir =
@@ -574,7 +532,7 @@ socketDirectoryToConfig dir =
 Copy command used to create a data directory. If @initdb@ used to create the
 data directory directly this is not needed.
 
-If 'destinationDirectory' is Nothing then the 'dataDirectoryString'
+If 'destinationDirectory' is Nothing then the 'dataDirectory'
 (which might be generated) is used.
 
 @since 1.16.0.0
@@ -702,7 +660,7 @@ cachePlan plan@CompletePlan {..} cow cacheDirectory = case completePlanInitDb of
       , completePlanInitDb = theInitDbPlan
       }
 
--- | Create a 'Plan' that sets the command line options of all processes
+-- | Create a 'Config' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan
 --   that is combined with the @extra@ plan from
 --   'Database.Postgres.Temp.startConfig'.
@@ -717,27 +675,24 @@ toPlan
   -- ^ Socket directory.
   -> FilePath
   -- ^ The @postgres@ data directory.
-  -> Plan
+  -> Config
 toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempty
   { postgresConfigFile = socketDirectoryToConfig socketDirectory
-  , dataDirectoryString = pure dataDirectoryString
   , connectionTimeout = pure (60 * 1000000) -- 1 minute
   , logger = pure $ const $ pure ()
-  , postgresPlan = mempty
-      { postgresConfig = silentProcessConfig
-          { commandLine = mempty
-              { keyBased = Map.fromList
-                  [ ("-p", Just $ show port)
-                  , ("-D", Just dataDirectoryString)
-                  ]
-              }
-          }
-      , connectionOptions = mempty
-          { Client.host   = pure socketDirectory
-          , Client.port   = pure port
-          , Client.dbname = pure "postgres"
-          }
-      }
+  , postgresConfig = silentProcessConfig
+    { commandLine = mempty
+        { keyBased = Map.fromList
+            [ ("-p", Just $ show port)
+            , ("-D", Just dataDirectoryString)
+            ]
+        }
+    }
+  , connectionOptions = mempty
+    { Client.host   = pure socketDirectory
+    , Client.port   = pure port
+    , Client.dbname = pure "postgres"
+    }
   , createDbConfig = if makeCreateDb
       then pure silentProcessConfig
         { commandLine = mempty
@@ -759,12 +714,12 @@ toPlan _makeInitDb makeCreateDb port socketDirectory dataDirectoryString = mempt
   }
 
 -- | Create all the temporary resources from a 'Config'. This also combines the
--- 'Plan' from 'toPlan' with the @extra@ 'Config' passed in.
+-- 'Config' from 'toPlan' with the @extra@ 'Config' passed in.
 setupConfig
   :: Config
   -- ^ @extra@ 'Config' to 'mappend' after the @generated@ 'Config'.
   -> IO Resources
-setupConfig Config {..} = evalContT $ do
+setupConfig config@Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
   let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
@@ -774,15 +729,15 @@ setupConfig Config {..} = evalContT $ do
   resourcesDataDir <- ContT $ bracketOnError
     (setupDirectoryType resourcesTemporaryDir "tmp-postgres-data" dataDirectory) cleanupDirectoryType
   let hostAndDir = toPlan
-        (hasInitDb plan)
-        (hasCreateDb plan)
+        (hasInitDb config)
+        (hasCreateDb config)
         thePort
         (toFilePath resourcesSocketDirectory)
         (toFilePath resourcesDataDir)
-      finalPlan = hostAndDir <> plan
+      finalPlan = hostAndDir <> config
   uncachedPlan <- lift $
     either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
-      completePlan envs finalPlan
+      completePlan envs (toFilePath resourcesDataDir) finalPlan
   resourcesPlan <- lift $ maybe (pure uncachedPlan) (uncurry $ cachePlan uncachedPlan) resourcesInitDbCache
   pure Resources {..}
 
@@ -846,14 +801,13 @@ makeResourcesDataDirPermanent r = r
 optionsToConfig :: Client.Options -> Config
 optionsToConfig opts@Client.Options {..}
   =  ( mempty
-       { plan = optionsToPlan opts
-       , port = maybe (Last Nothing) (pure . pure) $ getLast port
+       { port = maybe (Last Nothing) (pure . pure) $ getLast port
        , socketDirectory = maybe mempty hostToSocketClass $ getLast host
        }
-     )
--- Convert the 'Client.Options' to a 'Plan' that can
+     ) <> optionsToPlan opts
+-- Convert the 'Client.Options' to a 'Config' that can
 -- be connected to with the 'Client.Options'.
-optionsToPlan :: Client.Options -> Plan
+optionsToPlan :: Client.Options -> Config
 optionsToPlan opts@Client.Options {..}
   =  maybe mempty (dbnameToPlan (getLast user) (getLast password)) (getLast dbname)
   <> maybe mempty userToPlan (getLast user)
@@ -862,15 +816,13 @@ optionsToPlan opts@Client.Options {..}
 
 -- Wrap the 'Client.Options' in an appropiate
 -- 'PostgresPlan'.
-clientOptionsToPlan :: Client.Options -> Plan
+clientOptionsToPlan :: Client.Options -> Config
 clientOptionsToPlan opts = mempty
-  { postgresPlan = mempty
-    { connectionOptions = opts
-    }
+  { connectionOptions = opts
   }
 
--- Create a 'Plan' given a user.
-userToPlan :: String -> Plan
+-- Create a 'Config' given a user.
+userToPlan :: String -> Config
 userToPlan user = mempty
   { initDbConfig = pure mempty
     { commandLine = mempty
@@ -883,7 +835,7 @@ userToPlan user = mempty
 -- as the database name.
 -- It does nothing if the db names are "template1" or
 -- "postgres"
-dbnameToPlan :: Maybe String -> Maybe String -> String -> Plan
+dbnameToPlan :: Maybe String -> Maybe String -> String -> Config
 dbnameToPlan muser mpassword dbName
   | dbName == "template1" || dbName == "postgres" = mempty
   | otherwise = mempty
@@ -899,7 +851,7 @@ dbnameToPlan muser mpassword dbName
     }
 
 -- Adds the 'PGPASSWORD' to both @initdb@ and @createdb@
-passwordToPlan :: String -> Plan
+passwordToPlan :: String -> Config
 passwordToPlan password = mempty
   { initDbConfig = pure mempty
     { environmentVariables = mempty
@@ -914,323 +866,3 @@ hostToSocketClass :: String -> DirectoryType
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
   '/' : _ -> Permanent hostOrSocketPath
   _ -> Temporary
-
--------------------------------------------------------------------------------
--- Lenses
--- Most this code was generated with microlens-th
--------------------------------------------------------------------------------
--- | Local Lens alias.
-type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
--- | Local Lens' alias.
-type Lens' s a = Lens s s a a
-
--- | Lens for 'inherit'
---
---   @since 1.12.0.0
-inheritL :: Lens' EnvironmentVariables (Last Bool)
-inheritL f_aj5e (EnvironmentVariables x_aj5f x_aj5g)
-  = fmap (`EnvironmentVariables` x_aj5g)
-      (f_aj5e x_aj5f)
-{-# INLINE inheritL #-}
-
--- | Lens for 'specific'.
---
---   @since 1.12.0.0
-specificL :: Lens' EnvironmentVariables (Map String String)
-specificL f_aj5i (EnvironmentVariables x_aj5j x_aj5k)
-  = fmap (EnvironmentVariables x_aj5j)
-      (f_aj5i x_aj5k)
-{-# INLINE specificL #-}
-
--- | Lens for 'commandLine'.
---
---   @since 1.12.0.0
-commandLineL ::
-  Lens' ProcessConfig CommandLineArgs
-commandLineL
-  f_allv
-  (ProcessConfig x_allw x_allx x_ally x_allz x_allA)
-  = fmap
-       (\ y_allB
-          -> ProcessConfig x_allw y_allB x_ally x_allz
-               x_allA)
-      (f_allv x_allx)
-{-# INLINE commandLineL #-}
-
--- | Lens for 'environmentVariables'.
---
---   @since 1.12.0.0
-environmentVariablesL ::
-  Lens' ProcessConfig EnvironmentVariables
-environmentVariablesL
-  f_allC
-  (ProcessConfig x_allD x_allE x_allF x_allG x_allH)
-  = fmap
-       (\ y_allI
-          -> ProcessConfig y_allI x_allE x_allF x_allG
-               x_allH)
-      (f_allC x_allD)
-{-# INLINE environmentVariablesL #-}
-
--- | Lens for 'stdErr'
---
---   @since 1.12.0.0
-stdErrL ::
-  Lens' ProcessConfig (Last Handle)
-stdErrL
-  f_allJ
-  (ProcessConfig x_allK x_allL x_allM x_allN x_allO)
-  = fmap
-       (ProcessConfig x_allK x_allL x_allM x_allN)
-      (f_allJ x_allO)
-{-# INLINE stdErrL #-}
-
--- | Lens for 'stdIn'.
---
---   @since 1.12.0.0
-stdInL ::
-  Lens' ProcessConfig (Last Handle)
-stdInL
-  f_allQ
-  (ProcessConfig x_allR x_allS x_allT x_allU x_allV)
-  = fmap
-       (\ y_allW
-          -> ProcessConfig x_allR x_allS y_allW x_allU
-               x_allV)
-      (f_allQ x_allT)
-{-# INLINE stdInL #-}
-
--- | Lens for 'stdOut'.
---
---   @since 1.12.0.0
-stdOutL ::
-  Lens' ProcessConfig (Last Handle)
-stdOutL
-  f_allX
-  (ProcessConfig x_allY x_allZ x_alm0 x_alm1 x_alm2)
-  = fmap
-       (\ y_alm3
-          -> ProcessConfig x_allY x_allZ x_alm0 y_alm3
-               x_alm2)
-      (f_allX x_alm1)
-{-# INLINE stdOutL #-}
-
--- | Lens for 'connectionOptions'.
---
---   @since 1.12.0.0
-connectionOptionsL ::
-  Lens' PostgresPlan Client.Options
-connectionOptionsL
-  f_am1y
-  (PostgresPlan x_am1z x_am1A)
-  = fmap (PostgresPlan x_am1z)
-      (f_am1y x_am1A)
-{-# INLINE connectionOptionsL #-}
-
--- | Lens for 'postgresConfig'.
---
---   @since 1.12.0.0
-postgresConfigL ::
-  Lens' PostgresPlan ProcessConfig
-postgresConfigL
-  f_am1C
-  (PostgresPlan x_am1D x_am1E)
-  = fmap (`PostgresPlan` x_am1E)
-      (f_am1C x_am1D)
-{-# INLINE postgresConfigL #-}
-
--- | Lens for 'postgresConfigFile'.
---
---   @since 1.12.0.0
-postgresConfigFileL :: Lens' Plan [(String, String)]
-postgresConfigFileL f plan@Plan{..}
-  = fmap (\x -> plan { postgresConfigFile = x })
-      (f postgresConfigFile)
-{-# INLINE postgresConfigFileL #-}
-
--- | Lens for 'createDbConfig'.
---
---   @since 1.17.0.0
-createDbConfigL ::
-  Lens' Plan (Accum ProcessConfig)
-createDbConfigL f plan@Plan{..}
-  = fmap (\x -> plan { createDbConfig = x })
-      (f createDbConfig)
-{-# INLINE createDbConfigL #-}
-
--- | Lens for 'dataDirectoryString'.
---
---   @since 1.12.0.0
-dataDirectoryStringL :: Lens' Plan (Last String)
-dataDirectoryStringL f plan@Plan{..}
-  = fmap (\x -> plan { dataDirectoryString = x })
-      (f dataDirectoryString)
-{-# INLINE dataDirectoryStringL #-}
-
--- | Lens for 'copyConfig'.
---
---   @since 1.16.0.0
-copyConfigL :: Lens' Plan (Last (Maybe CopyDirectoryCommand))
-copyConfigL f plan@Plan{..}
-  = fmap (\x -> plan { copyConfig = x })
-      (f copyConfig)
-{-# INLINE copyConfigL #-}
-
--- | Lens for 'initDbConfig'.
---
---   @since 1.12.0.0
-initDbConfigL :: Lens' Plan (Accum ProcessConfig)
-initDbConfigL f plan@Plan{..}
-  = fmap (\x -> plan { initDbConfig = x })
-      (f initDbConfig)
-{-# INLINE initDbConfigL #-}
-
--- | Lens for 'logger'.
---
---   @since 1.12.0.0
-loggerL :: Lens' Plan (Last Logger)
-loggerL f plan@Plan{..}
-  = fmap (\x -> plan { logger = x })
-      (f logger)
-{-# INLINE loggerL #-}
-
--- | Lens for 'postgresPlan'.
---
---   @since 1.12.0.0
-postgresPlanL :: Lens' Plan PostgresPlan
-postgresPlanL f plan@Plan{..}
-  = fmap (\x -> plan { postgresPlan = x })
-      (f postgresPlan)
-{-# INLINE postgresPlanL #-}
-
--- | Lens for 'connectionTimeout'.
---
---   @since 1.12.0.0
-connectionTimeoutL :: Lens' Plan (Last Int)
-connectionTimeoutL f plan@Plan{..}
-  = fmap (\x -> plan { connectionTimeout = x })
-      (f connectionTimeout)
-{-# INLINE connectionTimeoutL #-}
-
--- | Lens for 'resourcesDataDir'.
---
---   @since 1.12.0.0
-resourcesDataDirL :: Lens' Resources CompleteDirectoryType
-resourcesDataDirL f resources@Resources {..}
-  = fmap (\x -> resources { resourcesDataDir = x })
-      (f resourcesDataDir)
-{-# INLINE resourcesDataDirL #-}
-
--- | Lens for 'resourcesPlan'.
---
---   @since 1.12.0.0
-resourcesPlanL :: Lens' Resources CompletePlan
-resourcesPlanL f resources@Resources {..}
-  = fmap (\x -> resources { resourcesPlan = x })
-      (f resourcesPlan)
-{-# INLINE resourcesPlanL #-}
-
--- | Lens for 'resourcesSocketDirectory'.
---
---   @since 1.15.0.0
-resourcesSocketDirectoryL :: Lens' Resources CompleteDirectoryType
-resourcesSocketDirectoryL f resources@Resources {..}
-  = fmap (\x -> resources { resourcesSocketDirectory = x })
-      (f resourcesSocketDirectory)
-{-# INLINE resourcesSocketDirectoryL #-}
-
--- | Lens for 'dataDirectory'.
---
---   @since 1.12.0.0
-dataDirectoryL :: Lens' Config DirectoryType
-dataDirectoryL f config@Config{..}
-  = fmap (\ x -> config { dataDirectory = x } )
-      (f dataDirectory)
-{-# INLINE dataDirectoryL #-}
-
--- | Lens for 'plan'.
---
---   @since 1.12.0.0
-planL :: Lens' Config Plan
-planL f config@Config{..}
-  = fmap (\ x -> config { plan = x } )
-      (f plan)
-{-# INLINE planL #-}
-
--- | Lens for 'port'.
---
---   @since 1.12.0.0
-portL :: Lens' Config (Last (Maybe Int))
-portL f config@Config{..}
-  = fmap (\ x -> config { port = x } )
-      (f port)
-{-# INLINE portL #-}
-
--- | Lens for 'socketDirectory'.
---
---   @since 1.12.0.0
-socketDirectoryL :: Lens' Config DirectoryType
-socketDirectoryL f config@Config{..}
-  = fmap (\ x -> config { socketDirectory = x } )
-      (f socketDirectory)
-{-# INLINE socketDirectoryL #-}
-
--- | Lens for 'socketDirectory'.
---
---   @since 1.12.0.0
-temporaryDirectoryL :: Lens' Config (Last FilePath)
-temporaryDirectoryL f config@Config{..}
-  = fmap (\ x -> config { temporaryDirectory = x } )
-      (f temporaryDirectory)
-{-# INLINE temporaryDirectoryL #-}
-
--- | Lens for 'indexBased'.
---
---   @since 1.12.0.0
-indexBasedL ::
-  Lens' CommandLineArgs (Map Int String)
-indexBasedL
-  f_amNr
-  (CommandLineArgs x_amNs x_amNt)
-  = fmap (CommandLineArgs x_amNs)
-      (f_amNr x_amNt)
-{-# INLINE indexBasedL #-}
-
--- | Lens for 'keyBased'.
---
---   @since 1.12.0.0
-keyBasedL ::
-  Lens' CommandLineArgs (Map String (Maybe String))
-keyBasedL
-  f_amNv
-  (CommandLineArgs x_amNw x_amNx)
-  = fmap (`CommandLineArgs` x_amNx)
-      (f_amNv x_amNw)
-{-# INLINE keyBasedL #-}
-
--- | Lens for 'sourceDirectory'.
---
---   @since 1.16.0.0
-sourceDirectoryL :: Lens' CopyDirectoryCommand FilePath
-sourceDirectoryL f cmd@CopyDirectoryCommand{..}
-  = fmap (\x -> cmd { sourceDirectory = x })
-      (f sourceDirectory)
-{-# INLINE sourceDirectoryL #-}
-
--- | Lens for 'destinationDirectory'.
---
---   @since 1.16.0.0
-destinationDirectoryL :: Lens' CopyDirectoryCommand (Maybe FilePath)
-destinationDirectoryL f cmd@CopyDirectoryCommand{..}
-  = fmap (\x -> cmd { destinationDirectory = x })
-      (f destinationDirectory)
-{-# INLINE destinationDirectoryL #-}
-
--- | Lens for 'useCopyOnWrite'.
---
---   @since 1.16.0.0
-useCopyOnWriteL :: Lens' CopyDirectoryCommand Bool
-useCopyOnWriteL f cmd@CopyDirectoryCommand{..}
-  = fmap (\x -> cmd { useCopyOnWrite = x })
-      (f useCopyOnWrite)
-{-# INLINE useCopyOnWriteL #-}

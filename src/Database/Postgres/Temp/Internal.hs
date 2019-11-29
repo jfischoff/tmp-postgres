@@ -169,29 +169,16 @@ custom 'Config' like the following.
 
  @
   custom = defaultConfig <> mempty
-    { 'plan' = mempty
-      { 'postgresConfigFile' =
-          [ "wal_level = replica"
-          , "archive_mode = on"
-          , "max_wal_senders = 2"
-          , "fsync = on"
-          , "synchronous_commit = on"
-          ]
-      }
+    { 'postgresConfigFile' =
+        [ ("wal_level, "replica")
+        , ("archive_mode", on")
+        , ("max_wal_senders", "2")
+        , ("fsync", "on")
+        , ("synchronous_commit", "on")
+        ]
     }
  @
 
-Or using the provided lenses and your favorite lens library:
-
- @
-  custom = defaultConfig & 'planL' . 'postgresConfigFileL' <>~
-    [ "wal_level = replica"
-    , "archive_mode = on"
-    , "max_wal_senders = 2"
-    , "fsync = on"
-    , "synchronous_commit = on"
-    ]
- @
 
  This is common enough there is `defaultPostgresConf` which
  is a helper to do this.
@@ -203,15 +190,14 @@ Or using the provided lenses and your favorite lens library:
 -}
 defaultConfig :: Config
 defaultConfig = mempty
-  { plan = mempty
-    { postgresConfigFile = fastPostgresConfig
-    , initDbConfig = pure mempty
-      { commandLine = mempty
-        { keyBased = Map.singleton "--no-sync" Nothing
-        }
+  { postgresConfigFile = fastPostgresConfig
+  , initDbConfig = pure mempty
+    { commandLine = mempty
+      { keyBased = Map.singleton "--no-sync" Nothing
       }
     }
   }
+
 
 {-|
 Default configuration for PostgreSQL versions 9.3 and greater but less
@@ -224,15 +210,14 @@ should use this config.
 -}
 defaultConfig_9_3_10 :: Config
 defaultConfig_9_3_10 = mempty
-  { plan = mempty
-    { postgresConfigFile = fastPostgresConfig
-    , initDbConfig = pure mempty
-      { commandLine = mempty
-        { keyBased = Map.singleton "--nosync" Nothing
-        }
+  { postgresConfigFile = fastPostgresConfig
+  , initDbConfig = pure mempty
+    { commandLine = mempty
+      { keyBased = Map.singleton "--nosync" Nothing
       }
     }
   }
+
 
 {-|
 'mappend' the 'defaultConfig' with a 'Config' that provides additional
@@ -240,25 +225,15 @@ defaultConfig_9_3_10 = mempty
 
 @
 'defaultPostgresConf' extra = 'defaultConfig' <> mempty
-  { 'plan' = mempty
-    { 'postgresConfigFile' = extra
-    }
+  { 'postgresConfigFile' = extra
   }
-@
-
-or with lenses:
-
-@
-'defaultPostgresConf' extra = 'defaultConfig' & 'planL' . 'postgresConfigFileL' <>~ extra
 @
 
 @since 1.21.0.0
 -}
 defaultPostgresConf :: [(String, String)] -> Config
 defaultPostgresConf extra = defaultConfig <> mempty
-  { plan = mempty
-    { postgresConfigFile = extra
-    }
+  { postgresConfigFile = extra
   }
 
 -- | Default postgres options
@@ -283,16 +258,13 @@ The similar to 'defaultConfig' log as much as possible.
 -}
 verboseConfig :: Config
 verboseConfig = defaultConfig <> mempty
-  { plan = mempty
-    { logger = pure print
-    , postgresConfigFile = verbosePostgresConfig
-    , initDbConfig = pure standardProcessConfig
-    , createDbConfig = pure standardProcessConfig
-    , postgresPlan = mempty
-        { postgresConfig = standardProcessConfig
-        }
-    }
+  { logger = pure print
+  , postgresConfigFile = verbosePostgresConfig
+  , initDbConfig = pure standardProcessConfig
+  , createDbConfig = pure standardProcessConfig
+  , postgresConfig = standardProcessConfig
   }
+
 
 {-|
 
@@ -317,7 +289,7 @@ Additionally the @generated@ `Config` also does the following:
 * Sets a `connectionTimeout` of one minute.
 * Logs internal `Event`s.
 * Sets the processes to use the standard input and output handles.
-* Sets the 'dataDirectoryString' to file path generated from 'dataDirectory'.
+* Sets the 'dataDirectory' to file path generated from 'dataDirectory'.
 
 All of these values can be overrided by the @extra@ config.
 
@@ -378,7 +350,7 @@ stopPostgres = stopPlan . dbPostgresProcess
 stopPostgresGracefully :: DB -> IO ExitCode
 stopPostgresGracefully = stopPostgresProcess True . dbPostgresProcess
 
--- | Restart the @postgres@ from 'DB' using the prior 'Plan'.
+-- | Restart the @postgres@ from 'DB' using the prior 'Config'.
 --
 --   @since 1.12.0.0
 restart :: DB -> IO (Either StartError DB)
@@ -664,12 +636,10 @@ snapshot directory to a temporary directory.
 -}
 snapshotConfig :: Snapshot -> Config
 snapshotConfig (Snapshot savePointPath) = mempty
-  { plan = mempty
-      { copyConfig = pure $ pure CopyDirectoryCommand
-          { sourceDirectory = toFilePath savePointPath
-          , destinationDirectory = Nothing
-          , useCopyOnWrite = cowCheck
-          }
-      , initDbConfig = Zlich
+  { copyConfig = pure $ pure CopyDirectoryCommand
+      { sourceDirectory = toFilePath savePointPath
+      , destinationDirectory = Nothing
+      , useCopyOnWrite = cowCheck
       }
+  , initDbConfig = Zlich
   }
