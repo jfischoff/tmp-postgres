@@ -54,12 +54,12 @@ setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultCo
 setupCacheAndSP :: IO (Cache, Snapshot, Once Config)
 setupCacheAndSP = do
   cacheInfo <- setupCache
-  let cacheConfig = defaultConfig <> cacheConfig cacheInfo
-  sp <- either throwIO pure <=< withConfig cacheConfig $ \db -> do
+  let theCacheConfig = defaultConfig <> cacheConfig cacheInfo
+  sp <- either throwIO pure <=< withConfig theCacheConfig $ \db -> do
     migrateDb db
     either throwIO pure =<< takeSnapshot Temporary db
 
-  let theConfig = defaultConfig <> snapshotConfig sp <> cacheConfig
+  let theConfig = defaultConfig <> snapshotConfig sp <> theCacheConfig
 
 
   pure (cacheInfo, sp, Once theConfig)
@@ -90,12 +90,12 @@ main = defaultMain
 
 -}
 
-    setupWithCache $ \cacheConfig -> do
-      bench "with migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \_ -> do
-        replicateM_ 10 $ withConfig cacheConfig $ \db ->
+    setupWithCache $ \theCacheConfig -> do
+      bench "with migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \_ -> do
+        replicateM_ 10 $ withConfig theCacheConfig $ \db ->
           migrateDb db >> testQuery db
 
-  , setupWithCache $ \cacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig cacheConfig $ \db -> do
+  , setupWithCache $ \theCacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \db -> do
       migrateDb db
       void $ withSnapshot Temporary db $ \snapshotDir -> do
         let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
