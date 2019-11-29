@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.24.0.0
+  #185 rename makeDataDirPermanent to makeDataDirectoryPermanent
+
 1.23.0.3
   #122 Try to minize failed deletes ... again.
 

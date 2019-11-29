@@ -314,7 +314,7 @@ happyPaths = describe "succeeds with" $ do
   it "makeResourcesDataDirPermanent works" $
     withTempDirectory "/tmp" "tmp-postgres-make-premanent" $ \dirPath -> do
        let config = defaultConfig { temporaryDirectory = pure dirPath }
-       pathToCheck <- bracket (either throwIO (pure . makeDataDirPermanent) =<< startConfig config) stop $
+       pathToCheck <- bracket (either throwIO (pure . makeDataDirectoryPermanent) =<< startConfig config) stop $
         pure . toDataDirectory
        doesDirectoryExist pathToCheck >>= \case
          True -> pure ()

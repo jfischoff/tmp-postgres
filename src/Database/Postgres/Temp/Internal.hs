@@ -31,7 +31,7 @@ import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 --   @since 1.12.0.0
 data DB = DB
   { dbResources :: Resources
-  -- ^ Temporary resources and the final 'CompletePlan'.
+  -- ^ Temporary resources and the final 'Plan'.
   , dbPostgresProcess :: PostgresProcess
   -- ^ @postgres@ process handle and the connection options.
   }
@@ -77,14 +77,14 @@ not modify the 'DB' that is passed for cleanup. You will
 need to setup your own bracket like
 
  @
-    bracket (fmap 'makeDataDirPermanent' 'start') (either mempty 'stop')
+    bracket (fmap 'makeDataDirectoryPermanent' 'start') (either mempty 'stop')
  @
 
 
-@since 1.12.0.0
+@since 1.24.0.0
 -}
-makeDataDirPermanent :: DB -> DB
-makeDataDirPermanent db = db
+makeDataDirectoryPermanent :: DB -> DB
+makeDataDirectoryPermanent db = db
   { dbResources = makeResourcesDataDirPermanent $ dbResources db
   }
 
@@ -356,7 +356,7 @@ stopPostgresGracefully = stopPostgresProcess True . dbPostgresProcess
 restart :: DB -> IO (Either StartError DB)
 restart db@DB{..} = try $ do
   void $ stopPostgres db
-  let CompletePlan{..} = resourcesPlan dbResources
+  let Plan{..} = resourcesPlan dbResources
       startAction = startPostgresProcess completePlanConnectionTimeout completePlanLogger
         completePlanPostgres
   bracketOnError startAction stopPlan $ \result ->

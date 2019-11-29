@@ -76,8 +76,8 @@ data StartError
     }
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
-  | CompletePlanFailed String [String]
-  -- ^ The 'Database.Postgres.Temp.Config.Plan' was missing info and a complete 'CompletePlan' could
+  | PlanFailed String [String]
+  -- ^ The 'Database.Postgres.Temp.Config.Plan' was missing info and a complete 'Plan' could
   --   not be created.
   | CompleteProcessConfigFailed String [String]
   -- ^ The 'Database.Postgres.Temp.Config.ProcessConfig' was missing info and a
@@ -369,17 +369,17 @@ executeCreateDb config = do
   (res, stdOut, stdErr) <- executeProcessAndTee "createdb" config
   throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
 -------------------------------------------------------------------------------
--- CompletePlan
+-- Plan
 -------------------------------------------------------------------------------
--- | 'CompletePlan' is the low level configuration necessary for initializing
+-- | 'Plan' is the low level configuration necessary for initializing
 --   a database cluster
 --   starting @postgres@ and creating a database. There is no validation done
---   on the 'CompletePlan'. It is recommend that one use the higher level
+--   on the 'Plan'. It is recommend that one use the higher level
 --   functions
 --   such as 'Database.Postgres.Temp.start' which will generate plans that
---   are valid. 'CompletePlan's are used internally but are exposed if the
+--   are valid. 'Plan's are used internally but are exposed if the
 --   higher level plan generation is not sufficent.
-data CompletePlan = CompletePlan
+data Plan = Plan
   { completePlanLogger            :: Logger
   , completePlanInitDb            :: Maybe CompleteProcessConfig
   , completePlanCopy              :: Maybe CompleteCopyDirectoryCommand
@@ -390,8 +390,8 @@ data CompletePlan = CompletePlan
   , completePlanConnectionTimeout :: Int
   }
 
-instance Pretty CompletePlan where
-  pretty CompletePlan {..}
+instance Pretty Plan where
+  pretty Plan {..}
     =   text "completePlanInitDb:"
     <>  softline
     <>  indent 2 (pretty completePlanInitDb)
@@ -420,8 +420,8 @@ instance Pretty CompletePlan where
 --   Additionally it writes a \"postgresql.conf\" and does not return until
 --   the @postgres@ process is ready. See 'startPostgresProcess' for more
 --   details.
-startPlan :: CompletePlan -> IO PostgresProcess
-startPlan plan@CompletePlan {..} = do
+startPlan :: Plan -> IO PostgresProcess
+startPlan plan@Plan {..} = do
   completePlanLogger $ StartPlan $ show $ pretty plan
   for_ completePlanInitDb executeInitDb
 

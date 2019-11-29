@@ -1,13 +1,13 @@
 {-# OPTIONS_HADDOCK prune #-}
 {-| This module provides types and functions for combining partial
-    configs into a complete configs to ultimately make a 'CompletePlan'.
+    configs into a complete configs to ultimately make a 'Plan'.
 
     This module has two classes of types.
 
     Types like 'ProcessConfig' that could be used by any
     library that  needs to combine process options.
 
-    Finally it has types and functions for creating 'CompletePlan's that
+    Finally it has types and functions for creating 'Plan's that
     use temporary resources. This is used to create the default
     behavior of 'Database.Postgres.Temp.startConfig' and related
     functions.
@@ -415,8 +415,8 @@ flattenConfig :: [(String, String)] -> String
 flattenConfig = unlines . map (\(x, y) -> x <> "=" <> y) .
   Map.toList . Map.fromList
 
--- | Turn a 'Config' into a 'CompletePlan'. Fails if any values are missing.
-completePlan :: [(String, String)] -> String -> Config -> Either [String] CompletePlan
+-- | Turn a 'Config' into a 'Plan'. Fails if any values are missing.
+completePlan :: [(String, String)] -> String -> Config -> Either [String] Plan
 completePlan envs dataDirectoryString config@Config {..} = do
   (   completePlanLogger
     , completePlanInitDb
@@ -440,7 +440,7 @@ completePlan envs dataDirectoryString config@Config {..} = do
       completePlanCopy = completeCopyDirectory completePlanDataDirectory <$>
         join (getLast copyConfig)
 
-  pure CompletePlan {..}
+  pure Plan {..}
 
 -- Returns 'True' if the 'Config' has a
 -- 'Just' 'initDbConfig'.
@@ -634,8 +634,8 @@ addDataDirectory theDataDirectory x = x
       ("--pgdata=" <> theDataDirectory) : completeProcessConfigCmdLine x
   }
 
-cachePlan :: CompletePlan -> Bool -> FilePath -> IO CompletePlan
-cachePlan plan@CompletePlan {..} cow cacheDirectory = case completePlanInitDb of
+cachePlan :: Plan -> Bool -> FilePath -> IO Plan
+cachePlan plan@Plan {..} cow cacheDirectory = case completePlanInitDb of
   Nothing -> pure plan
   Just theConfig -> do
     let (mtheDataDirectory, clearedConfig) = splitDataDirectory theConfig
@@ -741,7 +741,7 @@ setupConfig config@Config {..} = evalContT $ do
         (toFilePath resourcesDataDir)
       finalPlan = hostAndDir <> config
   uncachedPlan <- lift $
-    either (throwIO . CompletePlanFailed (show $ pretty finalPlan)) pure $
+    either (throwIO . PlanFailed (show $ pretty finalPlan)) pure $
       completePlan envs (toFilePath resourcesDataDir) finalPlan
   resourcesPlan <- lift $ maybe (pure uncachedPlan) (uncurry $ cachePlan uncachedPlan) resourcesInitDbCache
   pure Resources {..}
@@ -759,13 +759,13 @@ prettyPrintConfig :: Config -> String
 prettyPrintConfig = show . pretty
 
 -- | 'Resources' holds a description of the temporary folders (if there are any)
---   and includes the final 'CompletePlan' that can be used with 'startPlan'.
+--   and includes the final 'Plan' that can be used with 'startPlan'.
 --   See 'setupConfig' for an example of how to create a 'Resources'.
 --
 --   @since 1.12.0.0
 data Resources = Resources
-  { resourcesPlan    :: CompletePlan
-  -- ^ Final 'CompletePlan'. See 'startPlan' for information on 'CompletePlan's.
+  { resourcesPlan    :: Plan
+  -- ^ Final 'Plan'. See 'startPlan' for information on 'Plan's.
   , resourcesSocketDirectory :: CompleteDirectoryType
   -- ^ The used to potentially cleanup the temporary unix socket directory.
   , resourcesDataDir :: CompleteDirectoryType

@@ -68,7 +68,7 @@ module Database.Postgres.Temp
   , toTemporaryDirectory
   , toPostgresqlConf
   -- *** 'DB' modifiers
-  , makeDataDirPermanent
+  , makeDataDirectoryPermanent
   , reloadConfig
   -- *** 'DB' debugging
   , prettyPrintDB
