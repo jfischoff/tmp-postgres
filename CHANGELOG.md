@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.26.0.0
+  #187 Remove stopPostgresGracefully from public interface
+
 1.25.0.1
   #188 Document all fields of Config
 

@@ -78,8 +78,7 @@ module Database.Postgres.Temp
   , stop
   , restart
   , stopPostgres
-  , stopPostgresGracefully
-  -- * Making Starting Faster
+  -- * Faster Startup
   -- $makingItFaster
   -- ** @initdb@ Data Directory Caching
   -- *** Exception safe interface
