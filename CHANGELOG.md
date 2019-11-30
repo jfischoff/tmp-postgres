@@ -1,5 +1,11 @@
 Changelog for tmp-postgres
 
+1.27.0.2
+  Doc Fixes
+
+1.27.0.1
+  Doc Fixes
+
 1.27.0.0
   #191 Remove leading spaces in code examples
   #192 startConfig bullet points are out of date

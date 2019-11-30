@@ -384,12 +384,12 @@ rmDirIgnoreErrors mainDir = do
   -- seems to fix it. #122
   -- TODO come up with a better way to deal with this. Probably
   -- need to lock the directories recursively before deleting.
-  handle ignoreDirIsMissing $ do
+  handle ignoreDirIsMissing $
     try (removePathForcibly mainDir) >>= \case
-      Left (_ :: IOError) -> try (removePathForcibly mainDir) >>= \case
-        Left (_ :: IOError) -> removePathForcibly mainDir
-        Right _ -> pure ()
+    Left (_ :: IOError) -> try (removePathForcibly mainDir) >>= \case
+      Left (_ :: IOError) -> removePathForcibly mainDir
       Right _ -> pure ()
+    Right _ -> pure ()
 
 -- | Either remove a 'CTemporary' directory or do nothing to a 'CPermanent'
 -- one.
@@ -878,3 +878,4 @@ hostToSocketClass :: String -> DirectoryType
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
   '/' : _ -> Permanent hostOrSocketPath
   _ -> Temporary
+
