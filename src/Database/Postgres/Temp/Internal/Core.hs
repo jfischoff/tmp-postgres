@@ -13,8 +13,6 @@ import           Control.Monad
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Foldable (for_)
 import           Data.IORef
-import           Data.Monoid
-import           Data.String
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
@@ -256,25 +254,6 @@ instance Pretty PostgresProcess where
   pretty PostgresProcess {..}
     =   text "postgresProcessClientOptions:"
     <+> prettyOptions postgresProcessClientOptions
-
--- Force all connections to the database to close.
--- Called during shutdown as well.
-terminateConnections :: Client.Options-> IO ()
-terminateConnections options = do
-  let theConnectionString = Client.toConnectionString options
-        { Client.dbname = pure "template1"
-        }
-      terminationQuery = fromString $ unlines
-        [ "SELECT pg_terminate_backend(pid)"
-        , "FROM pg_stat_activity"
-        , "WHERE datname=?;"
-        ]
-  e <- try $ bracket (PG.connectPostgreSQL theConnectionString) PG.close $
-    \conn -> PG.query conn terminationQuery
-      [getLast $ Client.dbname options]
-  case e of
-    Left (_ :: IOError) -> pure ()
-    Right (_ :: [PG.Only Bool]) -> pure ()
 
 -- | Stop the @postgres@ process after attempting to terminate all the
 --   connections.

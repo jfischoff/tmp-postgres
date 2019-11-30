@@ -1,5 +1,10 @@
 Changelog for tmp-postgres
 
+1.27.0.0
+  #191 Remove leading spaces in code examples
+  #192 startConfig bullet points are out of date
+  #189 Remove reloadConfig
+
 1.26.0.0
   #187 Remove stopPostgresGracefully from public interface
 

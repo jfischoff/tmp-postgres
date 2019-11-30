@@ -14,7 +14,6 @@ import           Control.Monad (void)
 import           Control.Monad.Trans.Cont
 import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
-import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics
 import           System.Exit (ExitCode(..))
@@ -76,9 +75,9 @@ If you are using 'with' or 'withConfig' this function will
 not modify the 'DB' that is passed for cleanup. You will
 need to setup your own bracket like
 
- @
-    bracket (fmap 'makeDataDirectoryPermanent' 'start') (either mempty 'stop')
- @
+@
+bracket (fmap 'makeDataDirectoryPermanent' 'start') (either mempty 'stop')
+@
 
 
 @since 1.24.0.0
@@ -107,16 +106,16 @@ toPostgresqlConfigFile = completePlanConfig . resourcesPlan . dbResources
 {-|
 The fastest config we can make.
 
- @
-   shared_buffers = 12MB
-   fsync = off
-   synchronous_commit = off
-   full_page_writes = off
-   log_min_messages = PANIC
-   log_min_error_statement = PANIC
-   log_statement = none
-   client_min_messages = ERROR
- @
+@
+shared_buffers = 12MB
+fsync = off
+synchronous_commit = off
+full_page_writes = off
+log_min_messages = PANIC
+log_min_error_statement = PANIC
+log_statement = none
+client_min_messages = ERROR
+@
 
 @since 1.21.0.0
 -}
@@ -140,15 +139,15 @@ The default configuration. This will create a database called \"postgres\"
  Additionally it will use the following \"postgresql.conf\"
  which is optimized for performance.
 
- @
-   shared_buffers = 12MB
-   fsync = off
-   synchronous_commit = off
-   full_page_writes = off
-   log_min_messages = PANIC
-   log_min_error_statement = PANIC
-   log_statement = none
-   client_min_messages = ERROR
+@
+shared_buffers = 12MB
+fsync = off
+synchronous_commit = off
+full_page_writes = off
+log_min_messages = PANIC
+log_min_error_statement = PANIC
+log_statement = none
+client_min_messages = ERROR
 @
 
 'defaultConfig' also passes the @--no-sync@ flag to @initdb@.
@@ -167,17 +166,17 @@ The 'defaultConfig' redirects all output to @\/dev\/null@. See
 To append additional lines to \"postgresql.conf\" file create a
 custom 'Config' like the following.
 
- @
-  custom = defaultConfig <> mempty
-    { 'postgresConfigFile' =
-        [ ("wal_level, "replica")
-        , ("archive_mode", on")
-        , ("max_wal_senders", "2")
-        , ("fsync", "on")
-        , ("synchronous_commit", "on")
-        ]
-    }
- @
+@
+custom = defaultConfig <> mempty
+  { 'postgresConfigFile' =
+      [ ("wal_level, "replica")
+      , ("archive_mode", on")
+      , ("max_wal_senders", "2")
+      , ("fsync", "on")
+      , ("synchronous_commit", "on")
+      ]
+  }
+@
 
 
  This is common enough there is `defaultPostgresConf` which
@@ -273,34 +272,32 @@ Create zero or more temporary resources and use them to make a 'Config'.
 The passed in config is inspected and a generated config is created.
 The final config is built by
 
- @
-   generated '<>' extra
- @
+@
+generated '<>' extra
+@
 
 Based on the value of 'socketDirectory' a \"postgresql.conf\" is created with:
 
- @
-   listen_addresses = '127.0.0.1, ::1'
-   unix_socket_directories = \'SOCKET_DIRECTORY\'
- @
+@
+listen_addresses = '127.0.0.1, ::1'
+unix_socket_directories = \'SOCKET_DIRECTORY\'
+@
 
-Additionally the @generated@ `Config` also does the following:
+Additionally the @generated@ `Config` also:
 
 * Sets a `connectionTimeout` of one minute.
-* Logs internal `Event`s.
-* Sets the processes to use the standard input and output handles.
-* Sets the 'dataDirectory' to file path generated from 'dataDirectory'.
+* Redirects output to @\/dev\/null@.
 
 All of these values can be overrided by the @extra@ config.
 
 The returned 'DB' requires cleanup. `startConfig` should be
 used with a `bracket` and 'stop', e.g.
 
- @
-   `withConfig` :: `Config` -> (`DB` -> IO a) -> IO (Either `StartError` a)
-   'withConfig' plan f = `bracket` (`startConfig` plan) (either mempty `stop`) $
-      either (pure . Left) (fmap Right . f)
- @
+@
+`withConfig` :: `Config` -> (`DB` -> IO a) -> IO (Either `StartError` a)
+'withConfig' plan f = `bracket` (`startConfig` plan) (either mempty `stop`) $
+  either (pure . Left) (fmap Right . f)
+@
 
 or just use 'withConfig'. If you are calling 'startConfig' you
 probably want 'withConfig' anyway.
@@ -361,16 +358,6 @@ restart db@DB{..} = try $ do
         completePlanPostgres
   bracketOnError startAction stopPlan $ \result ->
     pure $ db { dbPostgresProcess = result }
-
--- | Reload the configuration file without shutting down. Calls
---   @pg_reload_conf()@.
---
---   @since 1.12.0.0
-reloadConfig :: DB -> IO ()
-reloadConfig db =
-  bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn ->
-    (void :: IO [PG.Only Bool] -> IO ()) $
-      PG.query_ conn "SELECT pg_reload_conf()"
 -------------------------------------------------------------------------------
 -- Exception safe interface
 -------------------------------------------------------------------------------
@@ -391,9 +378,9 @@ withConfig extra f = bracket (startConfig extra) (either mempty stop) $
 
 {-| Default expectation safe interface. Equivalent to
 
- @
-   'with' = 'withConfig' 'defaultConfig'
- @
+@
+'with' = 'withConfig' 'defaultConfig'
+@
 
 @since 1.21.0.0
 -}
@@ -527,7 +514,7 @@ Enable @initdb@ data directory caching. This can lead to a 4x speedup.
 Exception safe version of 'setupInitDbCache'. Equivalent to
 
 @
-   'withDbCacheConfig' = bracket ('setupInitDbCache' config) 'cleanupInitDbCache'
+'withDbCacheConfig' = bracket ('setupInitDbCache' config) 'cleanupInitDbCache'
 @
 
 @since 1.25.0.0
@@ -548,7 +535,7 @@ Equivalent to 'withDbCacheConfig' with the 'CacheConfig'
 Here is an example using caching:
 
 @
- withDbCache $ \\cache -> do
+withDbCache $ \\cache -> do
   withCache (cacheConfig cache) $ \\db -> ...
   withCache (cacheConfig cache) $ \\db -> ...
 @
@@ -631,7 +618,7 @@ and the migration process is more time consuming then copying the additional dat
 Here is an example with caching and snapshots:
 
 @
- withDbCache $ \\cache -> withConfig (cacheConfig cache) $ \\db ->
+withDbCache $ \\cache -> withConfig (cacheConfig cache) $ \\db ->
   migrate db
   withSnapshot Temporary db $ \\snapshot -> do
     withConfig (snapshotConfig db) $ \\migratedDb -> ...

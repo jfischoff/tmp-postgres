@@ -570,19 +570,6 @@ spec = do
     PG.connectPostgreSQL (toConnectionString db) `shouldThrow`
       (\(_ :: IOError) -> True)
 
-  it "reloadConfig works" $ withConfig' defaultConfig $ \db -> do
-    let
-      dataDir = toDataDirectory db
-      expectedDuration = "100ms"
-      extraConfig = "log_min_duration_statement='" <> expectedDuration <> "'"
-    appendFile (dataDir ++ "/postgresql.conf") $ extraConfig
-
-    reloadConfig db
-
-    withConn db $ \conn -> do
-      [PG.Only actualDuration] <- PG.query_ conn "SHOW log_min_duration_statement"
-      actualDuration `shouldBe` expectedDuration
-
   -- Not a great test but don't want to be too rigid
   let createdbPlan = optionsToDefaultConfig mempty { Client.dbname = pure "newdb" }
   it "prettyPrintConfig seems to work" $ do
@@ -641,7 +628,9 @@ spec = do
 
       createDirectory walArchiveDir
 
-      reloadConfig db
+      bracket (PG.connectPostgreSQL $ toConnectionString db) PG.close $ \conn ->
+        (void :: IO [PG.Only Bool] -> IO ()) $
+          PG.query_ conn "SELECT pg_reload_conf()"
 
       let Just port = getLast $ Client.port $ postgresProcessClientOptions dbPostgresProcess
           Just host = getLast $ Client.host $ postgresProcessClientOptions dbPostgresProcess

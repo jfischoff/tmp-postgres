@@ -398,7 +398,6 @@ cleanupDirectoryType = \case
   CPermanent _ -> pure ()
   CTemporary filePath -> rmDirIgnoreErrors filePath
 
-
 -- | Turn a 'Config' into a 'CompletePostgresPlan'. Fails if any
 --   values are missing.
 completePostgresPlan :: [(String, String)] -> Config -> Either [String] CompletePostgresPlan
@@ -409,7 +408,6 @@ completePostgresPlan envs Config {..} = runErrors $ do
       completeProcessConfig envs postgresConfig
 
   pure CompletePostgresPlan {..}
-
 
 flattenConfig :: [(String, String)] -> String
 flattenConfig = unlines . map (\(x, y) -> x <> "=" <> y) .
