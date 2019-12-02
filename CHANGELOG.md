@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.27.0.3
+  #195, #196, #197, #198 Doc Fixes
+
 1.27.0.2
   Doc Fixes
 
