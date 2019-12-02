@@ -134,7 +134,7 @@ fastPostgresConfig =
 The default configuration. This will create a database called \"postgres\"
    via @initdb@ (it's default behavior).
    It will create a temporary directory for the data and a temporary directory
- for a unix socket on a random port.
+ for a unix socket and listen on 127.0.0.1 and ::1 on a random port.
  Additionally it will use the following \"postgresql.conf\"
  which is optimized for performance.
 
@@ -250,7 +250,7 @@ verbosePostgresConfig =
   ]
 
 {-|
-The similar to 'defaultConfig' log as much as possible.
+This is similar to 'defaultConfig' but it logs as much as possible..
 
 @since 1.21.0.0
 -}
