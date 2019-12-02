@@ -346,7 +346,8 @@ stopPostgres = stopPlan . dbPostgresProcess
 stopPostgresGracefully :: DB -> IO ExitCode
 stopPostgresGracefully = stopPostgresProcess True . dbPostgresProcess
 
--- | Restart the @postgres@ from 'DB' using the prior 'Config'.
+-- | Restart the @postgres@ from 'DB' using the prior 'Config'. This
+--   will also start an instance previously stoppped with 'stopPostgres'.
 --
 --   @since 1.12.0.0
 restart :: DB -> IO (Either StartError DB)
