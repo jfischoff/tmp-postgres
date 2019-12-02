@@ -367,7 +367,7 @@ details. Calls 'stop' even in the face of exceptions.
 @since 1.21.0.0
 -}
 withConfig :: Config
-         -- ^ @extra@. 'Config' combined with the generated 'Config'. See
+         -- ^ The @extra@ 'Config' combined with the @generated@ 'Config'. See
          -- 'startConfig' for more info.
          -> (DB -> IO a)
          -- ^ @action@ continuation.
