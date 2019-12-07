@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.28.0.0
+  #200 Change behavior of Permanent. We now create the directory if it does not exist. Other changes
+
 1.27.0.4
   #193 and #194 Doc fixes
 

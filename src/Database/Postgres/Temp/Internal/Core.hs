@@ -93,6 +93,8 @@ data StartError
   --   a cached @initdb@ folder.
   | SnapshotCopyFailed String ExitCode
   -- ^ We tried to copy a data directory to a snapshot folder and it failed
+  | CompleteDirectoryFailed IOException
+  -- ^ Something went wrong when trying to create a directory
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError

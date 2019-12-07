@@ -10,7 +10,7 @@ import Database.Postgres.Temp.Internal.Config
 
 import           Control.DeepSeq
 import           Control.Exception
-import           Control.Monad (void)
+import           Control.Monad (void, unless)
 import           Control.Monad.Trans.Cont
 import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
@@ -20,6 +20,7 @@ import           System.Exit (ExitCode(..))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import           System.Directory
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and @postgres@ connection information. The 'DB' also includes the
@@ -594,10 +595,12 @@ takeSnapshot directoryType db = try $ do
       directoryType
     )
     cleanupDirectoryType $ \snapShotDir -> do
-      let snapshotCopyCmd = cpFlags <>
-            toDataDirectory db <> "/* " <> toFilePath snapShotDir
-      throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
-        system snapshotCopyCmd
+      nonEmpty <- doesFileExist $ toFilePath snapShotDir <> "/PG_VERSION"
+      unless nonEmpty $ do
+        let snapshotCopyCmd = cpFlags <>
+              toDataDirectory db <> "/* " <> toFilePath snapShotDir
+        throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
+          system snapshotCopyCmd
 
       pure $ Snapshot snapShotDir
 

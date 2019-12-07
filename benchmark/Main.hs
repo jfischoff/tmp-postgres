@@ -28,6 +28,9 @@ createFooDb conn index = void $ PG.execute_ conn $ fromString $ unlines
   , ");"
   ]
 
+snapshotDir :: DirectoryType
+snapshotDir = Permanent "~/.tmp-postgres/bench-mark-1"
+
 migrateDb :: DB -> IO ()
 migrateDb db = do
   let theConnectionString = toConnectionString db
@@ -57,12 +60,12 @@ setupCacheAndSP = do
   let theCacheConfig = defaultConfig <> cacheConfig cacheInfo
   sp <- either throwIO pure <=< withConfig theCacheConfig $ \db -> do
     migrateDb db
-    either throwIO pure =<< takeSnapshot Temporary db
+    either throwIO pure =<< takeSnapshot snapshotDir db
 
   let theConfig = defaultConfig <> snapshotConfig sp <> theCacheConfig
 
-
   pure (cacheInfo, sp, Once theConfig)
+
 
 cleanupCacheAndSP :: (Cache, Snapshot, Once Config) -> IO ()
 cleanupCacheAndSP (x, y, _) = cleanupSnapshot y >> cleanupInitDbCache x
@@ -96,8 +99,13 @@ main = defaultMain
 
   , setupWithCache $ \theCacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \db -> do
       migrateDb db
-      void $ withSnapshot Temporary db $ \snapshotDir -> do
-        let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
+      void $ withSnapshot Temporary db $ \theSnapshotDir -> do
+        let theSnapshotConfig = defaultConfig <> snapshotConfig theSnapshotDir
+        replicateM_ 10 $ withConfig theSnapshotConfig testQuery
+
+  , setupWithCacheAndSP $ \theCacheConfig -> bench "preexisting snapshot withSnapshot migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \db -> do
+      void $ withSnapshot snapshotDir db $ \theSnapshotDir -> do
+        let theSnapshotConfig = defaultConfig <> snapshotConfig theSnapshotDir
         replicateM_ 10 $ withConfig theSnapshotConfig testQuery
 
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $

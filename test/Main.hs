@@ -446,12 +446,13 @@ errorPaths = describe "fails when" $ do
     withConfig invalidConfig' (const $ pure ())
       `shouldReturn` Left ConnectionTimedOut
 
-  it "throws StartPostgresFailed if the host path does not exist" $ do
+  it "throws IOException if the path is not writable" $ do
     let invalidConfig = optionsToDefaultConfig mempty
           { Client.host = pure "/focalhost"
           }
-    withConfig invalidConfig (const $ pure ())
-      `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
+    withConfig invalidConfig (const $ pure ()) >>= \case
+      Left CompleteDirectoryFailed {} -> pure ()
+      _ -> fail "expected Left CompleteDirectoryFailed"
 
   it "No initdb plan causes failure" $ do
     let dontTimeout = defaultConfig
@@ -544,7 +545,6 @@ withConfigSpecs = describe "withConfig" $ do
 withSnapshotSpecs :: Spec
 withSnapshotSpecs = describe "withSnapshot" $ do
   it "works" $ withConfig' defaultConfig $ \db -> do
-    -- TODO create a table
     withConn db $ \conn -> do
       _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
       void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
@@ -559,6 +559,37 @@ withSnapshotSpecs = describe "withSnapshot" $ do
         snapshotConfigAndAssert
         testSuccessfulConfig
 
+  it "doesn't create the snapshot if it exists" $ withConfig' defaultConfig $ \db -> do
+    withConn db $ \conn -> do
+      _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
+      void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+
+    either throwIO pure <=< withSnapshot (Permanent $ "~/.tmp-postgres/test-snapshot/") db $ \snapshotDir -> do
+      let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
+      -- A file to the snapshot directory
+      writeFile (toFilePath (unSnapshot snapshotDir) <> "/testModification.txt") "yes"
+      -- start postgres
+      withConfig' theSnapshotConfig $ \newDb -> do
+        -- modify it in the data directory
+        writeFile (toDataDirectory newDb <> "/testModification.txt") "no"
+        -- add a new file
+        writeFile (toDataDirectory newDb <> "/newFile.txt") "yes"
+        -- take another snapshot
+        either throwIO pure <=< withSnapshot (Permanent $ "~/.tmp-postgres/test-snapshot") db $ \snapshotDir1 -> do
+          -- ensure the original is still there
+          readFile (toFilePath (unSnapshot snapshotDir1) <> "/testModification.txt")
+            `shouldReturn` "yes"
+          -- ensure the file is not``
+          doesFileExist (toFilePath (unSnapshot snapshotDir1) <> "/newFile.txt") `shouldReturn` False
+          let
+            theSnapshotConfig1 = defaultConfig <> snapshotConfig snapshotDir1
+            snapshotConfigAndAssert = ConfigAndAssertion theSnapshotConfig1 $ flip withConn $ \conn -> do
+              oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
+              oneAgain `shouldBe` (1 :: Int)
+
+          testWithTemporaryDirectory
+            snapshotConfigAndAssert
+            testSuccessfulConfig
 spec :: Spec
 spec = do
   withConfigSpecs
