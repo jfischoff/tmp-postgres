@@ -99,7 +99,7 @@ benchmark benchmark
   main-is: Main.hs
   hs-source-dirs: benchmark
   default-language: Haskell2010
-  ghc-options: -O2 -Wall
+  ghc-options: -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
   build-depends: base
     , criterion
     , deepseq
@@ -155,6 +155,31 @@ executable soak-test
     , TupleSections
     , ViewPatterns
 
-source-repository head
-  type:     git
-  location: https://github.com/jfischoff/tmp-postgres
+executable with-cache-loop
+  main-is: Main.hs
+  hs-source-dirs: profiling
+  default-language: Haskell2010
+  ghc-options: -O2 -Wall -threaded -rtsopts -with-rtsopts=-N
+  build-depends: base
+    , async
+    , directory
+    , postgres-options
+    , postgresql-simple
+    , process
+    , temporary
+    , tmp-postgres
+  default-extensions:
+      ApplicativeDo
+    , DeriveFunctor
+    , DeriveGeneric
+    , DerivingStrategies
+    , DerivingVia
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
+    , OverloadedStrings
+    , RankNTypes
+    , RecordWildCards
+    , ScopedTypeVariables
+    , TemplateHaskell
+    , TupleSections
+    , ViewPatterns
