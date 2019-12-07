@@ -75,22 +75,21 @@ setupWithCacheAndSP' f = envWithCleanup setupCacheAndSP cleanupCacheAndSP $ \ ~(
 
 main :: IO ()
 main = defaultMain
-  [ --bench "with" $ whnfIO $ with $ const $ pure ()
-  --, bench "withConfig no --no-sync" $ whnfIO $
-  --    withConfig defaultConfigDefaultInitDb $ const $ pure ()
-{-
-  bench "withConfig silent" $ whnfIO $
-    withConfig defaultConfig $ const $ pure ()
+  [ bench "with" $ whnfIO $ with $ const $ pure ()
 
-  , setupWithCache $ \cacheConfig -> bench "withConfig silent cache" $ whnfIO $
-      withConfig cacheConfig $ const $ pure ()
+  , bench "withConfig no --no-sync" $ whnfIO $
+      withConfig defaultConfigDefaultInitDb $ const $ pure ()
+
+  , bench "withConfig silent" $ whnfIO $
+      withConfig defaultConfig $ const $ pure ()
+
+  , setupWithCache $ \theCacheConfig -> bench "withConfig silent cache" $ whnfIO $
+      withConfig theCacheConfig $ const $ pure ()
 
   , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig defaultConfig $ \db ->
       migrateDb db >> testQuery db
 
--}
-
-    setupWithCache $ \theCacheConfig -> do
+  , setupWithCache $ \theCacheConfig -> do
       bench "with migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \_ -> do
         replicateM_ 10 $ withConfig theCacheConfig $ \db ->
           migrateDb db >> testQuery db
@@ -100,15 +99,16 @@ main = defaultMain
       void $ withSnapshot Temporary db $ \snapshotDir -> do
         let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
         replicateM_ 10 $ withConfig theSnapshotConfig testQuery
-{-
+
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
       void $ withConfig theConfig $ const $ pure ()
 
-  , setupWithCacheAndSP' $ \sp -> bench "snapshotConfig" $ whnfIO $ void $ snapshotConfig $ toFilePath sp
+  , setupWithCacheAndSP' $ \sp -> bench "snapshotConfig" $ whnfIO $ void $ flip withConfig (const $ pure ())
+    $ snapshotConfig sp
 
   , bench "migrateDb" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> migrateDb db
--}
+
   , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> void $ withSnapshot Temporary db $ const $ pure ()
 
