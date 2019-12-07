@@ -395,9 +395,9 @@ rmDirIgnoreErrors mainDir = do
   -- TODO come up with a better way to deal with this. Probably
   -- need to lock the directories recursively before deleting.
   handle ignoreDirIsMissing $
-    try (removePathForcibly mainDir) >>= \case
-    Left (_ :: IOError) -> try (removePathForcibly mainDir) >>= \case
-      Left (_ :: IOError) -> removePathForcibly mainDir
+    try (removeDirectoryRecursive mainDir) >>= \case
+    Left (_ :: IOError) -> try (removeDirectoryRecursive mainDir) >>= \case
+      Left (_ :: IOError) -> removeDirectoryRecursive mainDir
       Right _ -> pure ()
     Right _ -> pure ()
 
