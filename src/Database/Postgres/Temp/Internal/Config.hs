@@ -353,10 +353,11 @@ instance Semigroup DirectoryType where
 instance Monoid DirectoryType where
   mempty = Temporary
 
--- | Either create a'CTemporary' directory or do nothing to a 'CPermanent'
+-- | Either create a'CTemporary' directory or do create the directory
+--   if it does not exist to a 'CPermanent'
 --   one.
 --
---   @since 1.12.0.0
+--   @since 1.28.0.0
 setupDirectoryType
   :: String
   -- ^ Temporary directory configuration
@@ -364,13 +365,22 @@ setupDirectoryType
   -- ^ Directory pattern
   -> DirectoryType
   -> IO CompleteDirectoryType
-setupDirectoryType tempDir pat = \case
-  Temporary -> CTemporary <$> createTempDirectory tempDir pat
-  Permanent x  -> CPermanent <$> case x of
-    '~':rest -> do
-      homeDir <- getHomeDirectory
-      pure $ homeDir <> "/" <> rest
-    xs -> pure xs
+setupDirectoryType tempDir pat dirType = do
+  e <- try $ case dirType of
+    Temporary -> CTemporary <$> createTempDirectory tempDir pat
+    Permanent x  -> do
+      dir <- case x of
+        '~':rest -> do
+          homeDir <- getHomeDirectory
+          pure $ homeDir <> "/" <> rest
+        xs -> pure xs
+
+      createDirectoryIfMissing True dir
+
+      pure $ CPermanent dir
+  case e of
+    Left err -> throwIO $ CompleteDirectoryFailed err
+    Right res -> pure res
 
 -- Remove a temporary directory and ignore errors
 -- about it not being there.
@@ -878,4 +888,3 @@ hostToSocketClass :: String -> DirectoryType
 hostToSocketClass hostOrSocketPath = case hostOrSocketPath of
   '/' : _ -> Permanent hostOrSocketPath
   _ -> Temporary
-
