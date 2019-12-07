@@ -1,0 +1,2 @@
+#! /bin/bash
+while s/stack_test.sh ; do :; done
