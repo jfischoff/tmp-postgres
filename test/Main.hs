@@ -472,10 +472,8 @@ errorPaths = describe "fails when" $ do
 
       withConfig nonEmptyFolderPlan mempty >>= \case
         Right () -> fail "Should not succeed"
-        Left ((InitDbFailed theOut theErr code)) -> do
+        Left ((InitDbFailed _ _ code)) ->
           code `shouldBe` ExitFailure 1
-          length theOut `shouldSatisfy` (> 0)
-          length theErr `shouldSatisfy` (> 0)
         Left err -> fail $ "Wrong type of error " <> show err
 
   it "invalid initdb options cause an error" $ do
