@@ -606,7 +606,8 @@ getInitDbVersion = unsafePerformIO $ readProcessWithExitCode "initdb" ["--versio
 
 makeCommandLine :: String -> CompleteProcessConfig -> String
 makeCommandLine command CompleteProcessConfig {..} =
-  let envs = unwords $ map (\(x, y) -> x <> "=" <> y) completeProcessConfigEnvVars
+  let envs = unwords $ map (\(x, y) -> x <> "=" <> y)
+             $ filter ((`elem` envsToKeep) . fst) completeProcessConfigEnvVars
       args = unwords completeProcessConfigCmdLine
   in envs <> " " <> command <> args
 
@@ -622,6 +623,39 @@ makeCachePath cacheFolder cmdLine =
     version = getInitDbVersion
     theHash = makeArgumentHash cmdLine
   in cacheFolder <> "/" <> version <> "/" <> theHash
+
+envsToKeep :: [String]
+envsToKeep =
+  [ "PGHOST"
+  , "PGHOSTADDR"
+  , "PGPORT"
+  , "PGDATABASE"
+  , "PGUSER"
+  , "PGPASSWORD"
+  , "PGPASSFILE"
+  , "PGSERVICE"
+  , "PGSERVICEFILE"
+  , "PGOPTIONS"
+  , "PGAPPNAME"
+  , "PGSSLMODE"
+  , "PGREQUIRESSL"
+  , "PGSSLCOMPRESSION"
+  , "PGSSLCERT"
+  , "PGSSLKEY"
+  , "PGSSLROOTCERT"
+  , "PGSSLCRL"
+  , "PGREQUIREPEER"
+  , "PGKRBSRVNAME"
+  , "PGGSSLIB"
+  , "PGCONNECT_TIMEOUT"
+  , "PGCLIENTENCODING"
+  , "PGTARGETSESSIONATTRS"
+  , "PGDATESTYLE"
+  , "PGTZ"
+  , "PGGEQO"
+  , "PGSYSCONFDIR"
+  , "PGLOCALEDIR"
+  ]
 
 splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
 splitDataDirectory old =
