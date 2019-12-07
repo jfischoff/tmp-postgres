@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.28.1.0
+  #208 Only hash important envs for initdb cache.
+
 1.28.0.0
   #200 Change behavior of Permanent. We now create the directory if it does not exist. Other changes
 
