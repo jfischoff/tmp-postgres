@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.29.0.0
+  #211 Revert behavior of Permanent to not create the directory if it does not exist
+  #210 The signature of takeSnapshot is not as useful as it could be breaking change
+
 1.28.1.0
   #208 Only hash important envs for initdb cache.
 

@@ -446,13 +446,12 @@ errorPaths = describe "fails when" $ do
     withConfig invalidConfig' (const $ pure ())
       `shouldReturn` Left ConnectionTimedOut
 
-  it "throws IOException if the path is not writable" $ do
+  it "throws StartPostgresFailed if the host path does not exist" $ do
     let invalidConfig = optionsToDefaultConfig mempty
           { Client.host = pure "/focalhost"
           }
-    withConfig invalidConfig (const $ pure ()) >>= \case
-      Left CompleteDirectoryFailed {} -> pure ()
-      _ -> fail "expected Left CompleteDirectoryFailed"
+    withConfig invalidConfig (const $ pure ())
+      `shouldReturn` Left (StartPostgresFailed $ ExitFailure 1)
 
   it "No initdb plan causes failure" $ do
     let dontTimeout = defaultConfig
@@ -547,7 +546,7 @@ withSnapshotSpecs = describe "withSnapshot" $ do
       _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
       void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
 
-    either throwIO pure <=< withSnapshot Temporary db $ \snapshotDir -> do
+    either throwIO pure <=< withSnapshot db $ \snapshotDir -> do
       let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
           snapshotConfigAndAssert = ConfigAndAssertion theSnapshotConfig $ flip withConn $ \conn -> do
             oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
@@ -557,42 +556,78 @@ withSnapshotSpecs = describe "withSnapshot" $ do
         snapshotConfigAndAssert
         testSuccessfulConfig
 
-  it "doesn't create the snapshot if it exists" $ withConfig' defaultConfig $ \db -> do
-    withConn db $ \conn -> do
-      _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
-      void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+cacheActionSpecs :: Spec
+cacheActionSpecs = describe "cacheAction" $ do
+  it "creates the cache if it does not exist" $ do
+    let action db = withConn db $ \conn -> do
+          _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
+          void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+    withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
+      let theFinalCachePath = cachePath <> "/cached"
+      cacheAction theFinalCachePath action defaultConfig >>= \case
+        Left err -> fail $ "cacheAction failed with:" <> show err
+        Right newCache -> do
+          nonEmpty <- doesFileExist $ theFinalCachePath <> "/PG_VERSION"
+          nonEmpty `shouldBe` True
 
-    either throwIO pure <=< withSnapshot (Permanent $ "~/.tmp-postgres/test-snapshot/") db $ \snapshotDir -> do
-      let theSnapshotConfig = defaultConfig <> snapshotConfig snapshotDir
-      -- A file to the snapshot directory
-      writeFile (toFilePath (unSnapshot snapshotDir) <> "/testModification.txt") "yes"
-      -- start postgres
-      withConfig' theSnapshotConfig $ \newDb -> do
-        -- modify it in the data directory
-        writeFile (toDataDirectory newDb <> "/testModification.txt") "no"
-        -- add a new file
-        writeFile (toDataDirectory newDb <> "/newFile.txt") "yes"
-        -- take another snapshot
-        either throwIO pure <=< withSnapshot (Permanent $ "~/.tmp-postgres/test-snapshot") db $ \snapshotDir1 -> do
-          -- ensure the original is still there
-          readFile (toFilePath (unSnapshot snapshotDir1) <> "/testModification.txt")
-            `shouldReturn` "yes"
-          -- ensure the file is not``
-          doesFileExist (toFilePath (unSnapshot snapshotDir1) <> "/newFile.txt") `shouldReturn` False
+          -- Write a file and make sure it shows up in the data directory
+          writeFile (theFinalCachePath <> "/newFile.txt") "yes"
+
           let
-            theSnapshotConfig1 = defaultConfig <> snapshotConfig snapshotDir1
-            snapshotConfigAndAssert = ConfigAndAssertion theSnapshotConfig1 $ flip withConn $ \conn -> do
-              oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
-              oneAgain `shouldBe` (1 :: Int)
+            asserts db = do
+              doesFileExist (toDataDirectory db <> "/newFile.txt") `shouldReturn` True
+              withConn db $ \conn -> do
+                oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT id FROM foo"
+                oneAgain `shouldBe` (1 :: Int)
+            snapshotConfigAndAssert = ConfigAndAssertion newCache asserts
 
           testWithTemporaryDirectory
             snapshotConfigAndAssert
             testSuccessfulConfig
+
+  it "doesn't create the cache if it exists" $ do
+    let action db = withConn db $ \conn -> do
+          _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
+          void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+    withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
+      let theFinalCachePath = cachePath <> "/cached"
+      cacheAction theFinalCachePath action defaultConfig >>= \case
+        Left err -> fail $ "cacheAction failed with:" <> show err
+        Right newCache -> do
+          let nextAction db = withConn db $ \conn ->
+                void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (2); END;"
+
+          cacheAction theFinalCachePath nextAction newCache >>= \case
+            Left err -> fail $ "cacheAction failed with:" <> show err
+            Right newCache1 -> do
+              let
+                asserts db = do
+                  withConn db $ \conn -> do
+                    oneAgain <- fmap (PG.fromOnly . head) $ PG.query_ conn "SELECT COUNT(*) FROM foo"
+                    oneAgain `shouldBe` (1 :: Int)
+                snapshotConfigAndAssert = ConfigAndAssertion newCache1 asserts
+
+              testWithTemporaryDirectory
+                snapshotConfigAndAssert
+                testSuccessfulConfig
+
+  it "fails if the cache director and data directory are the same" $ do
+    let action db = withConn db $ \conn -> do
+          _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
+          void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+    withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
+      let theFinalCachePath = cachePath <> "/cached"
+      cacheAction theFinalCachePath action (defaultConfig { dataDirectory = Permanent theFinalCachePath } ) >>= \case
+        Left (SnapshotCopyFailed {}) -> pure ()
+        _ -> fail $ "cacheAction should have failed with SnapshotCopyFailed"
+
 spec :: Spec
 spec = do
   withConfigSpecs
 
   withSnapshotSpecs
+
+  cacheActionSpecs
 
   it "stopPostgres cannot be connected to" $ withConfig' defaultConfig $ \db -> do
     stopPostgres db `shouldReturn` ExitSuccess

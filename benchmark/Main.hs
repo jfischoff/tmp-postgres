@@ -7,6 +7,7 @@ import Data.String
 import Database.Postgres.Temp.Internal
 import Database.Postgres.Temp.Internal.Config
 import qualified Database.PostgreSQL.Simple as PG
+import           System.IO.Temp (createTempDirectory, withTempDirectory)
 
 data Once a = Once { unOnce :: a }
 
@@ -20,16 +21,12 @@ defaultConfigDefaultInitDb = mempty
   , initDbConfig = pure mempty
   }
 
-
 createFooDb :: PG.Connection -> Int -> IO ()
 createFooDb conn index = void $ PG.execute_ conn $ fromString $ unlines
   [ "CREATE TABLE foo" <> show index
   , "( id int"
   , ");"
   ]
-
-snapshotDir :: DirectoryType
-snapshotDir = Permanent "~/.tmp-postgres/bench-mark-1"
 
 migrateDb :: DB -> IO ()
 migrateDb db = do
@@ -60,12 +57,11 @@ setupCacheAndSP = do
   let theCacheConfig = defaultConfig <> cacheConfig cacheInfo
   sp <- either throwIO pure <=< withConfig theCacheConfig $ \db -> do
     migrateDb db
-    either throwIO pure =<< takeSnapshot snapshotDir db
+    either throwIO pure =<< takeSnapshot db
 
   let theConfig = defaultConfig <> snapshotConfig sp <> theCacheConfig
 
   pure (cacheInfo, sp, Once theConfig)
-
 
 cleanupCacheAndSP :: (Cache, Snapshot, Once Config) -> IO ()
 cleanupCacheAndSP (x, y, _) = cleanupSnapshot y >> cleanupInitDbCache x
@@ -75,6 +71,23 @@ setupWithCacheAndSP f = envWithCleanup setupCacheAndSP cleanupCacheAndSP $ \ ~(_
 
 setupWithCacheAndSP' :: (Snapshot -> Benchmark) -> Benchmark
 setupWithCacheAndSP' f = envWithCleanup setupCacheAndSP cleanupCacheAndSP $ \ ~(_, x, _) -> f x
+
+setupCacheAndAction :: IO (Cache, FilePath, Once Config)
+setupCacheAndAction = do
+  cacheInfo <- setupCache
+  snapshotDir <- createTempDirectory "/tmp" "tmp-postgres-bench-cache"
+  let theCacheConfig = defaultConfig <> cacheConfig cacheInfo
+
+  theConfig <- either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
+
+  pure (cacheInfo, snapshotDir, Once theConfig)
+
+cleanupCacheAndAction :: (Cache, FilePath, Once Config) -> IO ()
+cleanupCacheAndAction (c, f, _) = rmDirIgnoreErrors f >> cleanupInitDbCache c
+
+setupWithCacheAndAction :: (FilePath -> Config -> Benchmark) -> Benchmark
+setupWithCacheAndAction f = envWithCleanup setupCacheAndAction cleanupCacheAndAction $
+  \ ~(_, filePath, Once x) -> f filePath x
 
 main :: IO ()
 main = defaultMain
@@ -99,14 +112,20 @@ main = defaultMain
 
   , setupWithCache $ \theCacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \db -> do
       migrateDb db
-      void $ withSnapshot Temporary db $ \theSnapshotDir -> do
+      void $ withSnapshot db $ \theSnapshotDir -> do
         let theSnapshotConfig = defaultConfig <> snapshotConfig theSnapshotDir
         replicateM_ 10 $ withConfig theSnapshotConfig testQuery
 
-  , setupWithCacheAndSP $ \theCacheConfig -> bench "preexisting snapshot withSnapshot migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \db -> do
-      void $ withSnapshot snapshotDir db $ \theSnapshotDir -> do
-        let theSnapshotConfig = defaultConfig <> snapshotConfig theSnapshotDir
-        replicateM_ 10 $ withConfig theSnapshotConfig testQuery
+  , setupWithCache $ \theCacheConfig -> bench "cache action and recache and cache" $ whnfIO $ withTempDirectory "/tmp" "tmp-postgres-bench-cache" $ \snapshotDir -> do
+      newConfig <- either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
+      replicateM_ 10 $
+        either throwIO pure =<< flip withConfig testQuery
+          =<< either throwIO pure =<< cacheAction snapshotDir migrateDb newConfig
+
+  , setupWithCacheAndAction $ \snapshotDir theCacheConfig -> bench "pre-cache action and recache" $ whnfIO $ do
+      replicateM_ 10 $
+        either throwIO pure =<< flip withConfig testQuery
+          =<< either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
 
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
       void $ withConfig theConfig $ const $ pure ()
@@ -118,6 +137,6 @@ main = defaultMain
       \ ~(Once db) -> migrateDb db
 
   , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
-      \ ~(Once db) -> void $ withSnapshot Temporary db $ const $ pure ()
+      \ ~(Once db) -> void $ withSnapshot db $ const $ pure ()
 
   ]
