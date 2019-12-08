@@ -101,6 +101,8 @@ module Database.Postgres.Temp
   -- *** Separate start and stop interface.
   , takeSnapshot
   , cleanupSnapshot
+  -- ** Conditional caching of 'DB' actions
+  , cacheAction
   -- * Errors
   , StartError (..)
   -- * Configuration Types

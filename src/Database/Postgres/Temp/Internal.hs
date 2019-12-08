@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK prune #-}
 {-|
 This module provides the high level functions that are re-exported
 by @Database.Postgres.Temp@. Additionally it includes some
@@ -10,7 +11,7 @@ import Database.Postgres.Temp.Internal.Config
 
 import           Control.DeepSeq
 import           Control.Exception
-import           Control.Monad (void, unless)
+import           Control.Monad (void, join)
 import           Control.Monad.Trans.Cont
 import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
@@ -466,6 +467,15 @@ cowCheck = unsafePerformIO $ do
        || missingFile ==  take (length missingFile) errorOutput
 {-# NOINLINE cowCheck #-}
 
+cpFlags :: String
+cpFlags = if cowCheck
+#ifdef darwin_HOST_OS
+  then "cp -Rc "
+#else
+  then "cp -R --reflink=auto "
+#endif
+  else "cp -R "
+
 {-|
 'defaultCacheConfig' attempts to determine if the @cp@ on the path
 supports \"copy on write\" flags and if it does, sets 'cacheUseCopyOnWrite'
@@ -572,35 +582,25 @@ newtype Snapshot = Snapshot { unSnapshot :: CompleteDirectoryType }
 {- |
 Shutdown the database and copy the directory to a folder.
 
-@since 1.20.0.0
+@since 1.29.0.0
 -}
 takeSnapshot
-  :: DirectoryType
-  -- ^ Either a 'Temporary' or preexisting 'Permanent' directory.
-  -> DB
+  :: DB
   -- ^ The handle. The @postgres@ is shutdown and the data directory is copied.
   -> IO (Either StartError Snapshot)
-takeSnapshot directoryType db = try $ do
+takeSnapshot db = try $ do
   throwIfNotSuccess id =<< stopPostgresGracefully db
-  let
-#ifdef darwin_HOST_OS
-    cpFlags = if cowCheck then "cp -Rc " else "cp -R "
-#else
-    cpFlags = if cowCheck then "cp -R --reflink=auto " else "cp -R "
-#endif
   bracketOnError
     (setupDirectoryType
       (toTemporaryDirectory db)
       "tmp-postgres-snapshot"
-      directoryType
+      Temporary
     )
     cleanupDirectoryType $ \snapShotDir -> do
-      nonEmpty <- doesFileExist $ toFilePath snapShotDir <> "/PG_VERSION"
-      unless nonEmpty $ do
-        let snapshotCopyCmd = cpFlags <>
-              toDataDirectory db <> "/* " <> toFilePath snapShotDir
-        throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
-          system snapshotCopyCmd
+      let snapshotCopyCmd = cpFlags <>
+            toDataDirectory db <> "/* " <> toFilePath snapShotDir
+      throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
+        system snapshotCopyCmd
 
       pure $ Snapshot snapShotDir
 
@@ -629,17 +629,27 @@ withDbCache $ \\cache -> withConfig (cacheConfig cache) $ \\db ->
     withConfig (snapshotConfig db) $ \\migratedDb -> ...
 @
 
-@since 1.20.0.0
+@since 1.29.0.0
 -}
 withSnapshot
-  :: DirectoryType
-  -> DB
+  :: DB
   -> (Snapshot -> IO a)
   -> IO (Either StartError a)
-withSnapshot dirType db f = bracket
-  (takeSnapshot dirType db)
+withSnapshot db f = bracket
+  (takeSnapshot db)
   (either mempty cleanupSnapshot)
   (either (pure . Left) (fmap Right . f))
+
+-- Helper for 'snapshotConfig' and 'cacheAction'
+fromFilePathConfig :: FilePath -> Config
+fromFilePathConfig filePath = mempty
+  { copyConfig = pure $ pure CopyDirectoryCommand
+      { sourceDirectory = filePath
+      , destinationDirectory = Nothing
+      , useCopyOnWrite = cowCheck
+      }
+  , initDbConfig = Zlich
+  }
 
 {-|
 Convert a snapshot into a 'Config' that includes a 'copyConfig' for copying the
@@ -648,11 +658,49 @@ snapshot directory to a temporary directory.
 @since 1.20.0.0
 -}
 snapshotConfig :: Snapshot -> Config
-snapshotConfig (Snapshot savePointPath) = mempty
-  { copyConfig = pure $ pure CopyDirectoryCommand
-      { sourceDirectory = toFilePath savePointPath
-      , destinationDirectory = Nothing
-      , useCopyOnWrite = cowCheck
-      }
-  , initDbConfig = Zlich
-  }
+snapshotConfig = fromFilePathConfig . toFilePath . unSnapshot
+
+-------------------------------------------------------------------------------
+-- cacheAction
+-------------------------------------------------------------------------------
+{-|
+Check to see if a cached data directory exists.
+
+If the file path does not exist the @initial@ config is used to start a @postgres@
+instance. After which the @action@ is applied, the data directory is cached
+and @postgres@ is shutdown.
+
+'cacheAction' 'mappend's a config to copy the cached data directory
+on startup onto the @initial@ config and returns it. In other words:
+
+@
+initialConfig <> configFromCachePath
+@
+
+@since 1.29.0.0
+-}
+cacheAction
+  :: FilePath
+  -- ^ Location of the data directory cache.
+  -> (DB -> IO ())
+  -- ^ @action@ to cache.
+  -> Config
+  -- ^ @initial@ 'Config'.
+  -> IO (Either StartError Config)
+cacheAction cachePath action config = do
+  let result = config <> fromFilePathConfig cachePath
+  nonEmpty <- doesFileExist $ cachePath <> "/PG_VERSION"
+
+  case nonEmpty of
+    True -> pure $ pure result
+    False -> fmap join $ withConfig config $ \db -> do
+      action db
+      -- TODO see if parallel is better
+      throwIfNotSuccess id =<< stopPostgresGracefully db
+      createDirectoryIfMissing True cachePath
+
+      let snapshotCopyCmd = cpFlags <>
+            toDataDirectory db <> "/* " <> cachePath
+      system snapshotCopyCmd >>= \case
+        ExitSuccess -> pure $ pure result
+        x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x

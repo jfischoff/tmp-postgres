@@ -55,7 +55,7 @@ instance Show Event where
 --   and exhaustive list but covers the errors that the system
 --   catches for the user.
 --
---   @since 1.12.0.0
+--   @since 1.29.0.0
 data StartError
   = StartPostgresFailed ExitCode
   -- ^ @postgres@ failed before a connection succeeded. Most likely this
@@ -93,8 +93,6 @@ data StartError
   --   a cached @initdb@ folder.
   | SnapshotCopyFailed String ExitCode
   -- ^ We tried to copy a data directory to a snapshot folder and it failed
-  | CompleteDirectoryFailed IOException
-  -- ^ Something went wrong when trying to create a directory
   deriving (Show, Eq, Typeable)
 
 instance Exception StartError
