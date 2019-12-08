@@ -9,6 +9,7 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
+import qualified Control.Concurrent.Async as Async
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad (void, join)
@@ -328,9 +329,8 @@ start = startConfig defaultConfig
 --
 --   @since 1.12.0.0
 stop :: DB -> IO ()
-stop DB {..} = do
-  void $ stopPlan dbPostgresProcess
-  cleanupConfig dbResources
+stop DB {..} =
+  Async.concurrently_ (stopPlan dbPostgresProcess) $ cleanupConfig dbResources
 
 -- | Only stop the @postgres@ process but leave any temporary resources.
 --   Useful for testing backup strategies when used in conjunction with

@@ -139,4 +139,6 @@ main = defaultMain
   , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> void $ withSnapshot db $ const $ pure ()
 
+  , bench "stop" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< start) (stop . unOnce) $
+      \ ~(Once db) -> stop db
   ]
