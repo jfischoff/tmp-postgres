@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.29.0.1
+  #214 Parallel stop is 8 ms faster.
+
 1.29.0.0
   #211 Revert behavior of Permanent to not create the directory if it does not exist
   #210 The signature of takeSnapshot is not as useful as it could be breaking change
