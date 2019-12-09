@@ -382,7 +382,7 @@ happyPaths = describe "succeeds with" $ do
       either throwIO pure =<< withConfig (cacheConfig cacheInfo) assertConnection
 
   it "postgresql.conf append last wins" $
-    withConfig' (defaultPostgresConf [("fsync", "on")] <> verboseConfig) $ \db -> do
+    withConfig' (verboseConfig <> defaultPostgresConf [("fsync", "on")]) $ \db -> do
       toPostgresqlConfigFile db `shouldContain` "fsync=on"
       withConn db $ \conn -> countDbs conn `shouldReturn` 3
 --
