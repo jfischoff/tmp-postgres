@@ -131,6 +131,10 @@ fastPostgresConfig =
   , ("log_min_error_statement", "PANIC")
   , ("log_statement", "none")
   , ("client_min_messages", "ERROR")
+  , ("commit_delay", "100000")
+  , ("wal_level", "minimal")
+  , ("archive_mode", "off")
+  , ("max_wal_senders", "0")
   ]
 
 {-|
