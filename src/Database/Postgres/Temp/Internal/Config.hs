@@ -353,6 +353,13 @@ instance Semigroup DirectoryType where
 instance Monoid DirectoryType where
   mempty = Temporary
 
+fixPath :: FilePath -> IO FilePath
+fixPath x = case x of
+  '~':rest -> do
+    homeDir <- getHomeDirectory
+    pure $ homeDir <> "/" <> rest
+  xs -> pure xs
+
 -- | Either create a'CTemporary' directory or do create the directory
 --   if it does not exist to a 'CPermanent'
 --   one.
@@ -367,14 +374,7 @@ setupDirectoryType
   -> IO CompleteDirectoryType
 setupDirectoryType tempDir pat dirType = case dirType of
   Temporary -> CTemporary <$> createTempDirectory tempDir pat
-  Permanent x  -> do
-    dir <- case x of
-      '~':rest -> do
-        homeDir <- getHomeDirectory
-        pure $ homeDir <> "/" <> rest
-      xs -> pure xs
-
-    pure $ CPermanent dir
+  Permanent x  -> CPermanent <$> fixPath x
 
 -- Remove a temporary directory and ignore errors
 -- about it not being there.

@@ -250,6 +250,9 @@ verbosePostgresConfig =
   , ("log_connections", "on")
   , ("log_disconnections", "on")
   , ("client_min_messages", "WARNING")
+  , ("log_min_messages", "WARNING")
+  , ("log_min_error_statement", "WARNING")
+  , ("log_statement", "all")
   ]
 
 {-|
@@ -262,7 +265,6 @@ verboseConfig = defaultConfig <> mempty
   { logger = pure print
   , postgresConfigFile = verbosePostgresConfig
   , initDbConfig = pure standardProcessConfig
-  , createDbConfig = pure standardProcessConfig
   , postgresConfig = standardProcessConfig
   }
 
@@ -688,8 +690,9 @@ cacheAction
   -- ^ @initial@ 'Config'.
   -> IO (Either StartError Config)
 cacheAction cachePath action config = do
-  let result = config <> fromFilePathConfig cachePath
-  nonEmpty <- doesFileExist $ cachePath <> "/PG_VERSION"
+  fixCachePath <- fixPath cachePath
+  let result = config <> fromFilePathConfig fixCachePath
+  nonEmpty <- doesFileExist $ fixCachePath <> "/PG_VERSION"
 
   case nonEmpty of
     True -> pure $ pure result
@@ -697,10 +700,10 @@ cacheAction cachePath action config = do
       action db
       -- TODO see if parallel is better
       throwIfNotSuccess id =<< stopPostgresGracefully db
-      createDirectoryIfMissing True cachePath
+      createDirectoryIfMissing True fixCachePath
 
       let snapshotCopyCmd = cpFlags <>
-            toDataDirectory db <> "/* " <> cachePath
+            toDataDirectory db <> "/* " <> fixCachePath
       system snapshotCopyCmd >>= \case
         ExitSuccess -> pure $ pure result
         x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
