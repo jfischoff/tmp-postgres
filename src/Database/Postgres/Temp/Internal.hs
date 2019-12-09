@@ -257,7 +257,7 @@ verbosePostgresConfig =
   , ("log_temp_files", "0")
   , ("log_autovacuum_min_duration", "0")
   , ("log_error_verbosity", "default")
-  , ("log_line_prefix", "'%t [%p]: db=%d,user=%u,app=%a,client=%h '")
+  , ("log_line_prefix", "'%t [%p]: '")
   , ("lc_messages", "'C'")
   ]
 

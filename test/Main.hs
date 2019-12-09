@@ -379,7 +379,9 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCache seems to work" $
     withDbCache $ \cacheInfo ->
-      either throwIO pure =<< withConfig (cacheConfig cacheInfo) assertConnection
+      either throwIO pure <=< withConfig (cacheConfig cacheInfo <> verboseConfig) $ \db -> do
+        assertConnection db
+        withConn db $ \conn -> countDbs conn `shouldReturn` 3
 
   it "postgresql.conf append last wins" $
     withConfig' (verboseConfig <> defaultPostgresConf [("fsync", "on")]) $ \db -> do
