@@ -247,12 +247,18 @@ verbosePostgresConfig =
   , ("synchronous_commit", "off")
   , ("full_page_writes", "off")
   , ("log_min_duration_statement", "0")
-  , ("log_connections", "on")
-  , ("log_disconnections", "on")
   , ("client_min_messages", "WARNING")
   , ("log_min_messages", "WARNING")
   , ("log_min_error_statement", "WARNING")
-  , ("log_statement", "all")
+  , ("log_checkpoints", "on")
+  , ("log_connections", "on")
+  , ("log_disconnections", "on")
+  , ("log_lock_waits", "on")
+  , ("log_temp_files", "0")
+  , ("log_autovacuum_min_duration", "0")
+  , ("log_error_verbosity", "default")
+  , ("log_line_prefix", "'%t [%p]: db=%d,user=%u,app=%a,client=%h '")
+  , ("lc_messages", "'C'")
   ]
 
 {-|
@@ -631,6 +637,9 @@ withDbCache $ \\cache -> withConfig (cacheConfig cache) $ \\db ->
     withConfig (snapshotConfig db) $ \\migratedDb -> ...
 @
 
+The 'Snapshot's are ephemeral. If you would like the 'Snapshot's to persistent
+consider using 'cacheAction' instead.
+
 @since 1.29.0.0
 -}
 withSnapshot
@@ -678,6 +687,10 @@ on startup onto the @initial@ config and returns it. In other words:
 @
 initialConfig <> configFromCachePath
 @
+
+'cacheAction' can be used to create a snapshot of migrated database and not
+remigrate as long as the migration does not change. See 'withSnapshot' for
+a ephemeral version of taking snapshots.
 
 @since 1.29.0.0
 -}

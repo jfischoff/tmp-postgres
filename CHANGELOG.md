@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.30.0.1
+  #221 Make verboseConfig support pgbadger
+  #218 Document difference between takeSnapshot and cacheAction
+
 1.30.0.0
   #217 verboseConfig is not verbose enough
   #216 cacheAction does not handle ~ properly bug
