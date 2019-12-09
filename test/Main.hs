@@ -10,6 +10,7 @@ import           Data.List
 import qualified Data.Set as Set
 import           Data.String
 import qualified Database.PostgreSQL.Simple as PG
+import qualified Database.PostgreSQL.Simple.SqlQQ as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           Database.Postgres.Temp.Internal
 import           Database.Postgres.Temp.Internal.Config
@@ -104,6 +105,12 @@ data ConfigAndAssertion = ConfigAndAssertion
 
 memptyConfigAndAssertion :: ConfigAndAssertion
 memptyConfigAndAssertion = memptyConfigAndAssertion' "postgres"
+
+countDbs :: PG.Connection -> IO Int
+countDbs conn = PG.fromOnly . head <$> PG.query_ conn [PG.sql|
+  SELECT COUNT(*)
+  FROM pg_catalog.pg_database
+  |]
 
 memptyConfigAndAssertion' :: String -> ConfigAndAssertion
 memptyConfigAndAssertion' expectedDbName =
@@ -375,8 +382,9 @@ happyPaths = describe "succeeds with" $ do
       either throwIO pure =<< withConfig (cacheConfig cacheInfo) assertConnection
 
   it "postgresql.conf append last wins" $
-    withConfig' (defaultPostgresConf [("fsync", "on")]) $ \db -> do
+    withConfig' (verboseConfig <> defaultPostgresConf [("fsync", "on")]) $ \db -> do
       toPostgresqlConfigFile db `shouldContain` "fsync=on"
+      withConn db $ \conn -> countDbs conn `shouldReturn` 3
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
 --
@@ -389,8 +397,8 @@ errorPaths = describe "fails when" $ do
     let invalidConfig = mempty
           { connectionTimeout = pure 0
           , connectionOptions = mempty
-                  { Client.dbname = pure "doesnotexist"
-                  }
+            { Client.dbname = pure "doesnotexist"
+            }
           }
 
     withConfig (defaultConfig <> invalidConfig) (const $ pure ())
@@ -400,11 +408,11 @@ errorPaths = describe "fails when" $ do
     let invalidConfig = mempty
           { connectionTimeout = pure maxBound
           , connectionOptions = mempty
-                  { Client.dbname = pure "doesnotexist"
-                  }
+            { Client.dbname = pure "doesnotexist"
+            }
           }
 
-    timeout 100000 (withConfig (defaultConfig <> invalidConfig) (const $ pure ()))
+    timeout 2000000 (withConfig (defaultConfig <> invalidConfig) (const $ threadDelay 10000000))
       `shouldReturn` Nothing
 {-
   it "throws StartPostgresFailed if the port is taken" $

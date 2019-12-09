@@ -1,5 +1,10 @@
 Changelog for tmp-postgres
 
+1.30.0.0
+  #217 verboseConfig is not verbose enough
+  #216 cacheAction does not handle ~ properly bug
+  #219 verboseConfig creates a database
+
 1.29.0.1
   #214 Parallel stop is 8 ms faster.
 
