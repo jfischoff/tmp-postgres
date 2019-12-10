@@ -154,6 +154,10 @@ log_min_messages = PANIC
 log_min_error_statement = PANIC
 log_statement = none
 client_min_messages = ERROR
+commit_delay = 100000
+wal_level = minimal
+archive_mode = off
+max_wal_senders = 0
 @
 
 'defaultConfig' also passes the @--no-sync@ flag to @initdb@.
@@ -221,24 +225,6 @@ defaultConfig_9_3_10 = mempty
       { keyBased = Map.singleton "--nosync" Nothing
       }
     }
-  }
-
-
-{-|
-'mappend' the 'defaultConfig' with a 'Config' that provides additional
-   \"postgresql.conf\" lines. Equivalent to:
-
-@
-'defaultPostgresConf' extra = 'defaultConfig' <> mempty
-  { 'postgresConfigFile' = extra
-  }
-@
-
-@since 1.21.0.0
--}
-defaultPostgresConf :: [(String, String)] -> Config
-defaultPostgresConf extra = defaultConfig <> mempty
-  { postgresConfigFile = extra
   }
 
 -- | Default postgres options
@@ -711,16 +697,14 @@ cacheAction cachePath action config = do
   let result = config <> fromFilePathConfig fixCachePath
   nonEmpty <- doesFileExist $ fixCachePath <> "/PG_VERSION"
 
-  case nonEmpty of
-    True -> pure $ pure result
-    False -> fmap join $ withConfig config $ \db -> do
-      action db
-      -- TODO see if parallel is better
-      throwIfNotSuccess id =<< stopPostgresGracefully db
-      createDirectoryIfMissing True fixCachePath
+  if nonEmpty then pure $ pure result else fmap join $ withConfig config $ \db -> do
+    action db
+    -- TODO see if parallel is better
+    throwIfNotSuccess id =<< stopPostgresGracefully db
+    createDirectoryIfMissing True fixCachePath
 
-      let snapshotCopyCmd = cpFlags <>
-            toDataDirectory db <> "/* " <> fixCachePath
-      system snapshotCopyCmd >>= \case
-        ExitSuccess -> pure $ pure result
-        x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
+    let snapshotCopyCmd = cpFlags <>
+          toDataDirectory db <> "/* " <> fixCachePath
+    system snapshotCopyCmd >>= \case
+      ExitSuccess -> pure $ pure result
+      x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x

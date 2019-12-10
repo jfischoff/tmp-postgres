@@ -55,7 +55,6 @@ module Database.Postgres.Temp
   -- *** Defaults
   , defaultConfig
   , defaultConfig_9_3_10
-  , defaultPostgresConf
   , verboseConfig
   -- *** Custom Config builder helpers
   , optionsToDefaultConfig
