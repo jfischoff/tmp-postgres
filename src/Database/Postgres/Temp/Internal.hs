@@ -154,6 +154,10 @@ log_min_messages = PANIC
 log_min_error_statement = PANIC
 log_statement = none
 client_min_messages = ERROR
+commit_delay = 100000
+wal_level = minimal
+archive_mode = off
+max_wal_senders = 0
 @
 
 'defaultConfig' also passes the @--no-sync@ flag to @initdb@.
@@ -704,4 +708,3 @@ cacheAction cachePath action config = do
     system snapshotCopyCmd >>= \case
       ExitSuccess -> pure $ pure result
       x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
-
