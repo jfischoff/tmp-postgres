@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.31.0.0
+  #224 Remove defaultPostgresConf
+  #223 Doc fixes
+
 1.30.0.1
   #221 Make verboseConfig support pgbadger
   #218 Document difference between takeSnapshot and cacheAction

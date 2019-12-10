@@ -223,24 +223,6 @@ defaultConfig_9_3_10 = mempty
     }
   }
 
-
-{-|
-'mappend' the 'defaultConfig' with a 'Config' that provides additional
-   \"postgresql.conf\" lines. Equivalent to:
-
-@
-'defaultPostgresConf' extra = 'defaultConfig' <> mempty
-  { 'postgresConfigFile' = extra
-  }
-@
-
-@since 1.21.0.0
--}
-defaultPostgresConf :: [(String, String)] -> Config
-defaultPostgresConf extra = defaultConfig <> mempty
-  { postgresConfigFile = extra
-  }
-
 -- | Default postgres options
 --
 --   @since 1.21.0.0

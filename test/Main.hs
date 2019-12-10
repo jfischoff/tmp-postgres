@@ -382,11 +382,6 @@ happyPaths = describe "succeeds with" $ do
       either throwIO pure <=< withConfig (cacheConfig cacheInfo <> verboseConfig) $ \db -> do
         assertConnection db
         withConn db $ \conn -> countDbs conn `shouldReturn` 3
-
-  it "postgresql.conf append last wins" $
-    withConfig' (verboseConfig <> defaultPostgresConf [("fsync", "on")]) $ \db -> do
-      toPostgresqlConfigFile db `shouldContain` "fsync=on"
-      withConn db $ \conn -> countDbs conn `shouldReturn` 3
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
 --
@@ -683,11 +678,12 @@ spec = do
     shouldSatisfy (Set.fromList $ words dbString) $
       Set.isSubsetOf wordsToSearchFor
 
-  let justBackupResources = defaultPostgresConf
-        [ ("wal_level", "replica")
-        , ("archive_mode","on")
-        , ("max_wal_senders","2")
-        ]
+  let justBackupResources = mempty { postgresConfigFile =
+          [ ("wal_level", "replica")
+          , ("archive_mode","on")
+          , ("max_wal_senders","2")
+          ]
+        }
       backupResources = justBackupResources
 
   it "can support backup and restore" $ withConfig' backupResources $ \db@DB {..} -> do
