@@ -1,8 +1,8 @@
 # Faster Database Testing with the New `tmp-postgres`
 
-`tmp-postgres` has hit 1.0.0.0 ... more like blown past 1.0.0.0. The latest version is 1.31.0.0 as I write this.
+[`tmp-postgres`](http://hackage.haskell.org/package/tmp-postgres) has hit 1.0.0.0 ... more like blown past 1.0.0.0. The latest version is 1.31.0.0 as I write this.
 
-`tmp-postgres` is a easy and fast way to make a temporary postgres database. Here is an example using `with`
+`tmp-postgres` is a easy and fast way to make a temporary postgres database. Here is an example using [`with`](http://hackage.haskell.org/package/tmp-postgres-1.31.0.0/docs/Database-Postgres-Temp.html#v:with)
 
 ```haskell
 with $ \db -> bracket
@@ -64,7 +64,7 @@ Of the remaining time it around 80% the copy and 20% shutting down postgres.
 - end: 0.092
 - **6.6x improvement**
 
-Additional I've found the improved performance is large enough to be felt in real projects. I saw a 2x improvement in test time when porting `postgresql-simple-queue` to the latest `tmp-postgres` version.
+I've found the improved performance is large enough to be felt in real projects. I saw a 2x improvement in test time when porting `postgresql-simple-queue` to the latest `tmp-postgres` version.
 
 ## But Wait, There's more!
 
