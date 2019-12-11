@@ -9,6 +9,7 @@ import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 import qualified Database.PostgreSQL.Simple as PG
 import           System.IO.Temp (createTempDirectory, withTempDirectory)
+import qualified Database.PostgreSQL.Simple.Options as Options
 
 data Once a = Once { unOnce :: a }
 
@@ -100,8 +101,12 @@ main = defaultMain
   , bench "withConfig no --no-sync" $ whnfIO $
       withConfig defaultConfigDefaultInitDb $ const $ pure ()
 
-  , bench "withConfig silent" $ whnfIO $
-      withConfig defaultConfig $ const $ pure ()
+  , bench "withConfig verbose" $ whnfIO $
+      withConfig verboseConfig $ const $ pure ()
+
+  , bench "withConfig db create" $ whnfIO $
+      withConfig (optionsToDefaultConfig (mempty { Options.dbname = pure "test" } )) $
+        const $ pure ()
 
   , setupWithCacheNoCow $ \theConfig -> bench "withConfig silent cache no cow" $ whnfIO $
       withConfig theConfig $ const $ pure ()
@@ -111,7 +116,7 @@ main = defaultMain
 
   , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig defaultConfig $ \db ->
       migrateDb db >> testQuery db
-
+{-
   , setupWithCache $ \theCacheConfig -> do
       bench "with migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \_ -> do
         replicateM_ 10 $ withConfig theCacheConfig $ \db ->
@@ -133,7 +138,7 @@ main = defaultMain
       replicateM_ 10 $
         either throwIO pure =<< flip withConfig testQuery
           =<< either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
-
+-}
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
       void $ withConfig theConfig $ const $ pure ()
 
