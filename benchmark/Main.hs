@@ -5,6 +5,7 @@ import Control.Monad
 import Criterion.Main hiding (defaultConfig)
 import Data.String
 import Database.Postgres.Temp.Internal
+import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 import qualified Database.PostgreSQL.Simple as PG
 import           System.IO.Temp (createTempDirectory, withTempDirectory)
@@ -42,18 +43,21 @@ testQuery db = do
   bracket (PG.connectPostgreSQL theConnectionString) PG.close $
     \conn -> void $ PG.execute_ conn "INSERT INTO foo1 (id) VALUES (1)"
 
-setupCache :: IO Cache
-setupCache = do
-  cacheInfo <- setupInitDbCache defaultCacheConfig
+setupCache :: Bool -> IO Cache
+setupCache cow = do
+  cacheInfo <- setupInitDbCache (defaultCacheConfig { cacheUseCopyOnWrite = cow})
   void (withConfig (defaultConfig <> cacheConfig cacheInfo) (const $ pure ()))
   pure cacheInfo
 
 setupWithCache :: (Config -> Benchmark) -> Benchmark
-setupWithCache f = envWithCleanup setupCache cleanupInitDbCache $ f . (defaultConfig <>) . cacheConfig
+setupWithCache f = envWithCleanup (setupCache True) cleanupInitDbCache $ f . (defaultConfig <>) . cacheConfig
+
+setupWithCacheNoCow :: (Config -> Benchmark) -> Benchmark
+setupWithCacheNoCow f = envWithCleanup (setupCache False) cleanupInitDbCache $ f . (defaultConfig <>) . cacheConfig
 
 setupCacheAndSP :: IO (Cache, Snapshot, Once Config)
 setupCacheAndSP = do
-  cacheInfo <- setupCache
+  cacheInfo <- setupCache True
   let theCacheConfig = defaultConfig <> cacheConfig cacheInfo
   sp <- either throwIO pure <=< withConfig theCacheConfig $ \db -> do
     migrateDb db
@@ -74,7 +78,7 @@ setupWithCacheAndSP' f = envWithCleanup setupCacheAndSP cleanupCacheAndSP $ \ ~(
 
 setupCacheAndAction :: IO (Cache, FilePath, Once Config)
 setupCacheAndAction = do
-  cacheInfo <- setupCache
+  cacheInfo <- setupCache True
   snapshotDir <- createTempDirectory "/tmp" "tmp-postgres-bench-cache"
   let theCacheConfig = defaultConfig <> cacheConfig cacheInfo
 
@@ -98,6 +102,9 @@ main = defaultMain
 
   , bench "withConfig silent" $ whnfIO $
       withConfig defaultConfig $ const $ pure ()
+
+  , setupWithCacheNoCow $ \theConfig -> bench "withConfig silent cache no cow" $ whnfIO $
+      withConfig theConfig $ const $ pure ()
 
   , setupWithCache $ \theCacheConfig -> bench "withConfig silent cache" $ whnfIO $
       withConfig theCacheConfig $ const $ pure ()
@@ -139,6 +146,15 @@ main = defaultMain
   , bench "withSnapshot" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< startConfig defaultConfig) (stop . unOnce) $
       \ ~(Once db) -> void $ withSnapshot db $ const $ pure ()
 
+  , bench "stopGracefully" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< start) (stop . unOnce) $
+    \ ~(Once db) -> do
+      void $ stopPostgresGracefully db
+      stop db
+
   , bench "stop" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< start) (stop . unOnce) $
       \ ~(Once db) -> stop db
+
+  , bench "stop serial" $ perRunEnvWithCleanup (either throwIO (pure . Once) =<< start) (stop . unOnce) $
+      \ ~(Once DB {..}) ->
+          stopPlan dbPostgresProcess >> cleanupConfig dbResources
   ]
