@@ -64,7 +64,7 @@ Of the remaining time it around 80% the copy and 20% shutting down postgres.
 - end: 0.092
 - **6.6x improvement**
 
-I've found the improved performance is large enough to be felt in real projects. I saw a 2x improvement in test time when porting `postgresql-simple-queue` to the latest `tmp-postgres` version.
+I've found the improved performance is large enough to be felt in real projects. I saw a 2x improvement in test time when porting [`postgresql-simple-queue`](http://hackage.haskell.org/package/postgresql-simple-queue) to the latest `tmp-postgres` version.
 
 ## But Wait, There's more!
 
