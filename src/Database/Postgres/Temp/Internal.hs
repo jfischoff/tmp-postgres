@@ -188,10 +188,6 @@ custom = defaultConfig <> mempty
   }
 @
 
-
- This is common enough there is `defaultPostgresConf` which
- is a helper to do this.
-
  As an alternative to using 'defaultConfig' one could create a
  config from connections parameters using 'optionsToDefaultConfig'.
 
@@ -249,6 +245,7 @@ verbosePostgresConfig =
   , ("log_error_verbosity", "default")
   , ("log_line_prefix", "'%t [%p]: '")
   , ("lc_messages", "'C'")
+  , ("track_io_timing", "on")
   ]
 
 {-|

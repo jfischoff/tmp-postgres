@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.31.0.1
+  #227 remove mention of defaultPostgresConf in doc
+  #228 add track_io_timing = on to verboseConfig
+
 1.31.0.0
   #224 Remove defaultPostgresConf
   #223 Doc fixes
