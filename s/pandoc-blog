@@ -1,2 +1,0 @@
-#! /bin/bash
-pandoc --template=GitHub.html5 $1 -o $2
