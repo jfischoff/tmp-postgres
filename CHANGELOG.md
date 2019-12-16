@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.31.0.2
+  #230 Fix bug when the same cache is built concurrently.
+
 1.31.0.1
   #227 remove mention of defaultPostgresConf in doc
   #228 add track_io_timing = on to verboseConfig

@@ -1,4 +1,5 @@
 import           Control.Concurrent
+import qualified Control.Concurrent.Async as Async
 import           Control.Exception
 import           Control.Monad ((<=<), void, unless)
 import           Data.Function
@@ -27,6 +28,7 @@ import           System.Posix.Files
 import           System.Process
 import           System.Timeout
 import           Test.Hspec
+import           Data.Either
 
 withConn :: DB -> (PG.Connection -> IO a) -> IO a
 withConn db f = do
@@ -382,6 +384,8 @@ happyPaths = describe "succeeds with" $ do
       either throwIO pure <=< withConfig (cacheConfig cacheInfo <> verboseConfig) $ \db -> do
         assertConnection db
         withConn db $ \conn -> countDbs conn `shouldReturn` 3
+
+
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
 --
@@ -625,6 +629,21 @@ cacheActionSpecs = describe "cacheAction" $ do
       cacheAction theFinalCachePath action (defaultConfig { dataDirectory = Permanent theFinalCachePath } ) >>= \case
         Left (SnapshotCopyFailed {}) -> pure ()
         _ -> fail $ "cacheAction should have failed with SnapshotCopyFailed"
+
+  it "works if two threads try to create a cache at the same time" $ do
+    withTempDirectory "/tmp" "tmp-postgres-parallel-cache-test" $ \dirPath -> do
+      -- let dirPath = "/tmp/tmp-postgres-parallel-cache-test-1"
+      withDbCache $ \cacheInfo -> do
+        lock <- newEmptyMVar
+        let
+          theConfig = defaultConfig <> cacheConfig cacheInfo
+          waitIfSecond _ = do
+            tryPutMVar lock () >>= \case
+              True -> pure ()
+              False -> threadDelay 100000
+          theCacheAction = cacheAction dirPath waitIfSecond theConfig
+        res <- Async.replicateConcurrently 3 theCacheAction
+        if all isRight res then pure () else fail "Failed to create caches concurrently"
 
 spec :: Spec
 spec = do

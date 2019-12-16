@@ -9,6 +9,7 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
+import           Control.Concurrent
 import qualified Control.Concurrent.Async as Async
 import           Control.DeepSeq
 import           Control.Exception
@@ -661,6 +662,9 @@ snapshotConfig = fromFilePathConfig . toFilePath . unSnapshot
 -------------------------------------------------------------------------------
 -- cacheAction
 -------------------------------------------------------------------------------
+cacheLock :: MVar ()
+cacheLock = unsafePerformIO $ newMVar ()
+
 {-|
 Check to see if a cached data directory exists.
 
@@ -692,16 +696,18 @@ cacheAction
 cacheAction cachePath action config = do
   fixCachePath <- fixPath cachePath
   let result = config <> fromFilePathConfig fixCachePath
-  nonEmpty <- doesFileExist $ fixCachePath <> "/PG_VERSION"
 
-  if nonEmpty then pure $ pure result else fmap join $ withConfig config $ \db -> do
-    action db
-    -- TODO see if parallel is better
-    throwIfNotSuccess id =<< stopPostgresGracefully db
-    createDirectoryIfMissing True fixCachePath
+  withMVar cacheLock $ \_ -> do
+    nonEmpty <- doesFileExist $ fixCachePath <> "/PG_VERSION"
 
-    let snapshotCopyCmd = cpFlags <>
-          toDataDirectory db <> "/* " <> fixCachePath
-    system snapshotCopyCmd >>= \case
-      ExitSuccess -> pure $ pure result
-      x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
+    if nonEmpty then pure $ pure result else fmap join $ withConfig config $ \db -> do
+      action db
+      -- TODO see if parallel is better
+      throwIfNotSuccess id =<< stopPostgresGracefully db
+      createDirectoryIfMissing True fixCachePath
+
+      let snapshotCopyCmd = cpFlags <>
+            toDataDirectory db <> "/* " <> fixCachePath
+      system snapshotCopyCmd >>= \case
+        ExitSuccess -> pure $ pure result
+        x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
