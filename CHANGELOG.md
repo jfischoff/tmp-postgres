@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.31.0.3
+  #233 Add missing NOINLINE for global lock
+
 1.31.0.2
   #230 Fix bug when the same cache is built concurrently.
 
