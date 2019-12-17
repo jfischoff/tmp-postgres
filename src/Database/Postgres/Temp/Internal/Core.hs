@@ -13,6 +13,8 @@ import           Control.Monad
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Foldable (for_)
 import           Data.IORef
+import           Data.List
+import           Data.Maybe
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
@@ -307,10 +309,42 @@ startPostgresProcess time logger CompletePostgresPlan {..} = do
 -------------------------------------------------------------------------------
 -- Non interactive subcommands
 -------------------------------------------------------------------------------
+splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
+splitDataDirectory old =
+  let isDataDirectoryFlag xs = "-D" `isPrefixOf` xs || "--pgdata=" `isPrefixOf` xs
+      (dataDirectoryArgs, otherArgs) =
+        partition isDataDirectoryFlag $ completeProcessConfigCmdLine old
+
+      firstDataDirectoryArg = flip fmap (listToMaybe dataDirectoryArgs) $ \case
+        '-':'D':' ':theDir -> theDir
+        '-':'D':theDir -> theDir
+        '-':'-':'p':'g':'d':'a':'t':'a':'=':theDir -> theDir
+        _ -> error "splitDataDirectory not possible"
+
+      filteredEnvs = filter (("PGDATA" /=) . fst) $
+        completeProcessConfigEnvVars old
+
+      clearedConfig = old
+        { completeProcessConfigCmdLine = otherArgs
+        , completeProcessConfigEnvVars = filteredEnvs
+        }
+
+  in (firstDataDirectoryArg, clearedConfig)
+
 executeInitDb :: CompleteProcessConfig -> IO ()
 executeInitDb config = do
-  (res, stdOut, stdErr) <- executeProcessAndTee "initdb" config
-  throwIfNotSuccess (InitDbFailed stdOut stdErr) res
+    let (mtheDataDirectory, _) = splitDataDirectory config
+    theDataDirectory <- maybe
+      (throwIO $ FailedToFindDataDirectory (show $ pretty config))
+      pure
+      mtheDataDirectory
+
+    withMVar cacheLock $ \_ ->
+      doesFileExist (theDataDirectory <> "/PG_VERSION") >>= \case
+        True -> pure ()
+        False -> do
+          (res, stdOut, stdErr) <- executeProcessAndTee "initdb" config
+          throwIfNotSuccess (InitDbFailed stdOut stdErr) res
 
 data CompleteCopyDirectoryCommand = CompleteCopyDirectoryCommand
   { copyDirectoryCommandSrc :: FilePath

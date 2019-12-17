@@ -32,7 +32,6 @@ import           Data.Map.Strict (Map)
 import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
-import           Data.List
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics (Generic)
 import           Network.Socket.Free (getFreePort)
@@ -652,27 +651,7 @@ envsToKeep =
   , "PGLOCALEDIR"
   ]
 
-splitDataDirectory :: CompleteProcessConfig -> (Maybe String, CompleteProcessConfig)
-splitDataDirectory old =
-  let isDataDirectoryFlag xs = "-D" `isPrefixOf` xs || "--pgdata=" `isPrefixOf` xs
-      (dataDirectoryArgs, otherArgs) =
-        partition isDataDirectoryFlag $ completeProcessConfigCmdLine old
 
-      firstDataDirectoryArg = flip fmap (listToMaybe dataDirectoryArgs) $ \case
-        '-':'D':' ':theDir -> theDir
-        '-':'D':theDir -> theDir
-        '-':'-':'p':'g':'d':'a':'t':'a':'=':theDir -> theDir
-        _ -> error "splitDataDirectory not possible"
-
-      filteredEnvs = filter (("PGDATA" /=) . fst) $
-        completeProcessConfigEnvVars old
-
-      clearedConfig = old
-        { completeProcessConfigCmdLine = otherArgs
-        , completeProcessConfigEnvVars = filteredEnvs
-        }
-
-  in (firstDataDirectoryArg, clearedConfig)
 
 addDataDirectory :: String -> CompleteProcessConfig -> CompleteProcessConfig
 addDataDirectory theDataDirectory x = x
@@ -687,7 +666,7 @@ cachePlan plan@Plan {..} cow cacheDirectory = case completePlanInitDb of
   Just theConfig -> do
     let (mtheDataDirectory, clearedConfig) = splitDataDirectory theConfig
     theDataDirectory <- maybe
-      (throwIO $ FailedToFindDataDirectory (show $ pretty clearedConfig))
+      (throwIO $ FailedToFindDataDirectory (show $ pretty theConfig))
       pure
       mtheDataDirectory
 
