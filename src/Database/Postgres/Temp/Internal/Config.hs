@@ -17,6 +17,7 @@ module Database.Postgres.Temp.Internal.Config where
 import Database.Postgres.Temp.Internal.Core
 
 import           Control.Applicative.Lift
+import           Control.Concurrent
 import           Control.DeepSeq
 import           Control.Exception
 import           Control.Monad (join)
@@ -679,6 +680,7 @@ addDataDirectory theDataDirectory x = x
       ("--pgdata=" <> theDataDirectory) : completeProcessConfigCmdLine x
   }
 
+
 cachePlan :: Plan -> Bool -> FilePath -> IO Plan
 cachePlan plan@Plan {..} cow cacheDirectory = case completePlanInitDb of
   Nothing -> pure plan
@@ -694,21 +696,23 @@ cachePlan plan@Plan {..} cow cacheDirectory = case completePlanInitDb of
       cachePath = makeCachePath cacheDirectory theCommandLine
       cachedDataDirectory = cachePath <> "/data"
 
-    theInitDbPlan <- doesDirectoryExist cachePath >>= \case
-      True -> pure Nothing
-      False -> do
-        createDirectoryIfMissing True cachePath
-        writeFile (cachePath <> "/commandLine.log") theCommandLine
-        pure $ pure $ addDataDirectory cachedDataDirectory clearedConfig
+    withMVar cacheLock $ \_ -> do
+      theInitDbPlan <- doesFileExist (cachedDataDirectory <> "/PG_VERSION") >>= \case
+        True -> pure Nothing
+        False -> do
+          createDirectoryIfMissing True cachePath
+          writeFile (cachePath <> "/commandLine.log") theCommandLine
+          pure $ pure $ addDataDirectory cachedDataDirectory clearedConfig
 
-    pure plan
-      { completePlanCopy = pure $ CompleteCopyDirectoryCommand
-        { copyDirectoryCommandSrc = cachedDataDirectory
-        , copyDirectoryCommandDst = theDataDirectory
-        , copyDirectoryCommandCow = cow
+      pure plan
+        { completePlanCopy = pure $ CompleteCopyDirectoryCommand
+          { copyDirectoryCommandSrc = cachedDataDirectory
+          , copyDirectoryCommandDst = theDataDirectory
+          , copyDirectoryCommandCow = cow
+          }
+        , completePlanInitDb = theInitDbPlan
         }
-      , completePlanInitDb = theInitDbPlan
-      }
+
 
 -- | Create a 'Config' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan

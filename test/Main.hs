@@ -385,6 +385,18 @@ happyPaths = describe "succeeds with" $ do
         assertConnection db
         withConn db $ \conn -> countDbs conn `shouldReturn` 3
 
+  it "withDbCache works if two threads try to create a cache at the same time" $ do
+    withTempDirectory "/tmp" "tmp-postgres-parallel-cache-test" $ \dirPath -> do
+      let theCacheConfig = CacheConfig
+            { cacheTemporaryDirectory = dirPath
+            , cacheDirectoryType      = Temporary
+            , cacheUseCopyOnWrite     = True
+            }
+      withDbCacheConfig theCacheConfig $ \cacheInfo -> do
+        let
+          theConfig = defaultConfig { temporaryDirectory = pure dirPath } <> cacheConfig cacheInfo
+          theCacheAction = withConfig' theConfig $ const $ pure ()
+        Async.replicateConcurrently_ 10 theCacheAction
 
 --
 -- Error Plans. Can't be combined. Just list them out inline since they can't be combined
@@ -564,6 +576,20 @@ withSnapshotSpecs = describe "withSnapshot" $ do
       testWithTemporaryDirectory
         snapshotConfigAndAssert
         testSuccessfulConfig
+
+  it "works if two threads try to create a snapshot at the same time" $ do
+    withDbCache $ \cacheInfo -> do
+      lock <- newEmptyMVar
+      let
+        theConfig = defaultConfig <> cacheConfig cacheInfo
+        waitIfSecond _ = do
+          tryPutMVar lock () >>= \case
+            True -> pure ()
+            False -> threadDelay 100000
+      withConfig' theConfig $ \db -> do
+        let theCacheAction = withSnapshot db waitIfSecond
+        res <- Async.replicateConcurrently 3 theCacheAction
+        if all isRight res then pure () else fail "Failed to create caches concurrently"
 
 cacheActionSpecs :: Spec
 cacheActionSpecs = describe "cacheAction" $ do

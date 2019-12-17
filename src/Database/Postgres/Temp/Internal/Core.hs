@@ -6,7 +6,7 @@ See 'startPlan' for more details.
 -}
 module Database.Postgres.Temp.Internal.Core where
 
-import           Control.Concurrent (threadDelay)
+import           Control.Concurrent
 import           Control.Concurrent.Async (race_, withAsync)
 import           Control.Exception
 import           Control.Monad
@@ -19,6 +19,7 @@ import qualified Database.PostgreSQL.Simple.Options as Client
 import           System.Directory
 import           System.Exit (ExitCode(..))
 import           System.IO
+import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Signals (sigINT, sigQUIT, signalProcess)
 import           System.Process
 import           System.Process.Internals
@@ -330,6 +331,10 @@ instance Pretty CompleteCopyDirectoryCommand where
     <> text "copyDirectoryCommandCow:"
     <+> pretty copyDirectoryCommandCow
 
+cacheLock :: MVar ()
+cacheLock = unsafePerformIO $ newMVar ()
+{-# NOINLINE cacheLock #-}
+
 executeCopyDirectoryCommand :: CompleteCopyDirectoryCommand -> IO ()
 executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
   let
@@ -339,7 +344,8 @@ executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
     cpFlags = if copyDirectoryCommandCow then "cp -R --reflink=auto " else "cp -R "
 #endif
     copyCommand = cpFlags <> copyDirectoryCommandSrc <> "/* " <> copyDirectoryCommandDst
-  throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
+  withMVar cacheLock $ \_ ->
+    throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
 
 -- | Call @createdb@ and tee the output to return if there is an
 --   an exception. Throws 'CreateDbFailed'.
