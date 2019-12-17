@@ -114,31 +114,15 @@ main = defaultMain
   , setupWithCache $ \theCacheConfig -> bench "withConfig silent cache" $ whnfIO $
       withConfig theCacheConfig $ const $ pure ()
 
-  , bench "with migrate 10x" $ whnfIO $ replicateM 10 $ withConfig defaultConfig $ \db ->
-      migrateDb db >> testQuery db
-{-
-  , setupWithCache $ \theCacheConfig -> do
-      bench "with migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \_ -> do
-        replicateM_ 10 $ withConfig theCacheConfig $ \db ->
-          migrateDb db >> testQuery db
-
-  , setupWithCache $ \theCacheConfig -> bench "withSnapshot migrate 10x and cache" $ whnfIO $ withConfig theCacheConfig $ \db -> do
-      migrateDb db
-      void $ withSnapshot db $ \theSnapshotDir -> do
-        let theSnapshotConfig = defaultConfig <> snapshotConfig theSnapshotDir
-        replicateM_ 10 $ withConfig theSnapshotConfig testQuery
-
-  , setupWithCache $ \theCacheConfig -> bench "cache action and recache and cache" $ whnfIO $ withTempDirectory "/tmp" "tmp-postgres-bench-cache" $ \snapshotDir -> do
+ , setupWithCache $ \theCacheConfig -> bench "cache action and recache and cache" $ whnfIO $ withTempDirectory "/tmp" "tmp-postgres-bench-cache" $ \snapshotDir -> do
       newConfig <- either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
-      replicateM_ 10 $
-        either throwIO pure =<< flip withConfig testQuery
-          =<< either throwIO pure =<< cacheAction snapshotDir migrateDb newConfig
+      either throwIO pure =<< flip withConfig testQuery
+        =<< either throwIO pure =<< cacheAction snapshotDir migrateDb newConfig
 
   , setupWithCacheAndAction $ \snapshotDir theCacheConfig -> bench "pre-cache action and recache" $ whnfIO $ do
-      replicateM_ 10 $
-        either throwIO pure =<< flip withConfig testQuery
-          =<< either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
--}
+      either throwIO pure =<< flip withConfig testQuery
+        =<< either throwIO pure =<< cacheAction snapshotDir migrateDb theCacheConfig
+
   , setupWithCacheAndSP $ \theConfig -> bench "withConfig pre-setup with withSnapshot" $ whnfIO $
       void $ withConfig theConfig $ const $ pure ()
 
