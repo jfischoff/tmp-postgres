@@ -664,6 +664,7 @@ snapshotConfig = fromFilePathConfig . toFilePath . unSnapshot
 -------------------------------------------------------------------------------
 cacheLock :: MVar ()
 cacheLock = unsafePerformIO $ newMVar ()
+{-# NOINLINE cacheLock #-}
 
 {-|
 Check to see if a cached data directory exists.
