@@ -1,5 +1,8 @@
 Changelog for tmp-postgres
 
+1.32.0.0
+  #235 Fixed bug where nested calls to cacheAction would deadlock. cacheAction no longer creates parent directories.
+
 1.31.0.3
   #233 Add missing NOINLINE for global lock
 

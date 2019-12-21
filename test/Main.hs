@@ -632,7 +632,6 @@ cacheActionSpecs = describe "cacheAction" $ do
 
   it "works if two threads try to create a cache at the same time" $ do
     withTempDirectory "/tmp" "tmp-postgres-parallel-cache-test" $ \dirPath -> do
-      -- let dirPath = "/tmp/tmp-postgres-parallel-cache-test-1"
       withDbCache $ \cacheInfo -> do
         lock <- newEmptyMVar
         let
@@ -644,6 +643,20 @@ cacheActionSpecs = describe "cacheAction" $ do
           theCacheAction = cacheAction dirPath waitIfSecond theConfig
         res <- Async.replicateConcurrently 3 theCacheAction
         if all isRight res then pure () else fail "Failed to create caches concurrently"
+
+  it "nested calls don't deadlock" $ do
+    withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
+      let
+        action _ = do
+          let differentCachePath = cachePath <> "/cached1"
+          cacheAction differentCachePath (const $ pure ()) defaultConfig >>= \case
+            Left err -> fail $ "Second call should succeed but failed with " <> show err
+            Right _ -> pure ()
+        theFinalCachePath = cachePath <> "/cached"
+
+      cacheAction theFinalCachePath action defaultConfig >>= \case
+        Left err -> fail $ "First call should succeed but failed with " <> show err
+        Right _ -> pure ()
 
 spec :: Spec
 spec = do

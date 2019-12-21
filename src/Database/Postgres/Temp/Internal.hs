@@ -9,7 +9,6 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
-import           Control.Concurrent
 import qualified Control.Concurrent.Async as Async
 import           Control.DeepSeq
 import           Control.Exception
@@ -24,6 +23,7 @@ import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import           System.Directory
+import           System.Directory.Internal.Prelude
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and @postgres@ connection information. The 'DB' also includes the
@@ -662,9 +662,6 @@ snapshotConfig = fromFilePathConfig . toFilePath . unSnapshot
 -------------------------------------------------------------------------------
 -- cacheAction
 -------------------------------------------------------------------------------
-cacheLock :: MVar ()
-cacheLock = unsafePerformIO $ newMVar ()
-{-# NOINLINE cacheLock #-}
 
 {-|
 Check to see if a cached data directory exists.
@@ -684,7 +681,7 @@ initialConfig <> configFromCachePath
 remigrate as long as the migration does not change. See 'withSnapshot' for
 a ephemeral version of taking snapshots.
 
-@since 1.29.0.0
+@since 1.32.0.0
 -}
 cacheAction
   :: FilePath
@@ -698,17 +695,19 @@ cacheAction cachePath action config = do
   fixCachePath <- fixPath cachePath
   let result = config <> fromFilePathConfig fixCachePath
 
-  withMVar cacheLock $ \_ -> do
-    nonEmpty <- doesFileExist $ fixCachePath <> "/PG_VERSION"
+  -- TODO document the change in behavior
+  preexisting <- try (createDirectory fixCachePath) >>= \case
+    Left e | isAlreadyExistsError e -> pure True
+    Left e -> throwIO e
+    Right () -> pure False
 
-    if nonEmpty then pure $ pure result else fmap join $ withConfig config $ \db -> do
-      action db
-      -- TODO see if parallel is better
-      throwIfNotSuccess id =<< stopPostgresGracefully db
-      createDirectoryIfMissing True fixCachePath
+  if preexisting then pure $ pure result else fmap join $ withConfig config $ \db -> do
+    -- TODO see if parallel is better
+    action db `onException` removeDirectoryRecursive fixCachePath
+    throwIfNotSuccess id =<< stopPostgresGracefully db
 
-      let snapshotCopyCmd = cpFlags <>
-            toDataDirectory db <> "/* " <> fixCachePath
-      system snapshotCopyCmd >>= \case
-        ExitSuccess -> pure $ pure result
-        x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
+    let snapshotCopyCmd = cpFlags <>
+          toDataDirectory db <> "/* " <> fixCachePath
+    system snapshotCopyCmd >>= \case
+      ExitSuccess -> pure $ pure result
+      x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
