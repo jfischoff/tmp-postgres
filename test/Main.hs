@@ -645,7 +645,6 @@ cacheActionSpecs = describe "cacheAction" $ do
         if all isRight res then pure () else fail "Failed to create caches concurrently"
 
   it "nested calls don't deadlock" $ do
-
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
       let
         action _ = do
