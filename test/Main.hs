@@ -338,7 +338,7 @@ happyPaths = describe "succeeds with" $ do
             , cacheUseCopyOnWrite     = True
             }
       withDbCacheConfig theCacheConfig $ \cacheInfo -> do
-        withConfig' (config <> cacheConfig cacheInfo) $ const $ pure ()
+        withConfig' (config <> cacheConfig cacheInfo <> verboseConfig) $ const $ pure ()
         -- see if there is a cache
         tmpFiles <- listDirectory dirPath
 
@@ -624,6 +624,7 @@ cacheActionSpecs = describe "cacheAction" $ do
     let action db = withConn db $ \conn -> do
           _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
           void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
+          putStrLn "hey"
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
       let theFinalCachePath = cachePath <> "/cached"
       cacheAction theFinalCachePath action (defaultConfig { dataDirectory = Permanent theFinalCachePath } ) >>= \case
