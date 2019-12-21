@@ -32,6 +32,7 @@ import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
 import           Data.List
+import           Data.Traversable
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics (Generic)
 import           Network.Socket.Free (getFreePort)
@@ -421,16 +422,13 @@ flattenConfig = unlines . map (\(x, y) -> x <> "=" <> y) .
 completePlan :: [(String, String)] -> String -> Config -> Either [String] Plan
 completePlan envs dataDirectoryString config@Config {..} = do
   (   completePlanLogger
-    , completePlanInitDb
     , completePlanCreateDb
     , completePlanPostgres
     , completePlanDataDirectory
     , completePlanConnectionTimeout
     ) <- runErrors
-         $ (,,,,,)
+         $ (,,,,)
         <$> getOption "logger" logger
-        <*> eitherToErrors (addErrorContext "initDbConfig: " $
-              traverse (completeProcessConfig envs) $ getAccum initDbConfig)
         <*> eitherToErrors (addErrorContext "createDbConfig: " $
               traverse (completeProcessConfig envs) $ getAccum createDbConfig)
         <*> eitherToErrors (addErrorContext "postgresPlan: "
@@ -442,7 +440,53 @@ completePlan envs dataDirectoryString config@Config {..} = do
       completePlanCopy = completeCopyDirectory completePlanDataDirectory <$>
         join (getLast copyConfig)
 
+  completePlanInitDb <- addErrorContext "initDbConfig: " $ completeInitDb envs dataDirectoryString config
+
   pure Plan {..}
+
+removeDataDirectory :: ProcessConfig -> ProcessConfig
+removeDataDirectory processConfig@ProcessConfig{..} =
+  let CommandLineArgs {..} = commandLine
+      newCommandLine = commandLine
+        { keyBased = Map.delete "--pgdata=" $ Map.delete "-D" keyBased
+        }
+      newEnvironmentVariables = environmentVariables
+        { specific = Map.delete "PGDATA" $ specific environmentVariables
+        }
+
+  in processConfig
+      { commandLine = newCommandLine
+      , environmentVariables = newEnvironmentVariables
+      }
+
+-- This needs the complete data directory like completeCopyDirectory
+completeInitDb :: [(String, String)] -> FilePath -> Config -> Either [String] (Maybe (Either CompleteProcessConfig InitDbCachePlan))
+completeInitDb envs theDataDirectory Config {..} = for (getAccum initDbConfig) $ \theInitDbConfig -> case join $ getLast initDbCache of
+  Nothing -> Left <$> completeProcessConfig envs theInitDbConfig
+  Just (cow, cacheDirectory) -> do
+    let
+      clearedConfig = removeDataDirectory theInitDbConfig
+
+
+    completeClearedPlan <- completeProcessConfig envs clearedConfig
+    let
+      cachePath = makeCachePath cacheDirectory theCommandLine
+      cachePlanDataDirectory = cachePath <> "/data"
+      cachePlanCopy = CompleteCopyDirectoryCommand
+        { copyDirectoryCommandSrc = cachePlanDataDirectory
+        , copyDirectoryCommandDst = theDataDirectory
+        , copyDirectoryCommandCow = cow
+        }
+      theCommandLine = makeInitDbCommandLine completeClearedPlan
+
+      modifiedConfig = clearedConfig <> mempty
+        { commandLine = mempty
+            { keyBased = Map.fromList [("--pgdata=", Just cachePlanDataDirectory)]
+            }
+        }
+
+    cachePlanInitDb <- completeProcessConfig envs modifiedConfig
+    pure $ Right InitDbCachePlan {..}
 
 -- Returns 'True' if the 'Config' has a
 -- 'Just' 'initDbConfig'.
@@ -679,37 +723,6 @@ addDataDirectory theDataDirectory x = x
       ("--pgdata=" <> theDataDirectory) : completeProcessConfigCmdLine x
   }
 
-cachePlan :: Plan -> Bool -> FilePath -> IO Plan
-cachePlan plan@Plan {..} cow cacheDirectory = case completePlanInitDb of
-  Nothing -> pure plan
-  Just theConfig -> do
-    let (mtheDataDirectory, clearedConfig) = splitDataDirectory theConfig
-    theDataDirectory <- maybe
-      (throwIO $ FailedToFindDataDirectory (show $ pretty clearedConfig))
-      pure
-      mtheDataDirectory
-
-    let
-      theCommandLine = makeInitDbCommandLine clearedConfig
-      cachePath = makeCachePath cacheDirectory theCommandLine
-      cachedDataDirectory = cachePath <> "/data"
-
-    theInitDbPlan <- doesDirectoryExist cachePath >>= \case
-      True -> pure Nothing
-      False -> do
-        createDirectoryIfMissing True cachePath
-        writeFile (cachePath <> "/commandLine.log") theCommandLine
-        pure $ pure $ addDataDirectory cachedDataDirectory clearedConfig
-
-    pure plan
-      { completePlanCopy = pure $ CompleteCopyDirectoryCommand
-        { copyDirectoryCommandSrc = cachedDataDirectory
-        , copyDirectoryCommandDst = theDataDirectory
-        , copyDirectoryCommandCow = cow
-        }
-      , completePlanInitDb = theInitDbPlan
-      }
-
 -- | Create a 'Config' that sets the command line options of all processes
 --   (@initdb@, @postgres@ and @createdb@). This the @generated@ plan
 --   that is combined with the @extra@ plan from
@@ -785,10 +798,10 @@ setupConfig config@Config {..} = evalContT $ do
         (toFilePath resourcesSocketDirectory)
         (toFilePath resourcesDataDir)
       finalPlan = hostAndDir <> config
-  uncachedPlan <- lift $
+  resourcesPlan <- lift $
     either (throwIO . PlanFailed (show $ pretty finalPlan)) pure $
       completePlan envs (toFilePath resourcesDataDir) finalPlan
-  resourcesPlan <- lift $ maybe (pure uncachedPlan) (uncurry $ cachePlan uncachedPlan) resourcesInitDbCache
+--  resourcesPlan <- lift $ maybe (pure uncachedPlan) (uncurry $ cachePlan uncachedPlan) resourcesInitDbCache
   pure Resources {..}
 
 -- | Free the temporary resources created by 'setupConfig'.

@@ -6,7 +6,7 @@ See 'startPlan' for more details.
 -}
 module Database.Postgres.Temp.Internal.Core where
 
-import           Control.Concurrent (threadDelay)
+import           Control.Concurrent
 import           Control.Concurrent.Async (race_, withAsync)
 import           Control.Exception
 import           Control.Monad
@@ -19,6 +19,7 @@ import qualified Database.PostgreSQL.Simple.Options as Client
 import           System.Directory
 import           System.Exit (ExitCode(..))
 import           System.IO
+import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Signals (sigINT, sigQUIT, signalProcess)
 import           System.Process
 import           System.Process.Internals
@@ -347,6 +348,42 @@ executeCreateDb :: CompleteProcessConfig -> IO ()
 executeCreateDb config = do
   (res, stdOut, stdErr) <- executeProcessAndTee "createdb" config
   throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
+
+-- The DataDirectory and the initdb data directory must match!
+data InitDbCachePlan = InitDbCachePlan
+  { cachePlanDataDirectory :: FilePath
+  , cachePlanInitDb        :: CompleteProcessConfig
+  , cachePlanCopy          :: CompleteCopyDirectoryCommand
+  }
+
+instance Pretty InitDbCachePlan where
+  pretty InitDbCachePlan {..}
+    =   text "cachePlanDataDirectory:"
+    <>  softline
+    <>  indent 2 (pretty cachePlanDataDirectory)
+    <>  hardline
+    <>  text "cachePlanInitDb:"
+    <>  softline
+    <>  indent 2 (pretty cachePlanInitDb)
+    <>  hardline
+    <>  text "cachePlanCopy:"
+    <>  softline
+    <>  indent 2 (pretty cachePlanCopy)
+
+cacheLock :: MVar ()
+cacheLock = unsafePerformIO $ newMVar ()
+{-# NOINLINE cacheLock #-}
+
+executeInitDbCachePlan :: InitDbCachePlan -> IO ()
+executeInitDbCachePlan InitDbCachePlan {..} = do
+  withMVar cacheLock $ \_ -> do
+    -- Check if the data directory exists
+    exists <- doesDirectoryExist cachePlanDataDirectory
+    -- If it does not call initdb
+    unless exists $ executeInitDb cachePlanInitDb
+    -- call the copy
+
+  executeCopyDirectoryCommand cachePlanCopy
 -------------------------------------------------------------------------------
 -- Plan
 -------------------------------------------------------------------------------
@@ -360,7 +397,7 @@ executeCreateDb config = do
 --   higher level plan generation is not sufficent.
 data Plan = Plan
   { completePlanLogger            :: Logger
-  , completePlanInitDb            :: Maybe CompleteProcessConfig
+  , completePlanInitDb            :: Maybe (Either CompleteProcessConfig InitDbCachePlan)
   , completePlanCopy              :: Maybe CompleteCopyDirectoryCommand
   , completePlanCreateDb          :: Maybe CompleteProcessConfig
   , completePlanPostgres          :: CompletePostgresPlan
@@ -369,11 +406,14 @@ data Plan = Plan
   , completePlanConnectionTimeout :: Int
   }
 
+eitherPretty :: (Pretty a, Pretty b) => Either a b -> Doc
+eitherPretty = either pretty pretty
+
 instance Pretty Plan where
   pretty Plan {..}
     =   text "completePlanInitDb:"
     <>  softline
-    <>  indent 2 (pretty completePlanInitDb)
+    <>  indent 2 (pretty $ fmap eitherPretty completePlanInitDb)
     <>  hardline
     <>  text "completePlanCopy:"
     <>  softline
@@ -402,7 +442,7 @@ instance Pretty Plan where
 startPlan :: Plan -> IO PostgresProcess
 startPlan plan@Plan {..} = do
   completePlanLogger $ StartPlan $ show $ pretty plan
-  for_ completePlanInitDb executeInitDb
+  for_ completePlanInitDb $ either executeInitDb executeInitDbCachePlan
 
   for_ completePlanCopy executeCopyDirectoryCommand
 
