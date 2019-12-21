@@ -488,45 +488,6 @@ completeInitDb envs theDataDirectory Config {..} = for (getAccum initDbConfig) $
     cachePlanInitDb <- completeProcessConfig envs modifiedConfig
     pure $ Right InitDbCachePlan {..}
 
-
-{-
-eitherToErrors (addErrorContext "initDbConfig: " $
-              traverse (completeProcessConfig envs) $ getAccum initDbConfig)
--}
-
-{-
-cachePlan :: Plan -> Bool -> FilePath -> IO Plan
-cachePlan plan@Plan {..} cow cacheDirectory = case completePlanInitDb of
-  Nothing -> pure plan
-  Just theConfig -> do
-    let (mtheDataDirectory, clearedConfig) = splitDataDirectory theConfig
-    theDataDirectory <- maybe
-      (throwIO $ FailedToFindDataDirectory (show $ pretty clearedConfig))
-      pure
-      mtheDataDirectory
-
-    let
-      theCommandLine = makeInitDbCommandLine clearedConfig
-      cachePath = makeCachePath cacheDirectory theCommandLine
-      cachedDataDirectory = cachePath <> "/data"
-
-    theInitDbPlan <- doesDirectoryExist cachePath >>= \case
-      True -> pure Nothing
-      False -> do
-        createDirectoryIfMissing True cachePath
-        writeFile (cachePath <> "/commandLine.log") theCommandLine
-        pure $ pure $ addDataDirectory cachedDataDirectory clearedConfig
-
-    pure plan
-      { completePlanCopy = pure $ CompleteCopyDirectoryCommand
-        { copyDirectoryCommandSrc = cachedDataDirectory
-        , copyDirectoryCommandDst = theDataDirectory
-        , copyDirectoryCommandCow = cow
-        }
-      , completePlanInitDb = theInitDbPlan
-      }
--}
-
 -- Returns 'True' if the 'Config' has a
 -- 'Just' 'initDbConfig'.
 hasInitDb :: Config -> Bool
