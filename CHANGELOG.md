@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.32.0.1
+  #234 Extend core with a initdb cache primitive
+  #232 Fix multithread initdb creation bug
+
 1.32.0.0
   #235 Fixed bug where nested calls to cacheAction would deadlock. cacheAction no longer creates parent directories.
 
