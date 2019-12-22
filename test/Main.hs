@@ -594,7 +594,7 @@ cacheActionSpecs = describe "cacheAction" $ do
             snapshotConfigAndAssert
             testSuccessfulConfig
 
-  it "doesn't create the cache if it exists" $ do
+  it "doesnt create the cache if it exists" $ do
     let action db = withConn db $ \conn -> do
           _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
           void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
@@ -658,6 +658,22 @@ cacheActionSpecs = describe "cacheAction" $ do
       cacheAction theFinalCachePath action defaultConfig >>= \case
         Left err -> fail $ "First call should succeed but failed with " <> show err
         Right _ -> pure ()
+
+  it "doesnt deadlock if the parent directory is missing" $ do
+    withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
+      let theFinalCachePath = cachePath <> "/parent/child"
+      cacheAction theFinalCachePath (const $ pure ()) defaultConfig `shouldThrow` isDoesNotExistError
+
+  it "doesnt deadlock if the parent directory is missing multithreaded version" $ do
+    withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
+      let theFinalCachePath = cachePath <> "/parent/child"
+          threadBody = cacheAction theFinalCachePath (const $ pure ()) defaultConfig
+
+      thread1 <- Async.async threadBody
+      thread2 <- Async.async threadBody
+
+      Async.wait thread1 `shouldThrow` isDoesNotExistError
+      Async.wait thread2 `shouldThrow` isDoesNotExistError
 
 spec :: Spec
 spec = do
