@@ -662,7 +662,9 @@ cacheActionSpecs = describe "cacheAction" $ do
   it "doesnt deadlock if the parent directory is missing" $ do
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
       let theFinalCachePath = cachePath <> "/parent/child"
-      cacheAction theFinalCachePath (const $ pure ()) defaultConfig `shouldThrow` isDoesNotExistError
+      cacheAction theFinalCachePath (const $ pure ()) defaultConfig >>=  \case
+        Left err -> fail $ "First call should succeed but failed with " <> show err
+        Right _ -> pure ()
 
   it "doesnt deadlock if the parent directory is missing multithreaded version" $ do
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
@@ -672,8 +674,13 @@ cacheActionSpecs = describe "cacheAction" $ do
       thread1 <- Async.async threadBody
       thread2 <- Async.async threadBody
 
-      Async.wait thread1 `shouldThrow` isDoesNotExistError
-      Async.wait thread2 `shouldThrow` isDoesNotExistError
+      Async.wait thread1 >>= \case
+        Left err -> fail $ "First call should succeed but failed with " <> show err
+        Right _ -> pure ()
+
+      Async.wait thread2 >>= \case
+        Left err -> fail $ "Second call should succeed but failed with " <> show err
+        Right _ -> pure ()
 
 spec :: Spec
 spec = do

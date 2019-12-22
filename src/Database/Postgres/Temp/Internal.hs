@@ -24,6 +24,7 @@ import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import           System.Directory
 import           System.Directory.Internal.Prelude
+import           System.FilePath
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and @postgres@ connection information. The 'DB' also includes the
@@ -681,7 +682,7 @@ initialConfig <> configFromCachePath
 remigrate as long as the migration does not change. See 'withSnapshot' for
 a ephemeral version of taking snapshots.
 
-@since 1.32.0.0
+@since 1.33.0.0
 -}
 cacheAction
   :: FilePath
@@ -694,8 +695,10 @@ cacheAction
 cacheAction cachePath action config = do
   fixCachePath <- fixPath cachePath
   let result = config <> fromFilePathConfig fixCachePath
+      parentPath = joinPath $ init $ splitPath fixCachePath
 
-  -- TODO document the change in behavior
+  createDirectoryIfMissing True parentPath
+
   preexisting <- try (createDirectory fixCachePath) >>= \case
     Left e | isAlreadyExistsError e -> pure True
     Left e -> throwIO e
