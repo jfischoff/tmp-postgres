@@ -1,5 +1,5 @@
 name:                tmp-postgres
-version:             1.33.0.0
+version:             1.34.0.0
 synopsis: Start and stop a temporary postgres
 description: Start and stop a temporary postgres. See README.md
 homepage:            https://github.com/jfischoff/tmp-postgres#readme
@@ -47,7 +47,6 @@ library
                , cryptohash-sha1
                , deepseq
                , directory
-               , filepath
                , generic-monoid
                , port-utils
                , postgres-options >= 0.2.0.0

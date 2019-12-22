@@ -9,6 +9,7 @@ module Database.Postgres.Temp.Internal where
 import Database.Postgres.Temp.Internal.Core
 import Database.Postgres.Temp.Internal.Config
 
+import           Control.Concurrent
 import qualified Control.Concurrent.Async as Async
 import           Control.DeepSeq
 import           Control.Exception
@@ -23,8 +24,6 @@ import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import           System.Directory
-import           System.Directory.Internal.Prelude
-import           System.FilePath
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
 --   and @postgres@ connection information. The 'DB' also includes the
@@ -663,6 +662,19 @@ snapshotConfig = fromFilePathConfig . toFilePath . unSnapshot
 -------------------------------------------------------------------------------
 -- cacheAction
 -------------------------------------------------------------------------------
+cacheActionLocks :: MVar (Map.Map FilePath (MVar ()))
+cacheActionLocks = unsafePerformIO $ newMVar mempty
+{-# NOINLINE cacheActionLocks #-}
+
+withActionLock :: FilePath -> IO a -> IO a
+withActionLock filePath action = do
+  theLock <- modifyMVar cacheActionLocks $ \theMap -> do
+    theLock <- case Map.lookup filePath theMap of
+      Nothing -> newMVar ()
+      Just x  -> pure x
+    pure (Map.insert filePath theLock theMap, theLock)
+
+  withMVar theLock $ \_ -> action
 
 {-|
 Check to see if a cached data directory exists.
@@ -682,7 +694,19 @@ initialConfig <> configFromCachePath
 remigrate as long as the migration does not change. See 'withSnapshot' for
 a ephemeral version of taking snapshots.
 
-@since 1.33.0.0
+You can nest calls to cacheAction and safe to call it from several threads.
+However 'cacheAction' uses locks internal to prevent multiple threads from
+stomping on each other.
+
+If one makes a nested call and accidently uses the same cache directory
+in both calls the calls will deadlock. If this occurs on the same thread
+RTS will throw an exception. However do not rely on this and just be
+careful to not reuse the same cache path when nesting calls.
+
+There is no good reuse the cache path when nesting so one is unlikely to
+run into this.
+
+@since 1.34.0.0
 -}
 cacheAction
   :: FilePath
@@ -695,22 +719,18 @@ cacheAction
 cacheAction cachePath action config = do
   fixCachePath <- fixPath cachePath
   let result = config <> fromFilePathConfig fixCachePath
-      parentPath = joinPath $ init $ splitPath fixCachePath
 
-  createDirectoryIfMissing True parentPath
+  withActionLock fixCachePath $ do
+    nonEmpty <- doesFileExist $ fixCachePath <> "/PG_VERSION"
 
-  preexisting <- try (createDirectory fixCachePath) >>= \case
-    Left e | isAlreadyExistsError e -> pure True
-    Left e -> throwIO e
-    Right () -> pure False
+    if nonEmpty then pure $ pure result else fmap join $ withConfig config $ \db -> do
+      action db
+      -- TODO see if parallel is better
+      throwIfNotSuccess id =<< stopPostgresGracefully db
+      createDirectoryIfMissing True fixCachePath
 
-  if preexisting then pure $ pure result else fmap join $ withConfig config $ \db -> do
-    -- TODO see if parallel is better
-    action db `onException` removeDirectoryRecursive fixCachePath
-    throwIfNotSuccess id =<< stopPostgresGracefully db
-
-    let snapshotCopyCmd = cpFlags <>
-          toDataDirectory db <> "/* " <> fixCachePath
-    system snapshotCopyCmd >>= \case
-      ExitSuccess -> pure $ pure result
-      x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
+      let snapshotCopyCmd = cpFlags <>
+            toDataDirectory db <> "/* " <> fixCachePath
+      system snapshotCopyCmd >>= \case
+        ExitSuccess -> pure $ pure result
+        x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x

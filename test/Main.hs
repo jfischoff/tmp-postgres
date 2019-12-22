@@ -567,6 +567,10 @@ withSnapshotSpecs = describe "withSnapshot" $ do
 
 cacheActionSpecs :: Spec
 cacheActionSpecs = describe "cacheAction" $ do
+  let configTest config = testWithTemporaryDirectory
+        (ConfigAndAssertion config mempty)
+        testSuccessfulConfig
+
   it "creates the cache if it does not exist" $ do
     let action db = withConn db $ \conn -> do
           _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
@@ -652,35 +656,35 @@ cacheActionSpecs = describe "cacheAction" $ do
           let differentCachePath = cachePath <> "/cached1"
           cacheAction differentCachePath (const $ pure ()) defaultConfig >>= \case
             Left err -> fail $ "Second call should succeed but failed with " <> show err
-            Right _ -> pure ()
+            Right config -> configTest config
         theFinalCachePath = cachePath <> "/cached"
 
       cacheAction theFinalCachePath action defaultConfig >>= \case
         Left err -> fail $ "First call should succeed but failed with " <> show err
-        Right _ -> pure ()
+        Right config -> configTest config
 
   it "doesnt deadlock if the parent directory is missing" $ do
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
       let theFinalCachePath = cachePath <> "/parent/child"
       cacheAction theFinalCachePath (const $ pure ()) defaultConfig >>=  \case
         Left err -> fail $ "First call should succeed but failed with " <> show err
-        Right _ -> pure ()
+        Right config -> configTest config
 
   it "doesnt deadlock if the parent directory is missing multithreaded version" $ do
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
       let theFinalCachePath = cachePath <> "/parent/child"
-          threadBody = cacheAction theFinalCachePath (const $ pure ()) defaultConfig
+          threadBody = cacheAction theFinalCachePath mempty defaultConfig
 
       thread1 <- Async.async threadBody
       thread2 <- Async.async threadBody
 
       Async.wait thread1 >>= \case
         Left err -> fail $ "First call should succeed but failed with " <> show err
-        Right _ -> pure ()
+        Right config -> configTest config
 
       Async.wait thread2 >>= \case
         Left err -> fail $ "Second call should succeed but failed with " <> show err
-        Right _ -> pure ()
+        Right config -> configTest config
 
 spec :: Spec
 spec = do

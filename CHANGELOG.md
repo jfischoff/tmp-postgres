@@ -1,5 +1,9 @@
 Changelog for tmp-postgres
 
+1.34.0.0
+  #235 Take two to solve deadlocking on cacheAction. This time it is still possible but fixes #239
+  #239 First time action cache is made get cp failure
+
 1.33.0.0
   #240 cacheAction should create the parent directories
 
