@@ -38,7 +38,6 @@ main = withTempDirectory "/tmp" "tmp-postgres-spec" $ \directoryPath ->
   forM_ [0, 10 .. 1000000] $ \theDelay -> do
     let theConfig = defaultConfig
           { temporaryDirectory = pure directoryPath
-          , logger = pure print
           }
 
     initialContents <- listDirectory directoryPath
