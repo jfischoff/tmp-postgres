@@ -1,4 +1,6 @@
 Changelog for tmp-postgres
+- 1.34.1.0
+  - #229 Add a `auto_explain` config
 
 - 1.34.0.1
   - #244 Fix cacheDbConfig doc

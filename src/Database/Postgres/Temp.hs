@@ -56,6 +56,7 @@ module Database.Postgres.Temp
   , defaultConfig
   , defaultConfig_9_3_10
   , verboseConfig
+  , autoExplainConfig
   -- *** Custom Config builder helpers
   , optionsToDefaultConfig
   -- ** Main resource handle

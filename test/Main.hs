@@ -381,7 +381,7 @@ happyPaths = describe "succeeds with" $ do
 
   it "withDbCache seems to work" $
     withDbCache $ \cacheInfo ->
-      either throwIO pure <=< withConfig (cacheConfig cacheInfo <> verboseConfig) $ \db -> do
+      either throwIO pure <=< withConfig (cacheConfig cacheInfo <> autoExplainConfig 0) $ \db -> do
         assertConnection db
         withConn db $ \conn -> countDbs conn `shouldReturn` 3
 
@@ -628,7 +628,6 @@ cacheActionSpecs = describe "cacheAction" $ do
     let action db = withConn db $ \conn -> do
           _ <- PG.execute_ conn "BEGIN; CREATE TABLE foo ( id int );"
           void $ PG.execute_ conn "INSERT INTO foo (id) VALUES (1); END;"
-          putStrLn "hey"
     withTempDirectory "/tmp" "tmp-postgres-cache-action" $ \cachePath -> do
       let theFinalCachePath = cachePath <> "/cached"
       cacheAction theFinalCachePath action (defaultConfig { dataDirectory = Permanent theFinalCachePath } ) >>= \case

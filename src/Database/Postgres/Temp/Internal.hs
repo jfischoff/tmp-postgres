@@ -262,6 +262,43 @@ verboseConfig = defaultConfig <> mempty
   , postgresConfig = standardProcessConfig
   }
 
+{-|
+Useful options for configuring and loading @auto_explain@.
+
+@since 1.34.1.0
+-}
+autoExplainPostgresConfig :: Int -> [(String, String)]
+autoExplainPostgresConfig milliseconds = verbosePostgresConfig <>
+  [ ("log_min_duration_statement", show milliseconds <> "ms")
+  , ("shared_preload_libraries", "'auto_explain'")
+  , ("session_preload_libraries", "'auto_explain'")
+  , ("auto_explain.log_analyze", "1")
+  , ("auto_explain.log_buffers", "1")
+  , ("auto_explain.log_timing", "1")
+  , ("auto_explain.log_triggers", "1")
+  , ("auto_explain.log_verbose", "1")
+  , ("auto_explain.log_min_duration", show milliseconds <> "ms")
+  , ("auto_explain.log_nested_statements", "1")
+  , ("auto_explain.sample_rate", "1")
+  , ("auto_explain.log_verbose", "on")
+  , ("log_connections", "off")
+  , ("log_disconnections", "off")
+  ]
+
+{-|
+A config which loads and configures @auto_explain@. Useful for
+understanding slow queries plans.
+
+@since 1.34.1.0
+-}
+autoExplainConfig
+  :: Int
+  -- ^ Minimum number of milliseconds to log. Use 0 to log all queries.
+  -> Config
+autoExplainConfig milliseconds = defaultConfig <> mempty
+  { postgresConfigFile = autoExplainPostgresConfig milliseconds
+  , postgresConfig = standardProcessConfig
+  }
 
 {-|
 
