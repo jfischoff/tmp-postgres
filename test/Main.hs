@@ -811,6 +811,10 @@ spec = do
           PG.query_ conn "SELECT id FROM foo ORDER BY id ASC"
             `shouldReturn` [PG.Only (1 :: Int)]
 
+  it "executeProcessAndTee doesn't lose stderr" do
+    let config = CompleteProcessConfig [] ["--bogus-argument"] devNull devNull devNull
+    let expected = "could not find a \"initdb\" to executeinitdb: unrecognized option '--bogus-argument'Try \"initdb --help\" for more information."
+    executeProcessAndTee "initdb" config `shouldReturn` (ExitFailure 1, "", expected)
 
 main :: IO ()
 main = hspec spec
