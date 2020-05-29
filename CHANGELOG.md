@@ -1,4 +1,7 @@
 Changelog for tmp-postgres
+- 1.35.0.0
+  - #256 Use TMP and TMPDIR as defaults for the tmp directory
+
 - 1.34.1.0
   - #229 Add a `auto_explain` config
 

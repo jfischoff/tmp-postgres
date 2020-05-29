@@ -45,6 +45,7 @@ import           System.IO.Temp (createTempDirectory)
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import           Control.Applicative
 
 {-|
 
@@ -785,7 +786,10 @@ setupConfig
 setupConfig config@Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
-  let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
+  tmpEnv <- lift $ lookupEnv "TMP"
+  tmpDirEnv <- lift $ lookupEnv "TMPDIR"
+  let defaultTemp = fromMaybe "/tmp" $ tmpEnv <|> tmpDirEnv
+      resourcesTemporaryDir = fromMaybe defaultTemp $ getLast temporaryDirectory
       resourcesInitDbCache = join $ getLast initDbCache
   resourcesSocketDirectory <- ContT $ bracketOnError
     (setupDirectoryType resourcesTemporaryDir "tmp-postgres-socket" socketDirectory) cleanupDirectoryType
