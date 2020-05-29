@@ -785,7 +785,10 @@ setupConfig
 setupConfig config@Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
-  let resourcesTemporaryDir = fromMaybe "/tmp" $ getLast temporaryDirectory
+  tmpEnv <- lookupEnv "TMP"
+  tmpDirEnv <- lookupEnv "TMPDIR"
+  let defaultTemp = fromMaybe "/tmp" $ tmpEnv <|> tmpDirEnv
+      resourcesTemporaryDir = fromMaybe defaultTemp $ getLast temporaryDirectory
       resourcesInitDbCache = join $ getLast initDbCache
   resourcesSocketDirectory <- ContT $ bracketOnError
     (setupDirectoryType resourcesTemporaryDir "tmp-postgres-socket" socketDirectory) cleanupDirectoryType
