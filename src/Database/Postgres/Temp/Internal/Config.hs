@@ -785,8 +785,8 @@ setupConfig
 setupConfig config@Config {..} = evalContT $ do
   envs <- lift getEnvironment
   thePort <- lift $ maybe getFreePort pure $ join $ getLast port
-  tmpEnv <- lookupEnv "TMP"
-  tmpDirEnv <- lookupEnv "TMPDIR"
+  tmpEnv <- lift $ lookupEnv "TMP"
+  tmpDirEnv <- lift $ lookupEnv "TMPDIR"
   let defaultTemp = fromMaybe "/tmp" $ tmpEnv <|> tmpDirEnv
       resourcesTemporaryDir = fromMaybe defaultTemp $ getLast temporaryDirectory
       resourcesInitDbCache = join $ getLast initDbCache
