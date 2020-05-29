@@ -45,6 +45,7 @@ import           System.IO.Temp (createTempDirectory)
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
 import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
+import           Control.Applicative
 
 {-|
 
