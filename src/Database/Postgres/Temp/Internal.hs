@@ -180,8 +180,8 @@ custom 'Config' like the following.
 @
 custom = defaultConfig <> mempty
   { 'postgresConfigFile' =
-      [ ("wal_level, "replica")
-      , ("archive_mode", on")
+      [ ("wal_level", "replica")
+      , ("archive_mode", "on")
       , ("max_wal_senders", "2")
       , ("fsync", "on")
       , ("synchronous_commit", "on")
