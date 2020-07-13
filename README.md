@@ -6,7 +6,7 @@
 By default it will create a temporary data directory and
 a temporary directory for a UNIX domain socket for `postgres` to listen on.
 
-Here is an example using the expection safe 'with' function:
+Here is an example using the exception-safe 'with' function:
 
 ```haskell
 with $ \db -> bracket
