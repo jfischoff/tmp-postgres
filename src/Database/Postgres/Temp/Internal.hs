@@ -432,8 +432,14 @@ withRestart db f = bracket (restart db) (either mempty stop) $
   either (pure . Left) (fmap Right . f)
 
 -- | Attempt to create a 'Config' from a 'Client.Options'. Useful if you
---   want to create a database owned by a specific user you will also login
---   with among other use cases.
+--   want to create a database
+--
+--   * owned by a specific user you will also login with
+--   * with a specific name (i.e. not the default name, "postgres")
+--
+--  among other use cases. Changing the 'connectionOptions' field of
+--  'Config' does /not/ achieve these results and you are likely to see
+--  unexpected behaviour if you try to.
 --
 --   @since 1.21.0.0
 optionsToDefaultConfig :: Client.Options -> Config
