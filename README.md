@@ -61,3 +61,23 @@ $ sudo apt-get install postgresql-VERSION
 $ echo "export PATH=$PATH:/usr/lib/postgresql/VERSION/bin/" >> /home/ubuntu/.bashrc
 $ stack install tmp-postgres
 ```
+
+## GitHub Actions
+
+Assuming you are using one of the standard workflow containers, simply add workflow steps which install postgresql as above.  For example,
+
+``` yaml
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: "Install postgresql"
+        run: "sudo apt-get update && sudo apt-get install postgresql-10"
+
+      # ...
+
+      - name: "Run test"
+        run: |
+          export PATH=$PATH:/usr/lib/postgresql/10/bin
+          stack test
+```
