@@ -138,16 +138,18 @@ teeHandle orig f =
 -- | 'CompleteProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
 data CompleteProcessConfig = CompleteProcessConfig
-  { completeProcessConfigEnvVars :: [(String, String)]
+  { completeProcessConfigEnvVars     :: [(String, String)]
   -- ^ Environment variables
-  , completeProcessConfigCmdLine :: [String]
+  , completeProcessConfigCmdLine     :: [String]
   -- ^ Command line arguements
-  , completeProcessConfigStdIn   :: Handle
+  , completeProcessConfigStdIn       :: Handle
   -- ^ The 'Handle' for standard input
-  , completeProcessConfigStdOut  :: Handle
+  , completeProcessConfigStdOut      :: Handle
   -- ^ The 'Handle' for standard output
-  , completeProcessConfigStdErr  :: Handle
+  , completeProcessConfigStdErr      :: Handle
   -- ^ The 'Handle' for standard error
+  , completeProcessConfigCreateGroup :: Bool
+  -- ^ Whether or not to create new process group
   }
 
 prettyHandle :: Handle -> Doc
@@ -174,6 +176,10 @@ instance Pretty CompleteProcessConfig where
     <> hardline
     <> text "completeProcessConfigStdErr:"
     <+> prettyHandle completeProcessConfigStdErr
+    <> hardline
+    <> text "completeProcessConfigCreateGroup:"
+    <> softline
+    <> pretty completeProcessConfigCreateGroup
 
 -- | Start a process interactively and return the 'ProcessHandle'
 startProcess
@@ -188,6 +194,7 @@ startProcess name CompleteProcessConfig {..} = (\(_, _, _, x) -> x) <$>
     , std_out = UseHandle completeProcessConfigStdOut
     , std_in  = UseHandle completeProcessConfigStdIn
     , env     = Just completeProcessConfigEnvVars
+    , create_group = completeProcessConfigCreateGroup
     }
 
 -- | Stop a 'ProcessHandle'. An alias for 'waitForProcess'

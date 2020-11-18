@@ -212,6 +212,9 @@ data ProcessConfig = ProcessConfig
   -- ^ A monoid for configuring the standard output 'Handle'.
   , stdErr :: Last Handle
   -- ^ A monoid for configuring the standard error 'Handle'.
+  , createGroup :: Any
+  -- ^ A monoid for combining boolean create process group flag.
+  --   The first 'True' value wins.
   }
   deriving stock (Generic, Eq, Show)
   deriving Semigroup via GenericSemigroup ProcessConfig
@@ -235,6 +238,9 @@ instance Pretty ProcessConfig where
     <> hardline
     <> text "stdErr:" <+>
         pretty (prettyHandle <$> getLast stdErr)
+    <> hardline
+    <> text "createGroup:" <+>
+        pretty (getAny createGroup)
 
 
 -- | The 'standardProcessConfig' sets the handles to 'stdin', 'stdout' and
@@ -291,6 +297,7 @@ completeProcessConfig
   :: [(String, String)] -> ProcessConfig -> Either [String] CompleteProcessConfig
 completeProcessConfig envs ProcessConfig {..} = runErrors $ do
   let completeProcessConfigCmdLine = completeCommandLineArgs commandLine
+      completeProcessConfigCreateGroup = getAny createGroup
   completeProcessConfigEnvVars <- eitherToErrors $
     completeEnvironmentVariables envs environmentVariables
   completeProcessConfigStdIn  <-
