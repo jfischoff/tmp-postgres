@@ -7,12 +7,11 @@ See 'startPlan' for more details.
 module Database.Postgres.Temp.Internal.Core where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async (race_, withAsync)
+import           Control.Concurrent.Async (Async, race_, wait, withAsync)
 import           Control.Exception
 import           Control.Monad
 import qualified Data.ByteString.Char8 as BSC
 import           Data.Foldable (for_)
-import           Data.IORef
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
@@ -122,18 +121,19 @@ waitForDB logger options = do
     Right () -> return ()
 
 -- Only useful if we believe the output is finite
-teeHandle :: Handle -> (Handle -> IO a) -> IO (a, String)
+teeHandle :: Handle -> (Handle -> Async String -> IO a) -> IO a
 teeHandle orig f =
   bracket createPipe (\(x, y) -> hClose x >> hClose y) $ \(readEnd, writeEnd) -> do
-    outputRef <- newIORef []
+    let readerLoop acc = do
+          eof <- hIsEOF readEnd
+          if eof then
+            pure acc
+          else do
+            theLine <- hGetLine readEnd
+            hPutStrLn orig theLine
+            readerLoop (acc <> theLine)
 
-    let readerLoop = forever $ do
-          theLine <- hGetLine readEnd
-          modifyIORef outputRef (<>theLine)
-          hPutStrLn orig theLine
-
-    res <- withAsync readerLoop $ \_ -> f writeEnd
-    (res,) <$> readIORef outputRef
+    withAsync (readerLoop "") $ f writeEnd
 
 -- | 'CompleteProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
@@ -219,13 +219,18 @@ executeProcessAndTee
   -> CompleteProcessConfig
   -- ^ Process config
   -> IO (ExitCode, String, String)
-executeProcessAndTee name config = fmap (\((x, y), z) -> (x, z, y)) $
-  teeHandle (completeProcessConfigStdOut config) $ \newOut ->
-    teeHandle (completeProcessConfigStdErr config) $ \newErr ->
-      executeProcess name $ config
+executeProcessAndTee name config =
+  teeHandle (completeProcessConfigStdOut config) $ \newOut aOut ->
+    teeHandle (completeProcessConfigStdErr config) $ \newErr aErr -> do
+      result <- executeProcess name $ config
         { completeProcessConfigStdErr = newErr
         , completeProcessConfigStdOut = newOut
         }
+      for_ [newOut, newErr] hClose -- executeProcess doesn't close these
+      stdoutString <- wait aOut
+      stderrString <- wait aErr
+      pure (result, stdoutString, stderrString)
+
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
