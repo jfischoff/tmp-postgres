@@ -36,6 +36,7 @@ import           Data.Traversable
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics (Generic)
 import           Network.Socket.Free (getFreePort)
+import           Prettyprinter
 import           System.Directory
 import           System.Environment
 import           System.Exit (ExitCode(..))
@@ -44,7 +45,6 @@ import           System.IO.Error
 import           System.IO.Temp (createTempDirectory)
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
-import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import           Control.Applicative
 
 {-|
@@ -90,7 +90,7 @@ getAccum = \case
 instance Monoid a => Monoid (Accum a) where
   mempty = DontCare
 
-prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc
+prettyMap :: (Pretty a, Pretty b) => Map a b -> Doc ann
 prettyMap theMap =
   let xs = Map.toList theMap
   in vsep $ map (uncurry prettyKeyPair) xs
@@ -119,10 +119,10 @@ instance Monoid EnvironmentVariables where
 
 instance Pretty EnvironmentVariables where
   pretty EnvironmentVariables {..}
-    = text "inherit:"
+    = "inherit:"
         <+> pretty (getLast inherit)
     <> hardline
-    <> text "specific:"
+    <> "specific:"
     <> softline
     <> indent 2 (prettyMap specific)
 
@@ -168,15 +168,15 @@ instance Semigroup CommandLineArgs where
 
 instance Pretty CommandLineArgs where
   pretty p@CommandLineArgs {..}
-    = text "keyBased:"
+    = "keyBased:"
     <> softline
     <> indent 2 (prettyMap keyBased)
     <> hardline
-    <> text "indexBased:"
+    <> "indexBased:"
     <> softline
     <> indent 2 (prettyMap indexBased)
     <> hardline
-    <> text "completed:" <+> text (unwords (completeCommandLineArgs p))
+    <> "completed:" <+> pretty (unwords (completeCommandLineArgs p))
 
 -- Take values as long as the index is the successor of the
 -- last index.
@@ -222,24 +222,24 @@ data ProcessConfig = ProcessConfig
 
 instance Pretty ProcessConfig where
   pretty ProcessConfig {..}
-    = text "environmentVariables:"
+    = "environmentVariables:"
     <> softline
     <> indent 2 (pretty environmentVariables)
     <> hardline
-    <> text "commandLine:"
+    <> "commandLine:"
     <> softline
     <> indent 2 (pretty environmentVariables)
     <> hardline
-    <> text "stdIn:" <+>
-        pretty (prettyHandle <$> getLast stdIn)
+    <> "stdIn:" <+>
+        maybe mempty prettyHandle (getLast stdIn)
     <> hardline
-    <> text "stdOut:" <+>
-        pretty (prettyHandle <$> getLast stdOut)
+    <> "stdOut:" <+>
+        maybe mempty prettyHandle (getLast stdOut)
     <> hardline
-    <> text "stdErr:" <+>
-        pretty (prettyHandle <$> getLast stdErr)
+    <> "stdErr:" <+>
+        maybe mempty prettyHandle (getLast stdErr)
     <> hardline
-    <> text "createGroup:" <+>
+    <> "createGroup:" <+>
         pretty (getAny createGroup)
 
 
@@ -327,8 +327,8 @@ toFilePath = \case
 
 instance Pretty CompleteDirectoryType where
   pretty = \case
-    CPermanent x -> text "CPermanent" <+> pretty x
-    CTemporary x -> text "CTemporary" <+> pretty x
+    CPermanent x -> "CPermanent" <+> pretty x
+    CTemporary x -> "CTemporary" <+> pretty x
 
 makePermanent :: CompleteDirectoryType -> CompleteDirectoryType
 makePermanent = \case
@@ -349,8 +349,8 @@ data DirectoryType
 
 instance Pretty DirectoryType where
   pretty = \case
-    Permanent x -> text "Permanent" <+> pretty x
-    Temporary   -> text "Temporary"
+    Permanent x -> "Permanent" <+> pretty x
+    Temporary   -> "Temporary"
 
 -- | Takes the last 'Permanent' value.
 instance Semigroup DirectoryType where
@@ -546,46 +546,46 @@ data Config = Config
 
 instance Pretty Config where
   pretty Config {..}
-    =  text "socketDirectory:"
+    =  "socketDirectory:"
     <> softline
     <> pretty socketDirectory
     <> hardline
-    <> text "dataDirectory:"
+    <> "dataDirectory:"
     <> softline
     <> pretty dataDirectory
     <> hardline
-    <> text "port:" <+> pretty (getLast port)
+    <> "port:" <+> pretty (getLast port)
     <> hardline
-    <> text "temporaryDirectory:"
+    <> "temporaryDirectory:"
     <> softline
     <> pretty (getLast temporaryDirectory)
     <> hardline
-    <> text "initDbCache:" <+> pretty (getLast initDbCache)
+    <> "initDbCache:" <+> pretty (getLast initDbCache)
     <> hardline
-    <> text "initDbConfig:"
+    <> "initDbConfig:"
     <> softline
     <> indent 2 (pretty $ getAccum initDbConfig)
     <> hardline
-    <> text "initDbConfig:"
+    <> "initDbConfig:"
     <> softline
     <> indent 2 (pretty $ getAccum createDbConfig)
-    <> text "copyConfig:"
+    <> "copyConfig:"
     <> softline
     <> indent 2 (pretty (getLast copyConfig))
     <> hardline
-    <> text "postgresConfig:"
+    <> "postgresConfig:"
     <> softline
     <> indent 2 (pretty postgresConfig)
     <> hardline
-    <> text "connectionOptions:"
+    <> "connectionOptions:"
     <> softline
     <> indent 2 (prettyOptions connectionOptions)
     <> hardline
-    <> text "postgresConfigFile:"
+    <> "postgresConfigFile:"
     <> softline
-    <> indent 2 (vsep $ map (\(x, y) -> text x <> "=" <> text y) postgresConfigFile)
+    <> indent 2 (vsep $ map (\(x, y) -> pretty x <> "=" <> pretty y) postgresConfigFile)
     <> hardline
-    <> text "connectionTimeout:" <+> pretty (getLast connectionTimeout)
+    <> "connectionTimeout:" <+> pretty (getLast connectionTimeout)
 
 socketDirectoryToConfig :: FilePath -> [(String, String)]
 socketDirectoryToConfig dir =
@@ -613,15 +613,15 @@ data CopyDirectoryCommand = CopyDirectoryCommand
 
 instance Pretty CopyDirectoryCommand where
   pretty CopyDirectoryCommand {..}
-    =  text "sourceDirectory:"
+    =  "sourceDirectory:"
     <> softline
-    <> indent 2 (text sourceDirectory)
+    <> indent 2 (pretty sourceDirectory)
     <> hardline
-    <> text "destinationDirectory:"
+    <> "destinationDirectory:"
     <> softline
     <> indent 2 (pretty destinationDirectory)
     <> hardline
-    <> text "useCopyOnWrite:"
+    <> "useCopyOnWrite:"
     <+> pretty useCopyOnWrite
 
 completeCopyDirectory
@@ -847,14 +847,14 @@ data Resources = Resources
 
 instance Pretty Resources where
   pretty Resources {..}
-    =   text "resourcePlan:"
+    =   "resourcePlan:"
     <>  softline
     <>  indent 2 (pretty resourcesPlan)
     <>  hardline
-    <>  text "resourcesSocket:"
+    <>  "resourcesSocket:"
     <+> pretty resourcesSocketDirectory
     <>  hardline
-    <>  text "resourcesDataDir:"
+    <>  "resourcesDataDir:"
     <+> pretty resourcesDataDir
 
 -- | Make the 'resourcesDataDir' 'CPermanent' so it will not

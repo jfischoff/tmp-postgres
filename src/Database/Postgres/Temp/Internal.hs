@@ -19,10 +19,10 @@ import           Data.ByteString (ByteString)
 import qualified Data.Map.Strict as Map
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics
+import           Prettyprinter
 import           System.Exit (ExitCode(..))
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Process
-import           Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 import           System.Directory
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
@@ -40,11 +40,11 @@ data DB = DB
 
 instance Pretty DB where
   pretty DB {..}
-    =  text "dbResources"
+    =  "dbResources"
     <> softline
     <> indent 2 (pretty dbResources)
     <> hardline
-    <> text "dbPostgresProcess"
+    <> "dbPostgresProcess"
     <> softline
     <> indent 2 (pretty dbPostgresProcess)
 

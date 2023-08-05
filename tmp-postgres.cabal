@@ -40,7 +40,6 @@ library
     , ViewPatterns
   build-depends: base >= 4.6 && < 5
                , base64-bytestring
-               , ansi-wl-pprint
                , async
                , bytestring
                , containers
@@ -51,6 +50,7 @@ library
                , port-utils
                , postgres-options >= 0.2.0.0
                , postgresql-simple
+               , prettyprinter
                , process >= 1.2.0.0
                , stm
                , temporary
