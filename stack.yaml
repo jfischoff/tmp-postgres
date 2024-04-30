@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-14.16
+resolver: lts-22.18
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -40,9 +40,8 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps:
-  - postgres-options-0.2.0.0
-  - generic-monoid-0.1.0.0@sha256:00d1a7b7ff0890a3e3cba4032be24fe377c26e5e45d73afcacd42c98abb3b7e3
-
+  - postgres-options-0.2.2.0
+  - generic-monoid-0.1.0.1
 # Override default flag values for local packages and extra-deps
 flags: {}
 

@@ -5,22 +5,22 @@
 
 packages:
 - completed:
-    hackage: postgres-options-0.2.0.0@sha256:5e2d6408ed3943f9a056b58106186397b9aa1424c56f1f26668305ce8ea2838f,1604
+    hackage: postgres-options-0.2.2.0@sha256:ca9fa454f0b82c0e11967db3dd8e2045e71857af53e67e87d6f7c52f44027549,1604
     pantry-tree:
+      sha256: 866e6b3787a738e3177c9cb7f50d33e920b443c53861106a5351644065dabaa1
       size: 295
-      sha256: a9fb2bafbaca65c548916e9276ad129302e0b82b7cc9a5c74d3b359a7a77d598
   original:
-    hackage: postgres-options-0.2.0.0
+    hackage: postgres-options-0.2.2.0
 - completed:
-    hackage: generic-monoid-0.1.0.0@sha256:00d1a7b7ff0890a3e3cba4032be24fe377c26e5e45d73afcacd42c98abb3b7e3,818
+    hackage: generic-monoid-0.1.0.1@sha256:a3987d6bdc9397f85f57a6c39128e3833056701ebe1235e25bb3586c589a705c,747
     pantry-tree:
-      size: 393
-      sha256: 1f8ee01867eaaaa25d3f2f74ad3b62baff2a68dd666e594eb246b67c12fea489
+      sha256: 3b79c529c53018b679fbeab5820297c77f9ce3c96710cca9fdeb77113e44c6e2
+      size: 346
   original:
-    hackage: generic-monoid-0.1.0.0@sha256:00d1a7b7ff0890a3e3cba4032be24fe377c26e5e45d73afcacd42c98abb3b7e3
+    hackage: generic-monoid-0.1.0.1
 snapshots:
 - completed:
-    size: 524804
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/14/16.yaml
-    sha256: 4d1519a4372d051d47a5eae2241cf3fb54e113d7475f89707ddb6ec06add2888
-  original: lts-14.16
+    sha256: 9bebedd3de0195aa01fd55de7f6d4446667440297a7315e69cd72c2610af265f
+    size: 713338
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/22/18.yaml
+  original: lts-22.18
