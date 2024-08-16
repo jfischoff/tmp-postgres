@@ -16,6 +16,7 @@ import           Control.Exception
 import           Control.Monad (void, join)
 import           Control.Monad.Trans.Cont
 import           Data.ByteString (ByteString)
+import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics
@@ -122,8 +123,8 @@ client_min_messages = ERROR
 
 @since 1.21.0.0
 -}
-fastPostgresConfig :: [(String, String)]
-fastPostgresConfig =
+fastPostgresConfig :: Map String String
+fastPostgresConfig = Map.fromList
   [ ("shared_buffers", "12MB")
   , ("fsync", "off")
   , ("synchronous_commit", "off")
@@ -139,6 +140,18 @@ fastPostgresConfig =
   ]
 
 {-|
+A config that might be slightly slower than 'fastPostgresConfig' because it
+logs errors.
+-}
+loggingPostgresConfig :: Map String String
+loggingPostgresConfig =
+  Map.fromList
+    [ ("log_min_messages", "WARNING")
+    , ("log_min_error_statement", "ERROR")
+    ]
+    `Map.union` fastPostgresConfig
+
+{-|
 The default configuration. This will create a database called \"postgres\"
    via @initdb@ (it's default behavior).
    It will create a temporary directory for the data and a temporary directory
@@ -151,8 +164,8 @@ shared_buffers = 12MB
 fsync = off
 synchronous_commit = off
 full_page_writes = off
-log_min_messages = PANIC
-log_min_error_statement = PANIC
+log_min_messages = WARNING
+log_min_error_statement = ERROR
 log_statement = none
 client_min_messages = ERROR
 commit_delay = 100000
@@ -196,7 +209,7 @@ custom = defaultConfig <> mempty
 -}
 defaultConfig :: Config
 defaultConfig = mempty
-  { postgresConfigFile = fastPostgresConfig
+  { postgresConfigFile = Map.toList loggingPostgresConfig
   , initDbConfig = pure mempty
     { commandLine = mempty
       { keyBased = Map.singleton "--no-sync" Nothing
@@ -216,7 +229,7 @@ should use this config.
 -}
 defaultConfig_9_3_10 :: Config
 defaultConfig_9_3_10 = mempty
-  { postgresConfigFile = fastPostgresConfig
+  { postgresConfigFile = Map.toList loggingPostgresConfig
   , initDbConfig = pure mempty
     { commandLine = mempty
       { keyBased = Map.singleton "--nosync" Nothing
@@ -227,27 +240,25 @@ defaultConfig_9_3_10 = mempty
 -- | Default postgres options
 --
 --   @since 1.21.0.0
-verbosePostgresConfig :: [(String, String)]
+verbosePostgresConfig :: Map String String
 verbosePostgresConfig =
-  [ ("shared_buffers", "12MB")
-  , ("fsync", "off")
-  , ("synchronous_commit", "off")
-  , ("full_page_writes", "off")
-  , ("log_min_duration_statement", "0")
-  , ("client_min_messages", "WARNING")
-  , ("log_min_messages", "WARNING")
-  , ("log_min_error_statement", "WARNING")
-  , ("log_checkpoints", "on")
-  , ("log_connections", "on")
-  , ("log_disconnections", "on")
-  , ("log_lock_waits", "on")
-  , ("log_temp_files", "0")
-  , ("log_autovacuum_min_duration", "0")
-  , ("log_error_verbosity", "default")
-  , ("log_line_prefix", "'%t [%p]: '")
-  , ("lc_messages", "'C'")
-  , ("track_io_timing", "on")
-  ]
+  Map.fromList
+    [ ("log_min_duration_statement", "0")
+    , ("client_min_messages", "WARNING")
+    , ("log_min_messages", "WARNING")
+    , ("log_min_error_statement", "WARNING")
+    , ("log_checkpoints", "on")
+    , ("log_connections", "on")
+    , ("log_disconnections", "on")
+    , ("log_lock_waits", "on")
+    , ("log_temp_files", "0")
+    , ("log_autovacuum_min_duration", "0")
+    , ("log_error_verbosity", "default")
+    , ("log_line_prefix", "'%t [%p]: '")
+    , ("lc_messages", "'C'")
+    , ("track_io_timing", "on")
+    ]
+    `Map.union` loggingPostgresConfig
 
 {-|
 This is similar to 'defaultConfig' but it logs as much as possible..
@@ -257,7 +268,7 @@ This is similar to 'defaultConfig' but it logs as much as possible..
 verboseConfig :: Config
 verboseConfig = defaultConfig <> mempty
   { logger = pure print
-  , postgresConfigFile = verbosePostgresConfig
+  , postgresConfigFile = Map.toList verbosePostgresConfig
   , initDbConfig = pure standardProcessConfig
   , postgresConfig = standardProcessConfig
   }
@@ -267,23 +278,25 @@ Useful options for configuring and loading @auto_explain@.
 
 @since 1.34.1.0
 -}
-autoExplainPostgresConfig :: Int -> [(String, String)]
-autoExplainPostgresConfig milliseconds = verbosePostgresConfig <>
-  [ ("log_min_duration_statement", show milliseconds <> "ms")
-  , ("shared_preload_libraries", "'auto_explain'")
-  , ("session_preload_libraries", "'auto_explain'")
-  , ("auto_explain.log_analyze", "1")
-  , ("auto_explain.log_buffers", "1")
-  , ("auto_explain.log_timing", "1")
-  , ("auto_explain.log_triggers", "1")
-  , ("auto_explain.log_verbose", "1")
-  , ("auto_explain.log_min_duration", show milliseconds <> "ms")
-  , ("auto_explain.log_nested_statements", "1")
-  , ("auto_explain.sample_rate", "1")
-  , ("auto_explain.log_verbose", "on")
-  , ("log_connections", "off")
-  , ("log_disconnections", "off")
-  ]
+autoExplainPostgresConfig :: Int -> Map String String
+autoExplainPostgresConfig milliseconds =
+  Map.fromList
+    [ ("log_min_duration_statement", show milliseconds <> "ms")
+    , ("shared_preload_libraries", "'auto_explain'")
+    , ("session_preload_libraries", "'auto_explain'")
+    , ("auto_explain.log_analyze", "1")
+    , ("auto_explain.log_buffers", "1")
+    , ("auto_explain.log_timing", "1")
+    , ("auto_explain.log_triggers", "1")
+    , ("auto_explain.log_verbose", "1")
+    , ("auto_explain.log_min_duration", show milliseconds <> "ms")
+    , ("auto_explain.log_nested_statements", "1")
+    , ("auto_explain.sample_rate", "1")
+    , ("auto_explain.log_verbose", "on")
+    , ("log_connections", "off")
+    , ("log_disconnections", "off")
+    ]
+    `Map.union` verbosePostgresConfig
 
 {-|
 A config which loads and configures @auto_explain@. Useful for
@@ -296,7 +309,7 @@ autoExplainConfig
   -- ^ Minimum number of milliseconds to log. Use 0 to log all queries.
   -> Config
 autoExplainConfig milliseconds = defaultConfig <> mempty
-  { postgresConfigFile = autoExplainPostgresConfig milliseconds
+  { postgresConfigFile = Map.toList $ autoExplainPostgresConfig milliseconds
   , postgresConfig = standardProcessConfig
   }
 
