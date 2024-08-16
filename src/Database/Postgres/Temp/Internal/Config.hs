@@ -799,9 +799,9 @@ setupConfig config@Config {..} = evalContT $ do
       resourcesTemporaryDir = fromMaybe defaultTemp $ getLast temporaryDirectory
       resourcesInitDbCache = join $ getLast initDbCache
   resourcesSocketDirectory <- ContT $ bracketOnError
-    (setupDirectoryType resourcesTemporaryDir "tmp-postgres-socket" socketDirectory) cleanupDirectoryType
+    (setupDirectoryType resourcesTemporaryDir "socket" socketDirectory) cleanupDirectoryType
   resourcesDataDir <- ContT $ bracketOnError
-    (setupDirectoryType resourcesTemporaryDir "tmp-postgres-data" dataDirectory) cleanupDirectoryType
+    (setupDirectoryType resourcesTemporaryDir "data" dataDirectory) cleanupDirectoryType
   let hostAndDir = toPlan
         (hasInitDb config)
         (hasCreateDb config)
