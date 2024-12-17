@@ -16,13 +16,14 @@ import           Control.Exception
 import           Control.Monad (void, join)
 import           Control.Monad.Trans.Cont
 import           Data.ByteString (ByteString)
+import qualified Data.ByteString.Lazy.Char8 as LBSC
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Map.Strict as Map
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics
 import           Prettyprinter
-import           System.Exit (ExitCode(..))
 import           System.IO.Unsafe (unsafePerformIO)
-import           System.Process
+import           System.Process.Typed
 import           System.Directory
 
 -- | Handle for holding temporary resources, the @postgres@ process handle
@@ -381,6 +382,20 @@ stopPostgres = stopPlan . dbPostgresProcess
 stopPostgresGracefully :: DB -> IO ExitCode
 stopPostgresGracefully = stopPostgresProcess True . dbPostgresProcess
 
+stopPostgresGracefullyOrThrow :: DB -> IO ()
+stopPostgresGracefullyOrThrow db = do
+    let postgresProcess = dbPostgresProcess db
+    exitCode <- stopPostgresProcess True postgresProcess
+    case exitCode of
+        ExitSuccess -> pure ()
+        ExitFailure _ ->
+            throwIO $ ExitCodeException
+              { eceExitCode = exitCode
+              , eceProcessConfig = postgresProcessConfig postgresProcess
+              , eceStdout = LBS.empty
+              , eceStderr = LBS.empty
+              }
+
 -- | Restart the @postgres@ from 'DB' using the prior 'Config'. This
 --   will also start an instance previously stoppped with 'stopPostgres'.
 --
@@ -498,22 +513,25 @@ cowCheck = unsafePerformIO $ do
 #else
     cpFlag = "--reflink=auto"
 #endif
-  (_, _, errorOutput)<- readProcessWithExitCode "cp" [cpFlag] ""
+  (_exitCode, stderr) <- readProcessStderr $ proc "cp" [cpFlag]
   -- if the flags do not exist we get a message like "cp: illegal option"
   let usage = "usage:" -- macos
       missingFile = "cp: missing file operand" -- linux
-  pure $ usage ==  take (length usage) errorOutput
-       || missingFile ==  take (length missingFile) errorOutput
+      stderrString = LBSC.unpack stderr
+  pure $ usage == take (length usage) stderrString
+       || missingFile == take (length missingFile) stderrString
 {-# NOINLINE cowCheck #-}
 
-cpFlags :: String
-cpFlags = if cowCheck
+cpFlags :: [String]
+cpFlags =
+  ["-R"]
+  ++ if cowCheck
 #ifdef darwin_HOST_OS
-  then "cp -Rc "
+  then ["-c"]
 #else
-  then "cp -R --reflink=auto "
+  then ["--reflink=auto"]
 #endif
-  else "cp -R "
+  else []
 
 {-|
 'defaultCacheConfig' attempts to determine if the @cp@ on the path
@@ -628,7 +646,7 @@ takeSnapshot
   -- ^ The handle. The @postgres@ is shutdown and the data directory is copied.
   -> IO (Either StartError Snapshot)
 takeSnapshot db = try $ do
-  throwIfNotSuccess id =<< stopPostgresGracefully db
+  stopPostgresGracefullyOrThrow db
   bracketOnError
     (setupDirectoryType
       (toTemporaryDirectory db)
@@ -636,12 +654,11 @@ takeSnapshot db = try $ do
       Temporary
     )
     cleanupDirectoryType $ \snapShotDir -> do
-      let snapshotCopyCmd = cpFlags <>
-            toDataDirectory db <> "/* " <> toFilePath snapShotDir
-      throwIfNotSuccess (SnapshotCopyFailed snapshotCopyCmd) =<<
-        system snapshotCopyCmd
+      let snapshotCopyFlags = cpFlags ++ [toDataDirectory db, toFilePath snapShotDir]
+          snapshotCopyCmd = proc "cp" snapshotCopyFlags
 
-      pure $ Snapshot snapShotDir
+      (readProcess_ snapshotCopyCmd >> (pure $ Snapshot snapShotDir))
+        `catch` (throwIO . SnapshotCopyFailed)
 
 {-|
 Cleanup any temporary resources used for the snapshot.
@@ -769,11 +786,11 @@ cacheAction cachePath action config = do
     if nonEmpty then pure $ pure result else fmap join $ withConfig config $ \db -> do
       action db
       -- TODO see if parallel is better
-      throwIfNotSuccess id =<< stopPostgresGracefully db
+      stopPostgresGracefullyOrThrow db
       createDirectoryIfMissing True fixCachePath
 
-      let snapshotCopyCmd = cpFlags <>
-            toDataDirectory db <> "/* " <> fixCachePath
-      system snapshotCopyCmd >>= \case
-        ExitSuccess -> pure $ pure result
-        x -> pure $ Left $ SnapshotCopyFailed snapshotCopyCmd x
+      let snapshotCopyFlags = cpFlags ++ [toDataDirectory db, fixCachePath]
+          snapshotCopyCmd = proc "cp" snapshotCopyFlags
+
+      (readProcess_ snapshotCopyCmd >> (pure $ Right result))
+        `catch` (pure . Left . SnapshotCopyFailed)

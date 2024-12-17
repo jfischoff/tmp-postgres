@@ -25,6 +25,7 @@ import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Cont
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Base64.URL as Base64
+import qualified Data.ByteString.Lazy.Char8 as LBSC
 import           Data.Char
 import qualified Data.Map.Strict as Map
 import           Data.Map.Strict (Map)
@@ -39,12 +40,12 @@ import           Network.Socket.Free (getFreePort)
 import           Prettyprinter
 import           System.Directory
 import           System.Environment
-import           System.Exit (ExitCode(..))
-import           System.IO
+import           System.IO (Handle, openFile, IOMode(..))
+import qualified System.IO as IO
 import           System.IO.Error
 import           System.IO.Temp (createTempDirectory)
 import           System.IO.Unsafe (unsafePerformIO)
-import           System.Process
+import qualified System.Process.Typed as P
 import           Control.Applicative
 
 {-|
@@ -253,9 +254,9 @@ standardProcessConfig = mempty
   { environmentVariables = mempty
       { inherit = pure True
       }
-  , stdIn  = pure stdin
-  , stdOut = pure stdout
-  , stdErr = pure stderr
+  , stdIn  = pure IO.stdin
+  , stdOut = pure IO.stdout
+  , stdErr = pure IO.stderr
   }
 
 -- | A global reference to @\/dev\/null@ 'Handle'.
@@ -636,18 +637,17 @@ completeCopyDirectory theDataDirectory CopyDirectoryCommand {..} =
     }
 
 getInitDbVersion :: String
-getInitDbVersion = unsafePerformIO $ readProcessWithExitCode "initdb" ["--version"] "" >>= \case
-  (ExitSuccess, outputString, _) -> do
-    let
-      theLastPart = last $ words outputString
-      versionPart = takeWhile (\x -> isDigit x || x == '.' || x == '-') theLastPart
-      humanReadable = if last versionPart == '.'
-        then init versionPart
-        else versionPart
-    pure $ humanReadable <> take 8 (makeArgumentHash outputString)
-
-  (startErrorExitCode, startErrorStdOut, startErrorStdErr) ->
-    throwIO InitDbFailed {..}
+getInitDbVersion = unsafePerformIO $ do
+    (stdout, _stderr) <- P.readProcess_ (P.proc "initdb" ["--version"])
+        `catch` (throwIO . InitDbFailed)
+    let stdoutString = LBSC.unpack stdout
+        theLastPart = last $ words stdoutString
+        versionPart = takeWhile (\x -> isDigit x || x == '.' || x == '-') theLastPart
+        humanReadable =
+            if last versionPart == '.'
+            then init versionPart
+            else versionPart
+    pure $ humanReadable <> take 8 (makeArgumentHash stdoutString)
 {-# NOINLINE getInitDbVersion #-}
 
 makeCommandLine :: String -> CompleteProcessConfig -> String

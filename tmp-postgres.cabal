@@ -52,6 +52,7 @@ library
                , postgresql-simple
                , prettyprinter
                , process >= 1.2.0.0
+               , typed-process
                , stm
                , temporary
                , transformers

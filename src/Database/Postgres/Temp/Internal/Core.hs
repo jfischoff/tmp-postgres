@@ -7,24 +7,25 @@ See 'startPlan' for more details.
 module Database.Postgres.Temp.Internal.Core where
 
 import           Control.Concurrent
-import           Control.Concurrent.Async (race_, withAsync)
+import           Control.Concurrent.Async (race_)
 import           Control.Exception
 import           Control.Monad
 import qualified Data.ByteString.Char8 as BSC
+import           Data.ByteString.Lazy (ByteString)
 import           Data.Foldable (for_)
-import           Data.IORef
 import           Data.Maybe
 import           Data.Typeable
 import qualified Database.PostgreSQL.Simple as PG
 import qualified Database.PostgreSQL.Simple.Options as Client
+import           GHC.Conc (STM, atomically, throwSTM)
+import           GHC.Stack (HasCallStack)
 import           Prettyprinter
 import           System.Directory
-import           System.Exit (ExitCode(..))
-import           System.IO
+import           System.IO (Handle)
 import           System.IO.Unsafe (unsafePerformIO)
 import           System.Posix.Signals (sigINT, sigQUIT, signalProcess)
-import           System.Process
-import           System.Process.Internals
+import qualified System.Process (getPid)
+import           System.Process.Typed
 import           System.Timeout
 
 -- | Internal events for debugging
@@ -59,21 +60,13 @@ instance Show Event where
 --
 --   @since 1.29.0.0
 data StartError
-  = StartPostgresFailed ExitCode
+  = StartPostgresFailed ExitCodeException
   -- ^ @postgres@ failed before a connection succeeded. Most likely this
   --   is due to invalid configuration
-  | InitDbFailed
-    { startErrorStdOut   :: String
-    , startErrorStdErr   :: String
-    , startErrorExitCode :: ExitCode
-    }
+  | InitDbFailed ExitCodeException
   -- ^ @initdb@ failed. This can be from invalid configuration or using a
   --   non-empty data directory
-  | CreateDbFailed
-    { startErrorStdOut   :: String
-    , startErrorStdErr   :: String
-    , startErrorExitCode :: ExitCode
-    }
+  | CreateDbFailed ExitCodeException
   -- ^ @createdb@ failed. This can be from invalid configuration or
   --   the database might already exist.
   | PlanFailed String [String]
@@ -88,14 +81,14 @@ data StartError
   | EmptyDataDirectory
   -- ^ This will happen if a 'Database.Postgres.Temp.Config.Plan' is missing a
   --   'Database.Postgres.Temp.Config.initDbConfig'.
-  | CopyCachedInitDbFailed String ExitCode
+  | CopyCachedInitDbFailed ExitCodeException
   -- ^ This is called if copying a folder cache fails.
   | FailedToFindDataDirectory String
   -- ^ Failed to find a data directory when trying to get
   --   a cached @initdb@ folder.
-  | SnapshotCopyFailed String ExitCode
+  | SnapshotCopyFailed ExitCodeException
   -- ^ We tried to copy a data directory to a snapshot folder and it failed
-  deriving (Show, Eq, Typeable)
+  deriving (Show, Typeable)
 
 instance Exception StartError
 
@@ -103,12 +96,6 @@ instance Exception StartError
 --
 --   @since 1.12.0.0
 type Logger = Event -> IO ()
-
--- A simple helper to throw 'ExitCode's when they are 'ExitFailure'.
-throwIfNotSuccess :: Exception e => (ExitCode -> e) -> ExitCode -> IO ()
-throwIfNotSuccess f = \case
-  ExitSuccess -> pure ()
-  e -> throwIO $ f e
 
 -- | @postgres@ is not ready until we are able to successfully connect.
 --   'waitForDB' attempts to connect over and over again and returns
@@ -121,20 +108,6 @@ waitForDB logger options = do
   try (bracket startAction PG.close mempty) >>= \case
     Left (_ :: IOError) -> threadDelay 1000 >> waitForDB logger options
     Right () -> return ()
-
--- Only useful if we believe the output is finite
-teeHandle :: Handle -> (Handle -> IO a) -> IO (a, String)
-teeHandle orig f =
-  bracket createPipe (\(x, y) -> hClose x >> hClose y) $ \(readEnd, writeEnd) -> do
-    outputRef <- newIORef []
-
-    let readerLoop = forever $ do
-          theLine <- hGetLine readEnd
-          modifyIORef outputRef (<>theLine)
-          hPutStrLn orig theLine
-
-    res <- withAsync readerLoop $ \_ -> f writeEnd
-    (res,) <$> readIORef outputRef
 
 -- | 'CompleteProcessConfig' contains the configuration necessary for starting a
 --   process. It is essentially a stripped down 'System.Process.CreateProcess'.
@@ -182,51 +155,6 @@ instance Pretty CompleteProcessConfig where
     <> softline
     <> pretty completeProcessConfigCreateGroup
 
--- | Start a process interactively and return the 'ProcessHandle'
-startProcess
-  :: String
-  -- ^ Process name
-  -> CompleteProcessConfig
-  -- ^ Process config
-  -> IO ProcessHandle
-startProcess name CompleteProcessConfig {..} = (\(_, _, _, x) -> x) <$>
-  createProcess_ name (proc name completeProcessConfigCmdLine)
-    { std_err = UseHandle completeProcessConfigStdErr
-    , std_out = UseHandle completeProcessConfigStdOut
-    , std_in  = UseHandle completeProcessConfigStdIn
-    , env     = Just completeProcessConfigEnvVars
-    , create_group = completeProcessConfigCreateGroup
-    }
-
--- | Stop a 'ProcessHandle'. An alias for 'waitForProcess'
-stopProcess :: ProcessHandle -> IO ExitCode
-stopProcess = waitForProcess
-
--- | Start a process and block until it finishes return the 'ExitCode'.
-executeProcess
-  :: String
-  -- ^ Process name
-  -> CompleteProcessConfig
-  -- ^ Process config
-  -> IO ExitCode
-executeProcess name conf =
-  bracket (startProcess name conf) terminateProcess waitForProcess
-
--- | Start a process and block until it finishes return the 'ExitCode' and the
---   stderr output.
-executeProcessAndTee
-  :: String
-  -- ^ Process name
-  -> CompleteProcessConfig
-  -- ^ Process config
-  -> IO (ExitCode, String, String)
-executeProcessAndTee name config = fmap (\((x, y), z) -> (x, z, y)) $
-  teeHandle (completeProcessConfigStdOut config) $ \newOut ->
-    teeHandle (completeProcessConfigStdErr config) $ \newErr ->
-      executeProcess name $ config
-        { completeProcessConfigStdErr = newErr
-        , completeProcessConfigStdOut = newOut
-        }
 -------------------------------------------------------------------------------
 -- PostgresProcess Life cycle management
 -------------------------------------------------------------------------------
@@ -255,8 +183,10 @@ prettyOptions = pretty . BSC.unpack . Client.toConnectionString
 data PostgresProcess = PostgresProcess
   { postgresProcessClientOptions :: Client.Options
   -- ^ Connection options
-  , postgresProcessHandle :: ProcessHandle
+  , postgresProcessHandle :: Process () (STM ByteString) (STM ByteString)
   -- ^ @postgres@ process handle
+  , postgresProcessConfig :: ProcessConfig () () ()
+  -- ^ @postgres@ process config
   }
 
 instance Pretty PostgresProcess where
@@ -268,39 +198,65 @@ instance Pretty PostgresProcess where
 --   connections.
 stopPostgresProcess :: Bool -> PostgresProcess -> IO ExitCode
 stopPostgresProcess graceful PostgresProcess{..} = do
-  withProcessHandle postgresProcessHandle $ \case
-    OpenHandle p   ->
+  maybeExitCode <- getExitCode postgresProcessHandle
+  case maybeExitCode of
+    -- Already exited.
+    Just _ -> return ()
+    Nothing -> do
       -- Call for "Immediate shutdown"
-      signalProcess (if graceful then sigINT else sigQUIT) p
-    OpenExtHandle {} -> pure () -- TODO log windows is not supported
-    ClosedHandle _ -> return ()
+      -- NB: typed-process 0.2.12.0 introduced a `getPid` function.
+      maybePid <- System.Process.getPid $ unsafeProcessHandle postgresProcessHandle
+      forM_ maybePid $ signalProcess $ if graceful then sigINT else sigQUIT
 
-  waitForProcess postgresProcessHandle
+  waitExitCode postgresProcessHandle
 
 -- | Start the @postgres@ process and block until a successful connection
 --   occurs. A separate thread we continously check to see if the @postgres@
 --   process has crashed.
-startPostgresProcess :: Int -> Logger -> CompletePostgresPlan -> IO PostgresProcess
+startPostgresProcess :: HasCallStack => Int -> Logger -> CompletePostgresPlan -> IO PostgresProcess
 startPostgresProcess time logger CompletePostgresPlan {..} = do
   logger StartPostgres
 
-  let startAction = PostgresProcess completePostgresPlanClientOptions
-        <$> startProcess "postgres" completePostgresPlanProcessConfig
+  let processConfig =
+        setStdout byteStringOutput
+        $ setStderr byteStringOutput
+        $ setEnv (completeProcessConfigEnvVars completePostgresPlanProcessConfig)
+        $ setCreateGroup (completeProcessConfigCreateGroup completePostgresPlanProcessConfig)
+        $ proc "postgres" (completeProcessConfigCmdLine completePostgresPlanProcessConfig)
+
+      startAction = do
+        processHandle <- startProcess processConfig
+        pure
+          $ PostgresProcess
+            { postgresProcessClientOptions = completePostgresPlanClientOptions
+            , postgresProcessHandle = processHandle
+            , postgresProcessConfig = clearStreams processConfig
+            }
+
+      -- We assume that 'template1' exist and make connection
+      -- options to test if postgres is ready.
+      options = completePostgresPlanClientOptions
+        { Client.dbname = pure "template1"
+        }
 
   -- Start postgres and stop if an exception occurs
   bracketOnError startAction (stopPostgresProcess False) $
-    \result@PostgresProcess {..} -> do
+    \result@PostgresProcess{..} -> do
       logger WaitForDB
-      -- We assume that 'template1' exist and make connection
-      -- options to test if postgres is ready.
-      let options = completePostgresPlanClientOptions
-            { Client.dbname = pure "template1"
-            }
-
-           -- A helper to check if the process has died
-          checkForCrash = do
-            mExitCode <- getProcessExitCode postgresProcessHandle
-            for_ mExitCode (throwIO . StartPostgresFailed)
+      -- A helper to check if the process has died
+      let checkForCrash = do
+            maybeExitCode <- getExitCode postgresProcessHandle
+            case maybeExitCode of
+              Nothing -> pure ()
+              Just exitCode -> atomically $ do
+                stdout <- getStdout postgresProcessHandle
+                stderr <- getStderr postgresProcessHandle
+                throwSTM $ StartPostgresFailed $ ExitCodeException
+                  { eceExitCode = exitCode
+                  , eceProcessConfig = postgresProcessConfig
+                  , eceStdout = stdout
+                  , eceStderr = stderr
+                  }
 
           timeoutAndThrow = timeout time (waitForDB logger options) >>= \case
             Just () -> pure ()
@@ -312,13 +268,23 @@ startPostgresProcess time logger CompletePostgresPlan {..} = do
       -- Postgres is now ready so return
       return result
 
+clearStreams :: ProcessConfig stdin stdout stderr -> ProcessConfig () () ()
+clearStreams =
+  setStdout inherit
+  . setStderr inherit
+  . setStdin inherit
+
 -------------------------------------------------------------------------------
 -- Non interactive subcommands
 -------------------------------------------------------------------------------
 executeInitDb :: CompleteProcessConfig -> IO ()
 executeInitDb config = do
-  (res, stdOut, stdErr) <- executeProcessAndTee "initdb" config
-  throwIfNotSuccess (InitDbFailed stdOut stdErr) res
+  (void
+    $ readProcess_
+    $ setEnv (completeProcessConfigEnvVars config)
+    $ setCreateGroup (completeProcessConfigCreateGroup config)
+    $ proc "initdb" (completeProcessConfigCmdLine config))
+    `catch` (throwIO . InitDbFailed)
 
 data CompleteCopyDirectoryCommand = CompleteCopyDirectoryCommand
   { copyDirectoryCommandSrc :: FilePath
@@ -342,20 +308,29 @@ instance Pretty CompleteCopyDirectoryCommand where
 executeCopyDirectoryCommand :: CompleteCopyDirectoryCommand -> IO ()
 executeCopyDirectoryCommand CompleteCopyDirectoryCommand {..} = do
   let
+    cpFlags =
+      ["-R"]
 #ifdef darwin_HOST_OS
-    cpFlags = if copyDirectoryCommandCow then "cp -Rc " else "cp -R "
+      ++ if copyDirectoryCommandCow then ["-c"] else []
 #else
-    cpFlags = if copyDirectoryCommandCow then "cp -R --reflink=auto " else "cp -R "
+      ++ if copyDirectoryCommandCow then ["--reflink=auto"] else []
 #endif
-    copyCommand = cpFlags <> copyDirectoryCommandSrc <> "/* " <> copyDirectoryCommandDst
-  throwIfNotSuccess (CopyCachedInitDbFailed copyCommand) =<< system copyCommand
+      ++ [copyDirectoryCommandSrc, copyDirectoryCommandDst]
+    copyCommand = proc "cp" cpFlags
+
+  (void $ readProcess_ copyCommand)
+    `catch` (throwIO . CopyCachedInitDbFailed)
 
 -- | Call @createdb@ and tee the output to return if there is an
 --   an exception. Throws 'CreateDbFailed'.
 executeCreateDb :: CompleteProcessConfig -> IO ()
 executeCreateDb config = do
-  (res, stdOut, stdErr) <- executeProcessAndTee "createdb" config
-  throwIfNotSuccess (CreateDbFailed stdOut stdErr) res
+  (void
+    $ readProcess_
+    $ setEnv (completeProcessConfigEnvVars config)
+    $ setCreateGroup (completeProcessConfigCreateGroup config)
+    $ proc "createdb" (completeProcessConfigCmdLine config))
+    `catch` (throwIO . CreateDbFailed)
 
 -- The DataDirectory and the initdb data directory must match!
 data InitDbCachePlan = InitDbCachePlan
