@@ -32,6 +32,7 @@ import           Data.Maybe
 import           Data.Monoid
 import           Data.Monoid.Generic
 import           Data.List
+import qualified Data.List.NonEmpty as NonEmpty
 import           Data.Traversable
 import qualified Database.PostgreSQL.Simple.Options as Client
 import           GHC.Generics (Generic)
@@ -639,12 +640,14 @@ getInitDbVersion :: String
 getInitDbVersion = unsafePerformIO $ readProcessWithExitCode "initdb" ["--version"] "" >>= \case
   (ExitSuccess, outputString, _) -> do
     let
-      theLastPart = last $ words outputString
-      versionPart = takeWhile (\x -> isDigit x || x == '.' || x == '-') theLastPart
-      humanReadable = if last versionPart == '.'
-        then init versionPart
-        else versionPart
-    pure $ humanReadable <> take 8 (makeArgumentHash outputString)
+      getVersionPart s =
+        fmap (\s' -> (if NonEmpty.last s' == '.' then NonEmpty.init else NonEmpty.toList) s')
+          . NonEmpty.nonEmpty
+          . takeWhile (\x -> isDigit x || x == '.' || x == '-')
+      version =
+        fromMaybe (error $ "Could not find version in `initdb --version` output:\n" <> outputString) $
+          find getVersionPart $ reverse $ words outputString
+    pure $ version <> take 8 (makeArgumentHash outputString)
 
   (startErrorExitCode, startErrorStdOut, startErrorStdErr) ->
     throwIO InitDbFailed {..}
